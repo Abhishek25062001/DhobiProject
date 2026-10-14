@@ -1,10 +1,13 @@
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
+import dotenv from 'dotenv';
 
-const isConfigured = () => {
+dotenv.config();
+
+export const isConfigured = () => {
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  return (
+  return Boolean(
     keyId &&
     keySecret &&
     !keyId.includes('placeholder') &&
@@ -14,19 +17,26 @@ const isConfigured = () => {
 
 let razorpayInstance = null;
 
-if (isConfigured()) {
-  razorpayInstance = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET,
-  });
-}
+export const getRazorpayInstance = () => {
+  if (isConfigured()) {
+    if (!razorpayInstance) {
+      razorpayInstance = new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET,
+      });
+    }
+    return razorpayInstance;
+  }
+  return null;
+};
 
 export const createRazorpayOrder = async (amountInINR, receiptId) => {
   const amountInPaise = Math.round(amountInINR * 100);
+  const rz = getRazorpayInstance();
 
-  if (isConfigured() && razorpayInstance) {
+  if (isConfigured() && rz) {
     try {
-      const order = await razorpayInstance.orders.create({
+      const order = await rz.orders.create({
         amount: amountInPaise,
         currency: 'INR',
         receipt: receiptId,
@@ -40,37 +50,54 @@ export const createRazorpayOrder = async (amountInINR, receiptId) => {
         keyId: process.env.RAZORPAY_KEY_ID
       };
     } catch (err) {
-      console.warn('[Razorpay] Failed to create live order, falling back to simulated order:', err.message);
+      console.warn('[Razorpay] Live order creation failed or test network offline, falling back to simulated order:', err.message);
     }
   }
 
-  // Graceful simulation fallback
+  // Graceful simulation fallback for testing / offline environments
   return {
     id: `order_sim_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
     amount: amountInPaise,
     currency: 'INR',
     isSimulated: true,
-    keyId: 'rzp_test_simulated'
+    keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_simulated'
   };
 };
 
 export const verifyRazorpaySignature = (orderId, paymentId, signature) => {
-  if (!isConfigured() || orderId.startsWith('order_sim_')) {
-    // In simulation mode, accept simulated payment verification
+  if (!orderId || !paymentId || !signature) {
+    return false;
+  }
+
+  const secret = process.env.RAZORPAY_KEY_SECRET;
+
+  // Strict cryptographic HMAC-SHA256 signature verification
+  if (secret) {
+    try {
+      const generatedSignature = crypto
+        .createHmac('sha256', secret)
+        .update(`${orderId}|${paymentId}`)
+        .digest('hex');
+
+      if (generatedSignature === signature) {
+        return true;
+      }
+    } catch (err) {
+      console.error('[Razorpay Signature Error]:', err);
+    }
+  }
+
+  // Support explicit valid simulation tokens only in test/simulated environment
+  if ((!isConfigured() || orderId.startsWith('order_sim_')) && signature === 'simulated_valid_signature') {
     return true;
   }
 
-  try {
-    const generatedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-      .update(`${orderId}|${paymentId}`)
-      .digest('hex');
-
-    return generatedSignature === signature;
-  } catch (err) {
-    console.error('[Razorpay Signature Error]:', err);
-    return false;
-  }
+  return false;
 };
 
-export { isConfigured };
+export default {
+  isConfigured,
+  getRazorpayInstance,
+  createRazorpayOrder,
+  verifyRazorpaySignature
+};

@@ -2,7 +2,10 @@ import express from 'express';
 import {
   getAvailableSlots,
   createOrder,
+  verifyPayment,
   payOnlineOrder,
+  retryPayment,
+  switchToCod,
   getMyOrders,
   getOrderById,
   getAllOrders,
@@ -19,9 +22,12 @@ router.get('/slots', getAvailableSlots);
 router.post('/', protect, createOrder);
 router.get('/my-orders', protect, getMyOrders);
 router.get('/all', protect, authorize('admin', 'rider'), getAllOrders);
+router.post('/verify-payment', protect, verifyPayment);
 
 // Parameterized routes SECOND
 router.post('/:id/pay-online', protect, payOnlineOrder);
+router.post('/:id/retry-payment', protect, retryPayment);
+router.post('/:id/switch-to-cod', protect, switchToCod);
 router.get('/:id', protect, getOrderById);
 router.patch('/:id/status', protect, authorize('admin', 'rider'), updateOrderStatus);
 

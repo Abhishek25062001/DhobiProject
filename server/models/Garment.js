@@ -53,5 +53,8 @@ const garmentSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Production Compound Index
+garmentSchema.index({ category: 1, isActive: 1 });
+
 const Garment = mongoose.model('Garment', garmentSchema);
 export default Garment;

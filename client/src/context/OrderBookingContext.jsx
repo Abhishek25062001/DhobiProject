@@ -186,8 +186,8 @@ export const OrderBookingProvider = ({ children }) => {
       const sub = cartItems.reduce((acc, curr) => acc + curr.lineTotal, 0);
       const count = cartItems.reduce((acc, curr) => acc + curr.quantity, 0);
       const delivery = sub >= 399 ? 0 : (sub > 0 ? 49 : 0);
-      const tax = Math.round((sub + delivery) * 0.05 * 100) / 100;
-      const total = Math.round(sub + delivery + tax);
+      const tax = Math.round((sub + delivery) * 0.05);
+      const total = sub + delivery + tax;
       const neededForFree = Math.max(0, 399 - sub);
 
       return {

@@ -45,8 +45,7 @@ const orderSchema = new mongoose.Schema({
   orderNumber: {
     type: String,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   customer: {
     type: mongoose.Schema.Types.ObjectId,
@@ -126,7 +125,7 @@ const orderSchema = new mongoose.Schema({
     },
     onlineSubMethod: {
       type: String,
-      enum: ['UPI', 'CARD', 'NET_BANKING', null],
+      enum: ['UPI', 'CARD', 'NET_BANKING', 'RAZORPAY_CHECKOUT', null],
       default: null
     },
     status: {
@@ -145,6 +144,14 @@ const orderSchema = new mongoose.Schema({
     },
     razorpayPaymentId: {
       type: String,
+      default: null
+    },
+    razorpaySignature: {
+      type: String,
+      default: null
+    },
+    paidAt: {
+      type: Date,
       default: null
     }
   },
@@ -167,6 +174,10 @@ const orderSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+// Production Compound Indexes
+orderSchema.index({ customer: 1, createdAt: -1 });
+orderSchema.index({ orderStatus: 1, 'pickupSchedule.date': 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 export default Order;

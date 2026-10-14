@@ -78,6 +78,18 @@ export const orderService = {
     const res = await API.post(`/orders/${orderId}/pay-online`, paymentData);
     return res.data;
   },
+  verifyPayment: async (paymentData) => {
+    const res = await API.post('/orders/verify-payment', paymentData);
+    return res.data;
+  },
+  retryPayment: async (orderId) => {
+    const res = await API.post(`/orders/${orderId}/retry-payment`);
+    return res.data;
+  },
+  switchToCod: async (orderId) => {
+    const res = await API.post(`/orders/${orderId}/switch-to-cod`);
+    return res.data;
+  },
   getMyOrders: async () => {
     const res = await API.get('/orders/my-orders');
     return res.data;

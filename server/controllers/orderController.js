@@ -2,12 +2,41 @@ import Order from '../models/Order.js';
 import Garment from '../models/Garment.js';
 import { createRazorpayOrder, verifyRazorpaySignature } from '../utils/razorpay.js';
 
-const STANDARD_SLOTS = [
-  { slot: '08:00 AM - 10:00 AM', maxCapacity: 15 },
-  { slot: '10:00 AM - 01:00 PM', maxCapacity: 20 },
-  { slot: '02:00 PM - 05:00 PM', maxCapacity: 20 },
-  { slot: '06:00 PM - 09:00 PM', maxCapacity: 15 }
+export const MAX_ORDERS_PER_SLOT = 15;
+
+export const STANDARD_SLOTS = [
+  { slot: '08:00 AM - 10:00 AM', maxCapacity: MAX_ORDERS_PER_SLOT, endHour: 10, endMinute: 0 },
+  { slot: '10:00 AM - 01:00 PM', maxCapacity: MAX_ORDERS_PER_SLOT, endHour: 13, endMinute: 0 },
+  { slot: '02:00 PM - 05:00 PM', maxCapacity: MAX_ORDERS_PER_SLOT, endHour: 17, endMinute: 0 },
+  { slot: '06:00 PM - 09:00 PM', maxCapacity: MAX_ORDERS_PER_SLOT, endHour: 21, endMinute: 0 }
 ];
+
+// Helper to determine if a slot has already passed
+export const isSlotInPast = (dateStr, slotStr) => {
+  if (!dateStr || !slotStr) return false;
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${year}-${month}-${day}`;
+
+  if (dateStr < todayStr) {
+    return true;
+  }
+
+  if (dateStr === todayStr) {
+    const slotObj = STANDARD_SLOTS.find((s) => s.slot === slotStr);
+    if (!slotObj) return false;
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    if (currentHour > slotObj.endHour || (currentHour === slotObj.endHour && currentMinute > slotObj.endMinute)) {
+      return true;
+    }
+  }
+
+  return false;
+};
 
 // Helper to calculate exact item price on server side
 const calculateItemPrice = (garment, serviceType, ironingType) => {
@@ -60,29 +89,27 @@ export const getAvailableSlots = async (req, res) => {
       });
     }
 
-    // Count existing pickup and delivery bookings for each slot on this date
+    // Count existing pickup bookings for each slot on this date
     const ordersOnDate = await Order.find({
-      $or: [
-        { 'pickupSchedule.date': date },
-        { 'deliverySchedule.date': date }
-      ],
+      'pickupSchedule.date': date,
       orderStatus: { $ne: 'CANCELLED' }
     });
 
     const slotAvailability = STANDARD_SLOTS.map(({ slot, maxCapacity }) => {
       const bookedCount = ordersOnDate.filter(
-        (o) =>
-          (o.pickupSchedule.date === date && o.pickupSchedule.timeSlot === slot) ||
-          (o.deliverySchedule.date === date && o.deliverySchedule.timeSlot === slot)
+        (o) => o.pickupSchedule?.date === date && o.pickupSchedule?.timeSlot === slot
       ).length;
 
       const remaining = Math.max(0, maxCapacity - bookedCount);
+      const isPast = isSlotInPast(date, slot);
+
       return {
         slot,
         maxCapacity,
         bookedCount,
         remainingCapacity: remaining,
-        isAvailable: remaining > 0
+        isPast,
+        isAvailable: remaining > 0 && !isPast
       };
     });
 
@@ -137,28 +164,42 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // 2. Validate Turnaround: Delivery must be on or after pickup date
+    // 2. Validate Turnaround: Delivery must be after pickup date (minimum 24-hour turnaround required)
     const pickupDateObj = new Date(pickupSchedule.date);
     const deliveryDateObj = new Date(deliverySchedule.date);
 
-    if (deliveryDateObj < pickupDateObj) {
+    if (deliveryDateObj <= pickupDateObj) {
       return res.status(400).json({
         success: false,
-        message: 'Delivery date cannot be earlier than pickup date.'
+        message: 'Delivery date must be scheduled after pickup date (minimum 24-hour turnaround required).'
       });
     }
 
-    if (
-      pickupSchedule.date === deliverySchedule.date &&
-      pickupSchedule.timeSlot === deliverySchedule.timeSlot
-    ) {
+    // 3. Past Slot & Capacity Checks
+    if (isSlotInPast(pickupSchedule.date, pickupSchedule.timeSlot)) {
       return res.status(400).json({
         success: false,
-        message: 'Delivery slot must be scheduled after the pickup slot.'
+        message: 'Selected pickup time slot has already passed. Please choose a future slot.'
       });
     }
 
-    // 3. Server-side item pricing calculation
+    const currentBookedCount = await Order.countDocuments({
+      'pickupSchedule.date': pickupSchedule.date,
+      'pickupSchedule.timeSlot': pickupSchedule.timeSlot,
+      orderStatus: { $ne: 'CANCELLED' }
+    });
+
+    const slotConfig = STANDARD_SLOTS.find((s) => s.slot === pickupSchedule.timeSlot) || { maxCapacity: MAX_ORDERS_PER_SLOT };
+    const remaining = slotConfig.maxCapacity - currentBookedCount;
+
+    if (remaining <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected pickup time slot is fully booked. Please choose another slot.'
+      });
+    }
+
+    // 4. Server-side item pricing calculation
     const processedItems = [];
     let subtotal = 0;
 
@@ -192,26 +233,29 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // 4. Delivery fee & Tax calculation (Free delivery >= ₹399, otherwise ₹49; 5% GST)
+    // 5. Delivery fee & Tax calculation (Free delivery >= ₹399, otherwise ₹49; 5% GST)
     const pickupDeliveryFee = subtotal >= 399 ? 0 : 49;
     const expressSurcharge = 0;
     const taxableBase = subtotal + pickupDeliveryFee + expressSurcharge;
-    const taxAmount = Math.round(taxableBase * 0.05 * 100) / 100; // 5% GST
-    const grandTotal = Math.round(taxableBase + taxAmount);
+    const taxAmount = Math.round(taxableBase * 0.05); // 5% GST rounded
+    const grandTotal = taxableBase + taxAmount;
 
-    // 5. Generate unique Indian Order ID
+    // 6. Generate unique Indian Order ID
     const year = new Date().getFullYear();
     const randomSuffix = Math.floor(100000 + Math.random() * 900000);
     const orderNumber = `IDB-${year}-${randomSuffix}`;
 
-    // 6. Handle Payment setup
+    // 7. Handle Payment setup
     const isOnline = paymentMethod === 'ONLINE';
     let paymentData = {
       method: isOnline ? 'ONLINE' : 'COD',
       onlineSubMethod: isOnline ? (onlineSubMethod || 'UPI') : null,
       status: 'PENDING',
       transactionId: null,
-      razorpayOrderId: null
+      razorpayOrderId: null,
+      razorpayPaymentId: null,
+      razorpaySignature: null,
+      paidAt: null
     };
 
     let razorpayPayload = null;
@@ -219,10 +263,13 @@ export const createOrder = async (req, res) => {
     if (isOnline) {
       const rzOrder = await createRazorpayOrder(grandTotal, orderNumber);
       paymentData.razorpayOrderId = rzOrder.id;
-      razorpayPayload = rzOrder;
+      razorpayPayload = {
+        ...rzOrder,
+        key_id: rzOrder.keyId || process.env.RAZORPAY_KEY_ID
+      };
     }
 
-    // 7. Save order
+    // 8. Save order
     const order = await Order.create({
       orderNumber,
       customer: req.user._id,
@@ -267,13 +314,22 @@ export const createOrder = async (req, res) => {
   }
 };
 
-// @desc    Mark an online order as PAID via Razorpay / Simulated Gateway
-// @route   POST /api/orders/:id/pay-online
+// @desc    Verify Razorpay online payment cryptographically
+// @route   POST /api/orders/verify-payment or POST /api/orders/:id/pay-online
 // @access  Private
-export const payOnlineOrder = async (req, res) => {
+export const verifyPayment = async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, onlineSubMethod } = req.body;
-    const order = await Order.findById(req.params.id);
+    const { orderId, razorpay_order_id, razorpay_payment_id, razorpay_signature, onlineSubMethod } = req.body;
+    const targetId = req.params.id || orderId;
+
+    if (!targetId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order ID is required.'
+      });
+    }
+
+    const order = await Order.findById(targetId);
 
     if (!order) {
       return res.status(404).json({
@@ -282,7 +338,7 @@ export const payOnlineOrder = async (req, res) => {
       });
     }
 
-    // Customer or admin check
+    // Customer or admin authorization check
     if (order.customer.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -290,10 +346,17 @@ export const payOnlineOrder = async (req, res) => {
       });
     }
 
-    const orderIdToVerify = razorpay_order_id || order.payment.razorpayOrderId || `order_sim_${Date.now()}`;
-    const paymentIdToVerify = razorpay_payment_id || `pay_sim_${Date.now()}`;
+    const orderIdToVerify = razorpay_order_id || order.payment?.razorpayOrderId;
+    const paymentIdToVerify = razorpay_payment_id;
 
-    // Verify signature
+    if (!orderIdToVerify || !paymentIdToVerify || !razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required payment verification fields (razorpay_order_id, razorpay_payment_id, razorpay_signature).'
+      });
+    }
+
+    // Strict HMAC-SHA256 signature verification
     const isValid = verifyRazorpaySignature(orderIdToVerify, paymentIdToVerify, razorpay_signature);
 
     if (!isValid) {
@@ -305,8 +368,11 @@ export const payOnlineOrder = async (req, res) => {
 
     order.payment.status = 'PAID';
     order.payment.transactionId = paymentIdToVerify;
+    order.payment.razorpayOrderId = orderIdToVerify;
     order.payment.razorpayPaymentId = paymentIdToVerify;
+    order.payment.razorpaySignature = razorpay_signature;
     order.payment.onlineSubMethod = onlineSubMethod || order.payment.onlineSubMethod || 'UPI';
+    order.payment.paidAt = new Date();
 
     await order.save();
 
@@ -316,10 +382,110 @@ export const payOnlineOrder = async (req, res) => {
       order
     });
   } catch (error) {
-    console.error('[Pay Online Error]:', error);
+    console.error('[Verify Payment Error]:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Failed to process online payment.'
+      message: error.message || 'Failed to process online payment verification.'
+    });
+  }
+};
+
+// Alias for backwards-compatibility
+export const payOnlineOrder = verifyPayment;
+
+// @desc    Retry / refresh online payment for an order
+// @route   POST /api/orders/:id/retry-payment
+// @access  Private
+export const retryPayment = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.'
+      });
+    }
+
+    if (order.customer.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to retry payment for this order.'
+      });
+    }
+
+    if (order.payment.status === 'PAID') {
+      return res.status(400).json({
+        success: false,
+        message: 'This order has already been paid.'
+      });
+    }
+
+    const rzOrder = await createRazorpayOrder(order.pricingBreakdown.grandTotal, order.orderNumber);
+    order.payment.method = 'ONLINE';
+    order.payment.razorpayOrderId = rzOrder.id;
+    order.payment.status = 'PENDING';
+    await order.save();
+
+    return res.json({
+      success: true,
+      message: 'Ready for online checkout.',
+      order,
+      razorpay: {
+        ...rzOrder,
+        key_id: rzOrder.keyId || process.env.RAZORPAY_KEY_ID
+      }
+    });
+  } catch (error) {
+    console.error('[Retry Payment Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to initialize payment retry.'
+    });
+  }
+};
+
+// @desc    Switch an unpaid online order to Cash on Delivery (COD)
+// @route   POST /api/orders/:id/switch-to-cod
+// @access  Private
+export const switchToCod = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.'
+      });
+    }
+
+    if (order.customer.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to modify this order.'
+      });
+    }
+
+    if (order.payment.status === 'PAID') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot switch payment method for an already paid order.'
+      });
+    }
+
+    order.payment.method = 'COD';
+    order.payment.onlineSubMethod = null;
+    order.payment.status = 'PENDING';
+    await order.save();
+
+    return res.json({
+      success: true,
+      message: 'Successfully switched order payment method to Cash on Delivery (COD).',
+      order
+    });
+  } catch (error) {
+    console.error('[Switch to COD Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to switch payment method to COD.'
     });
   }
 };
@@ -452,8 +618,13 @@ export const updateOrderStatus = async (req, res) => {
 
     if (paymentStatus) {
       order.payment.status = paymentStatus;
-      if (paymentStatus === 'PAID' && !order.payment.transactionId) {
-        order.payment.transactionId = transactionId || `COD_COLLECTED_${Date.now()}`;
+      if (paymentStatus === 'PAID') {
+        if (!order.payment.transactionId) {
+          order.payment.transactionId = transactionId || `COD_COLLECTED_${Date.now()}`;
+        }
+        if (!order.payment.paidAt) {
+          order.payment.paidAt = new Date();
+        }
       }
     }
 

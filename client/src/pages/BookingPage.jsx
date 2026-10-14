@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useOrderBooking } from '../context/OrderBookingContext';
 import { catalogService, orderService } from '../services/api';
 import PaymentModal from '../components/PaymentModal';
+import { launchRazorpayCheckout } from '../utils/razorpayCheckout';
 import { 
   Shirt, 
   Scissors, 
@@ -149,7 +150,11 @@ const BookingPage = () => {
         if (res.success && res.slots) {
           const map = {};
           res.slots.forEach((s) => {
-            map[s.slot] = s.remainingCapacity;
+            map[s.slot] = {
+              remaining: s.remainingCapacity,
+              isAvailable: s.isAvailable,
+              isPast: s.isPast
+            };
           });
           setSlotCapacities(map);
         }
@@ -186,8 +191,8 @@ const BookingPage = () => {
         toast.error('Please select a delivery date and slot.');
         return;
       }
-      if (new Date(deliverySchedule.date) < new Date(pickupSchedule.date)) {
-        toast.error('Delivery date cannot be earlier than pickup date.');
+      if (new Date(deliverySchedule.date) <= new Date(pickupSchedule.date)) {
+        toast.error('Delivery date must be scheduled after pickup date (minimum 24-hour turnaround required).');
         return;
       }
       setActiveStep(4);
@@ -241,8 +246,26 @@ const BookingPage = () => {
         setCreatedOrder(res.order);
 
         if (paymentMethod === 'ONLINE') {
-          // Open interactive payment modal
-          setShowPaymentModal(true);
+          if (res.razorpay) {
+            launchRazorpayCheckout({
+              order: res.order,
+              razorpayPayload: res.razorpay,
+              user,
+              onSuccess: (updatedOrder) => {
+                clearCart();
+                navigate('/my-orders', { state: { order: updatedOrder } });
+              },
+              onDismiss: () => {
+                clearCart();
+                navigate('/my-orders');
+              },
+              onFallback: () => {
+                setShowPaymentModal(true);
+              }
+            });
+          } else {
+            setShowPaymentModal(true);
+          }
         } else {
           // COD Order placed instantly
           toast.success('Order booked successfully with Cash on Delivery!');
@@ -662,25 +685,27 @@ const BookingPage = () => {
                       </label>
                       <div className="grid grid-cols-2 gap-1.5">
                         {TIME_SLOTS.map((slot) => {
-                          const remaining = slotCapacities[slot] !== undefined ? slotCapacities[slot] : 15;
-                          const isFull = remaining <= 0;
+                          const slotInfo = slotCapacities[slot];
+                          const remaining = slotInfo ? slotInfo.remaining : 15;
+                          const isUnavailable = slotInfo ? !slotInfo.isAvailable : false;
+                          const isPast = slotInfo?.isPast;
                           return (
                             <button
                               key={slot}
                               type="button"
-                              disabled={isFull}
+                              disabled={isUnavailable}
                               onClick={() => setPickupSchedule({ ...pickupSchedule, timeSlot: slot })}
                               className={`py-2 px-2 rounded-xl text-[11px] font-bold border transition-all text-left ${
                                 pickupSchedule.timeSlot === slot
                                   ? 'border-primary-600 bg-primary-600 text-white'
-                                  : isFull
-                                  ? 'border-slate-200 bg-slate-200 text-slate-400 cursor-not-allowed'
+                                  : isUnavailable
+                                  ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
                                   : 'border-slate-300 bg-white text-slate-700 hover:border-primary-400'
                               }`}
                             >
                               <div className="truncate">{slot}</div>
                               <span className="text-[9px] opacity-80 block truncate">
-                                {isFull ? 'Slot Full' : `${remaining} slots left`}
+                                {isPast ? 'Passed' : isUnavailable ? 'Slot Full' : `${remaining} slots left`}
                               </span>
                             </button>
                           );

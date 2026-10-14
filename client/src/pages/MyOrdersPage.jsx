@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { orderService } from '../services/api';
 import PaymentModal from '../components/PaymentModal';
+import { useAuth } from '../context/AuthContext';
+import { launchRazorpayCheckout } from '../utils/razorpayCheckout';
 import { 
   Package, 
   Clock, 
@@ -72,9 +74,58 @@ const MyOrdersPage = () => {
     setExpandedOrderId(expandedOrderId === id ? null : id);
   };
 
-  const handlePayNow = (order) => {
-    setSelectedOrderForPayment(order);
-    setShowPaymentModal(true);
+  const { user } = useAuth();
+  const [actionLoadingId, setActionLoadingId] = useState(null);
+
+  const handleRetryOnlinePayment = async (order) => {
+    setActionLoadingId(order._id);
+    try {
+      const res = await orderService.retryPayment(order._id);
+      if (res.success && res.razorpay) {
+        launchRazorpayCheckout({
+          order: res.order || order,
+          razorpayPayload: res.razorpay,
+          user,
+          onSuccess: (updatedOrder) => {
+            setOrders((prev) =>
+              prev.map((o) => (o._id === updatedOrder._id ? updatedOrder : o))
+            );
+          },
+          onDismiss: () => {},
+          onFallback: () => {
+            setSelectedOrderForPayment(res.order || order);
+            setShowPaymentModal(true);
+          }
+        });
+      } else {
+        setSelectedOrderForPayment(order);
+        setShowPaymentModal(true);
+      }
+    } catch (err) {
+      setSelectedOrderForPayment(order);
+      setShowPaymentModal(true);
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleSwitchToCod = async (orderId) => {
+    setActionLoadingId(orderId);
+    try {
+      const res = await orderService.switchToCod(orderId);
+      if (res.success && res.order) {
+        setOrders((prev) =>
+          prev.map((o) => (o._id === orderId ? res.order : o))
+        );
+        toast.success('Successfully switched order to Cash on Delivery (COD)!');
+      } else {
+        toast.error(res.message || 'Failed to switch payment method.');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Server error while switching to COD.');
+    } finally {
+      setActionLoadingId(null);
+    }
   };
 
   const handlePaymentSuccess = (updatedOrder) => {
@@ -366,15 +417,26 @@ const MyOrdersPage = () => {
                           </div>
                         </div>
 
-                        {/* Pay Now Button if Online and Still Pending */}
+                        {/* Payment Actions for Unpaid / Pending Online Orders */}
                         {order.payment?.method === 'ONLINE' && order.payment?.status !== 'PAID' && (
-                          <div className="pt-2">
+                          <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row gap-2">
                             <button
-                              onClick={() => handlePayNow(order)}
-                              className="w-full py-2.5 px-4 rounded-xl font-bold text-white bg-primary-600 hover:bg-primary-700 shadow-sm flex items-center justify-center gap-1.5"
+                              type="button"
+                              disabled={actionLoadingId === order._id}
+                              onClick={() => handleRetryOnlinePayment(order)}
+                              className="flex-1 py-2.5 px-3 rounded-xl font-bold text-white bg-primary-600 hover:bg-primary-700 shadow-sm flex items-center justify-center gap-1.5 text-xs transition-colors"
                             >
-                              <CreditCard className="w-4 h-4" />
-                              <span>Complete Online Payment Now</span>
+                              <CreditCard className="w-3.5 h-3.5" />
+                              <span>{actionLoadingId === order._id ? 'Opening Gateway...' : 'Retry Online Payment'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={actionLoadingId === order._id}
+                              onClick={() => handleSwitchToCod(order._id)}
+                              className="py-2.5 px-3 rounded-xl font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 flex items-center justify-center gap-1.5 text-xs transition-colors"
+                            >
+                              <Receipt className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Switch to COD</span>
                             </button>
                           </div>
                         )}
