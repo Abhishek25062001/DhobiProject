@@ -178,27 +178,55 @@ export const OrderBookingProvider = ({ children }) => {
       date: defaultDeliveryDate,
       timeSlot: '10:00 AM - 01:00 PM'
     });
+    setIsExpress(false);
+    setAppliedCoupon(null);
+  };
+
+  const [isExpress, setIsExpress] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+
+  const applyCoupon = (couponData) => {
+    setAppliedCoupon(couponData);
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
   };
 
   // Live Pricing Calculations
-  const { subtotal, itemCount, pickupDeliveryFee, taxAmount, grandTotal, amountNeededForFreeDelivery } =
-    useMemo(() => {
-      const sub = cartItems.reduce((acc, curr) => acc + curr.lineTotal, 0);
-      const count = cartItems.reduce((acc, curr) => acc + curr.quantity, 0);
-      const delivery = sub >= 399 ? 0 : (sub > 0 ? 49 : 0);
-      const tax = Math.round((sub + delivery) * 0.05);
-      const total = sub + delivery + tax;
-      const neededForFree = Math.max(0, 399 - sub);
+  const {
+    subtotal,
+    itemCount,
+    pickupDeliveryFee,
+    expressSurcharge,
+    discountAmount,
+    couponCode,
+    taxAmount,
+    grandTotal,
+    amountNeededForFreeDelivery
+  } = useMemo(() => {
+    const sub = cartItems.reduce((acc, curr) => acc + curr.lineTotal, 0);
+    const count = cartItems.reduce((acc, curr) => acc + curr.quantity, 0);
+    const delivery = sub >= 399 ? 0 : sub > 0 ? 49 : 0;
+    const expressFee = isExpress && sub > 0 ? 99 : 0;
+    const discount = appliedCoupon ? Math.min(appliedCoupon.discountAmount, sub) : 0;
+    const taxableBase = Math.max(0, sub - discount) + delivery + expressFee;
+    const tax = Math.round(taxableBase * 0.05);
+    const total = taxableBase + tax;
+    const neededForFree = Math.max(0, 399 - sub);
 
-      return {
-        subtotal: sub,
-        itemCount: count,
-        pickupDeliveryFee: delivery,
-        taxAmount: tax,
-        grandTotal: total,
-        amountNeededForFreeDelivery: neededForFree
-      };
-    }, [cartItems]);
+    return {
+      subtotal: sub,
+      itemCount: count,
+      pickupDeliveryFee: delivery,
+      expressSurcharge: expressFee,
+      discountAmount: discount,
+      couponCode: appliedCoupon?.code || null,
+      taxAmount: tax,
+      grandTotal: total,
+      amountNeededForFreeDelivery: neededForFree
+    };
+  }, [cartItems, isExpress, appliedCoupon]);
 
   return (
     <OrderBookingContext.Provider
@@ -219,15 +247,24 @@ export const OrderBookingProvider = ({ children }) => {
         pickupAddress,
         setPickupAddress,
         resetBooking,
+        isExpress,
+        setIsExpress,
+        appliedCoupon,
+        applyCoupon,
+        removeCoupon,
         subtotal,
         itemCount,
         pickupDeliveryFee,
+        expressSurcharge,
+        discountAmount,
+        couponCode,
         taxAmount,
         grandTotal,
         amountNeededForFreeDelivery,
         freeDeliveryThreshold: 399
       }}
     >
+
       {children}
     </OrderBookingContext.Provider>
   );

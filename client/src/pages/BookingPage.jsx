@@ -31,7 +31,11 @@ import {
   Loader2,
   PackageCheck,
   ShoppingBag,
-  Sparkle
+  Sparkle,
+  Zap,
+  Tag,
+  Percent,
+  Bookmark
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format, addDays } from 'date-fns';
@@ -64,7 +68,7 @@ const TIME_SLOTS = [
 
 const BookingPage = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, addAddress } = useAuth();
   const {
     cartItems,
     addItem,
@@ -81,9 +85,17 @@ const BookingPage = () => {
     setDeliverySchedule,
     pickupAddress,
     setPickupAddress,
+    isExpress,
+    setIsExpress,
+    appliedCoupon,
+    applyCoupon,
+    removeCoupon,
     subtotal,
     itemCount,
     pickupDeliveryFee,
+    expressSurcharge,
+    discountAmount,
+    couponCode,
     taxAmount,
     grandTotal,
     amountNeededForFreeDelivery
@@ -95,6 +107,48 @@ const BookingPage = () => {
   const [garments, setGarments] = useState([]);
   const [loadingGarments, setLoadingGarments] = useState(true);
 
+  // Address book management state
+  const [saveAddressLabel, setSaveAddressLabel] = useState('Home');
+  const [savingAddress, setSavingAddress] = useState(false);
+  const [selectedAddressId, setSelectedAddressId] = useState(null);
+
+  const handleSelectSavedAddress = (addr) => {
+    setSelectedAddressId(addr._id);
+    setPickupAddress({
+      flatAndBuilding: addr.flatAndBuilding,
+      streetAndLandmark: addr.streetAndLandmark,
+      city: addr.city,
+      pincode: addr.pincode,
+      contactPhone: pickupAddress.contactPhone || user?.phone || ''
+    });
+    toast.success(`Selected ${addr.label} address`);
+  };
+
+  const handleSaveCurrentAddress = async () => {
+    if (!pickupAddress.flatAndBuilding || !pickupAddress.streetAndLandmark || !pickupAddress.pincode) {
+      toast.error('Please enter flat/building, street, and PIN code first.');
+      return;
+    }
+    setSavingAddress(true);
+    const res = await addAddress({
+      label: saveAddressLabel,
+      flatAndBuilding: pickupAddress.flatAndBuilding,
+      streetAndLandmark: pickupAddress.streetAndLandmark,
+      city: pickupAddress.city || 'New Delhi',
+      pincode: pickupAddress.pincode,
+      isDefault: true
+    });
+    setSavingAddress(false);
+    if (res?.success) {
+      toast.success('Address saved to address book!');
+    }
+  };
+
+  // Promo coupon state
+  const [couponInput, setCouponInput] = useState('');
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
+
   // Payment method selection
   const [paymentMethod, setPaymentMethod] = useState('COD'); // 'COD' or 'ONLINE'
   const [placingOrder, setPlacingOrder] = useState(false);
@@ -102,6 +156,52 @@ const BookingPage = () => {
   // Online payment modal state
   const [createdOrder, setCreatedOrder] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+  // Fetch available promo coupons from backend
+  useEffect(() => {
+    const fetchCoupons = async () => {
+      try {
+        const res = await orderService.getCoupons();
+        if (res.success && res.coupons) {
+          setAvailableCoupons(res.coupons);
+        }
+      } catch (err) {
+        console.warn('Failed to load coupons:', err);
+      }
+    };
+    fetchCoupons();
+  }, []);
+
+  const handleApplyCoupon = async (codeToApply) => {
+    const code = (codeToApply || couponInput || '').trim();
+    if (!code) {
+      toast.error('Please enter a coupon code.');
+      return;
+    }
+    if (subtotal <= 0) {
+      toast.error('Add items to your laundry bag before applying a coupon.');
+      return;
+    }
+
+    setValidatingCoupon(true);
+    try {
+      const res = await orderService.validateCoupon(code, subtotal);
+      if (res.success && res.valid) {
+        applyCoupon({
+          code: res.code,
+          discountAmount: res.discountAmount,
+          description: res.description
+        });
+        setCouponInput('');
+        toast.success(`Coupon ${res.code} applied! Saved ₹${res.discountAmount}`);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Invalid coupon code.');
+    } finally {
+      setValidatingCoupon(false);
+    }
+  };
+
 
   // Fetch garment catalog from backend
   useEffect(() => {
@@ -231,6 +331,8 @@ const BookingPage = () => {
           ironingType: item.ironingType
         })),
         preferences,
+        isExpress,
+        couponCode: appliedCoupon?.code || null,
         pickupSchedule,
         deliverySchedule,
         pickupAddress: {
@@ -239,6 +341,7 @@ const BookingPage = () => {
         },
         paymentMethod
       };
+
 
       const res = await orderService.createOrder(orderPayload);
 
@@ -621,6 +724,65 @@ const BookingPage = () => {
                 />
               </div>
 
+              {/* Express 24-Hour Turnaround Toggle Switch */}
+              <div
+                className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+                  isExpress
+                    ? 'border-amber-400 bg-amber-50/70 shadow-xs ring-1 ring-amber-400'
+                    : 'border-slate-200 bg-slate-50/60 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-colors ${
+                        isExpress ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30' : 'bg-slate-200 text-slate-500'
+                      }`}
+                    >
+                      <Zap className="w-5 h-5 fill-current" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-sm text-slate-900">
+                          Express 24-Hour Turnaround
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-black uppercase tracking-wider">
+                          +₹99 Express
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Priority wash, iron &amp; fast doorstep return within 24 hours of pickup.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !isExpress;
+                      setIsExpress(next);
+                      if (next) {
+                        toast('⚡ Express 24-Hour delivery enabled (+₹99)', { icon: '⚡' });
+                        if (pickupSchedule.date) {
+                          const nextDay = format(addDays(new Date(pickupSchedule.date), 1), 'yyyy-MM-dd');
+                          setDeliverySchedule((prev) => ({ ...prev, date: nextDay }));
+                        }
+                      }
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                      isExpress ? 'bg-amber-500' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                        isExpress ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+
               {/* Step Navigation Buttons */}
               <div className="flex justify-between pt-4 border-t border-slate-100">
                 <button
@@ -773,10 +935,53 @@ const BookingPage = () => {
 
                   {user && user.addresses && user.addresses.length > 0 && (
                     <span className="text-xs text-primary-600 font-semibold">
-                      Auto-filled from saved address
+                      Saved Address Book Active
                     </span>
                   )}
                 </div>
+
+                {/* 1-Click Saved Addresses Picker */}
+                {user && user.addresses && user.addresses.length > 0 && (
+                  <div className="space-y-2 pb-2 border-b border-slate-100">
+                    <span className="text-xs font-bold text-slate-700 block">
+                      Choose from Your Saved Addresses:
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {user.addresses.map((addr) => {
+                        const isSelected =
+                          selectedAddressId === addr._id ||
+                          (pickupAddress.flatAndBuilding === addr.flatAndBuilding &&
+                            pickupAddress.pincode === addr.pincode);
+
+                        return (
+                          <button
+                            key={addr._id}
+                            type="button"
+                            onClick={() => handleSelectSavedAddress(addr)}
+                            className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-primary-500 bg-primary-50/60 ring-2 ring-primary-500/20'
+                                : 'border-slate-200 bg-slate-50 hover:bg-white hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-bold text-xs text-slate-900">{addr.label}</span>
+                              {addr.isDefault && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                                  Default
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-700 font-medium truncate">{addr.flatAndBuilding}</p>
+                            <p className="text-[10px] text-slate-400 truncate">
+                              {addr.streetAndLandmark}, {addr.city} {addr.pincode}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div className="sm:col-span-2">
@@ -837,6 +1042,39 @@ const BookingPage = () => {
                     />
                   </div>
                 </div>
+
+                {/* Save Current Address to Address Book Action */}
+                {user && (
+                  <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Bookmark className="w-4 h-4 text-primary-600" />
+                      <span className="font-semibold text-slate-700">Save to Address Book as:</span>
+                      <select
+                        value={saveAddressLabel}
+                        onChange={(e) => setSaveAddressLabel(e.target.value)}
+                        className="px-2 py-1 rounded-lg border border-slate-300 bg-white font-bold text-slate-700"
+                      >
+                        <option value="Home">Home</option>
+                        <option value="Work">Work</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={savingAddress}
+                      onClick={handleSaveCurrentAddress}
+                      className="px-3.5 py-1.5 rounded-xl bg-white border border-primary-500 text-primary-700 hover:bg-primary-50 font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                    >
+                      {savingAddress ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Plus className="w-3.5 h-3.5" />
+                      )}
+                      <span>Save Address</span>
+                    </button>
+                  </div>
+                )}
 
                 {/* Step Navigation Buttons */}
                 <div className="flex justify-between pt-4 border-t border-slate-100">
@@ -1066,27 +1304,118 @@ const BookingPage = () => {
               </div>
             )}
 
+            {/* Promo Code & Available Coupons Drawer */}
+            <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
+              <span className="font-bold text-slate-700 block text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                <Tag className="w-3.5 h-3.5 text-primary-600" />
+                <span>Apply Promo Coupon</span>
+              </span>
+
+              {appliedCoupon ? (
+                <div className="p-3 bg-teal-50 border border-teal-200 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <span className="font-extrabold text-teal-800 text-xs block">
+                      {appliedCoupon.code} applied!
+                    </span>
+                    <span className="text-[10px] text-teal-600 block">
+                      {appliedCoupon.description} (-₹{discountAmount})
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={removeCoupon}
+                    className="text-[11px] font-bold text-rose-500 hover:text-rose-700 cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={couponInput}
+                      onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                      placeholder="e.g. FIRST50"
+                      className="flex-1 px-3 py-2 text-xs font-mono font-bold rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 uppercase tracking-wider"
+                    />
+                    <button
+                      type="button"
+                      disabled={validatingCoupon || !couponInput.trim()}
+                      onClick={() => handleApplyCoupon(couponInput)}
+                      className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs disabled:opacity-50 cursor-pointer transition-all"
+                    >
+                      {validatingCoupon ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Apply'}
+                    </button>
+                  </div>
+
+                  {/* Available Coupons Pills */}
+                  {availableCoupons.length > 0 && (
+                    <div className="space-y-1 pt-1">
+                      <span className="text-[10px] text-slate-400 block font-semibold">Available for you:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {availableCoupons.map((c) => (
+                          <button
+                            key={c.code}
+                            type="button"
+                            onClick={() => handleApplyCoupon(c.code)}
+                            className="py-1 px-2 rounded-lg border border-dashed border-primary-300 bg-primary-50/60 hover:bg-primary-100/80 text-primary-700 text-[10px] font-mono font-bold transition-all cursor-pointer flex items-center gap-1"
+                            title={c.description}
+                          >
+                            <span>{c.code}</span>
+                            <span className="text-slate-400 font-sans font-normal">
+                              ({c.discountType === 'PERCENTAGE' ? `${c.discountValue}%` : `₹${c.discountValue}`})
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Bill Details */}
             <div className="mt-4 pt-4 border-t border-slate-100 space-y-2 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Garments Subtotal:</span>
                 <span className="font-bold text-slate-800">₹{subtotal}</span>
               </div>
+
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-teal-700 font-semibold">
+                  <span>Promo Discount ({couponCode}):</span>
+                  <span className="font-mono font-bold">-₹{discountAmount}</span>
+                </div>
+              )}
+
               <div className="flex justify-between text-slate-600">
                 <span>Pickup &amp; Delivery Fee:</span>
                 <span className={pickupDeliveryFee === 0 ? 'text-teal-600 font-bold' : 'font-bold text-slate-800'}>
                   {pickupDeliveryFee === 0 ? 'FREE' : `₹${pickupDeliveryFee}`}
                 </span>
               </div>
+
+              {expressSurcharge > 0 && (
+                <div className="flex justify-between text-amber-700 font-semibold">
+                  <span className="flex items-center gap-1">
+                    <Zap className="w-3.5 h-3.5 fill-current" />
+                    <span>Express 24h Turnaround:</span>
+                  </span>
+                  <span className="font-mono font-bold">+₹{expressSurcharge}</span>
+                </div>
+              )}
+
               <div className="flex justify-between text-slate-600">
                 <span>GST (5% SGST + CGST):</span>
                 <span className="font-bold text-slate-800">₹{taxAmount}</span>
               </div>
               <div className="flex justify-between text-base font-black text-slate-900 pt-2 border-t border-slate-200">
                 <span>Grand Total:</span>
-                <span className="text-primary-700">₹{grandTotal}</span>
+                <span className="text-primary-700 font-mono">₹{grandTotal}</span>
               </div>
             </div>
+
 
             {/* Quick Action Button in Sidebar */}
             {activeStep < 4 && cartItems.length > 0 && (

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 const Navbar = () => {
-  const { user, isAuthenticated, isAdmin, logout, login } = useAuth();
+  const { user, isAuthenticated, isAdmin, isRider, logout, login } = useAuth();
   const { itemCount } = useOrderBooking();
   const navigate = useNavigate();
   const location = useLocation();
@@ -26,6 +26,8 @@ const Navbar = () => {
     setQuickLoginLoading(true);
     if (type === 'customer') {
       await login('customer@indodhobi.com', 'password123');
+    } else if (type === 'rider') {
+      await login('rider@indodhobi.com', 'rider123');
     } else {
       await login('admin@indodhobi.com', 'admin123');
     }
@@ -39,6 +41,10 @@ const Navbar = () => {
     { name: 'Pricing & Services', path: '/pricing' },
     { name: 'My Orders', path: '/my-orders', authRequired: true },
   ];
+
+  if (isRider || isAdmin) {
+    navLinks.push({ name: 'Rider Portal', path: '/rider' });
+  }
 
   if (isAdmin) {
     navLinks.push({ name: 'Admin Hub', path: '/admin', adminOnly: true });
@@ -127,6 +133,15 @@ const Navbar = () => {
               </button>
               <button
                 type="button"
+                onClick={() => handleQuickDemo('rider')}
+                disabled={quickLoginLoading}
+                className="px-2.5 py-1 rounded-lg font-medium text-slate-700 bg-white hover:bg-slate-50 hover:text-teal-700 shadow-xs border border-slate-200 transition-all"
+                title="Login as Ramesh Kumar (Rider)"
+              >
+                Rider
+              </button>
+              <button
+                type="button"
                 onClick={() => handleQuickDemo('admin')}
                 disabled={quickLoginLoading}
                 className="px-2.5 py-1 rounded-lg font-medium text-slate-700 bg-white hover:bg-slate-50 hover:text-primary-700 shadow-xs border border-slate-200 transition-all"
@@ -139,7 +154,7 @@ const Navbar = () => {
             {isAuthenticated ? (
               <div className="flex items-center gap-3">
                 <Link
-                  to="/my-orders"
+                  to={user?.role === 'rider' ? '/rider' : user?.role === 'admin' ? '/admin' : '/my-orders'}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900 text-sm font-medium transition-colors"
                 >
                   <div className="w-7 h-7 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs">
@@ -149,6 +164,11 @@ const Navbar = () => {
                   {user?.role === 'admin' && (
                     <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
                       Admin
+                    </span>
+                  )}
+                  {user?.role === 'rider' && (
+                    <span className="bg-teal-100 text-teal-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                      Rider
                     </span>
                   )}
                 </Link>
@@ -211,13 +231,19 @@ const Navbar = () => {
             <div className="flex gap-2">
               <button
                 onClick={() => handleQuickDemo('customer')}
-                className="px-2.5 py-1 text-xs font-medium bg-white rounded-lg border border-slate-300 text-slate-700"
+                className="px-2 py-1 text-xs font-medium bg-white rounded-lg border border-slate-300 text-slate-700"
               >
                 Customer
               </button>
               <button
+                onClick={() => handleQuickDemo('rider')}
+                className="px-2 py-1 text-xs font-medium bg-white rounded-lg border border-slate-300 text-slate-700 hover:text-teal-700"
+              >
+                Rider
+              </button>
+              <button
                 onClick={() => handleQuickDemo('admin')}
-                className="px-2.5 py-1 text-xs font-medium bg-white rounded-lg border border-slate-300 text-slate-700"
+                className="px-2 py-1 text-xs font-medium bg-white rounded-lg border border-slate-300 text-slate-700"
               >
                 Admin
               </button>

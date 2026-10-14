@@ -2,7 +2,9 @@ import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Garment from '../models/Garment.js';
 import Order from '../models/Order.js';
+import Coupon from '../models/Coupon.js';
 import dotenv from 'dotenv';
+
 import { connectDB } from '../config/db.js';
 
 dotenv.config();
@@ -280,6 +282,28 @@ export const seedData = async () => {
       console.log('[Seeder] Created demo Admin: admin@indodhobi.com / admin123');
     }
 
+    let riderUser = await User.findOne({ email: 'rider@indodhobi.com' });
+    if (!riderUser) {
+      riderUser = await User.create({
+        name: 'Ramesh Kumar (Rider)',
+        email: 'rider@indodhobi.com',
+        phone: '9876543211',
+        password: 'rider123',
+        role: 'rider',
+        addresses: [
+          {
+            label: 'Work',
+            flatAndBuilding: 'IndoDhobi Central Hub #3',
+            streetAndLandmark: 'Okhla Industrial Area Phase III',
+            city: 'New Delhi',
+            pincode: '110020',
+            isDefault: true
+          }
+        ]
+      });
+      console.log('[Seeder] Created demo Rider: rider@indodhobi.com / rider123');
+    }
+
     // 3. Seed Demo Active Order for Rohan if empty
     const orderCount = await Order.countDocuments();
     if (orderCount === 0 && customerUser && seededGarments.length > 0) {
@@ -346,13 +370,98 @@ export const seedData = async () => {
           razorpayOrderId: 'order_sim_seed_101',
           razorpayPaymentId: 'pay_sim_upi_rohan_9921'
         },
-        orderStatus: 'IN_WASHING'
+        orderStatus: 'IN_WASHING',
+        verificationCodes: {
+          pickupOtp: '4829',
+          deliveryOtp: '7391'
+        },
+        logistics: {
+          assignedRider: riderUser ? riderUser._id : null,
+          bagTagId: 'BAG-DEL-101',
+          inspectionNotes: 'All buttons intact; slight tea mark on shirt collar.',
+          verifiedGarmentCount: 5,
+          pickedUpAt: new Date(Date.now() - 3600000 * 24),
+          deliveredAt: null
+        },
+        statusHistory: [
+          {
+            status: 'BOOKED',
+            timestamp: new Date(Date.now() - 3600000 * 48),
+            updaterRole: 'customer',
+            note: 'Order placed by customer Rohan Sharma'
+          },
+          {
+            status: 'PICKUP_ASSIGNED',
+            timestamp: new Date(Date.now() - 3600000 * 36),
+            updatedBy: adminUser?._id,
+            updaterRole: 'admin',
+            note: 'Assigned to Rider Ramesh Kumar'
+          },
+          {
+            status: 'PICKED_UP',
+            timestamp: new Date(Date.now() - 3600000 * 24),
+            updatedBy: riderUser?._id,
+            updaterRole: 'rider',
+            note: 'Picked up with Bag Tag: BAG-DEL-101'
+          },
+          {
+            status: 'IN_WASHING',
+            timestamp: new Date(Date.now() - 3600000 * 12),
+            updatedBy: adminUser?._id,
+            updaterRole: 'admin',
+            note: 'Batched in Washing Plant Hub #3'
+          }
+        ]
       });
 
       console.log('[Seeder] Seeded demo active order #IDB-2026-104921 in status IN_WASHING');
     }
 
+    // 4. Seed Default Promo Coupons
+    const defaultCoupons = [
+      {
+        code: 'FIRST50',
+        description: '50% OFF up to ₹100 on orders of ₹199 or more',
+        discountType: 'PERCENTAGE',
+        discountValue: 50,
+        minOrderSubtotal: 199,
+        maxDiscountAmount: 100,
+        isActive: true,
+        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      },
+      {
+        code: 'DHOBI20',
+        description: '20% OFF up to ₹150 on orders of ₹499 or more',
+        discountType: 'PERCENTAGE',
+        discountValue: 20,
+        minOrderSubtotal: 499,
+        maxDiscountAmount: 150,
+        isActive: true,
+        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      },
+      {
+        code: 'FLAT75',
+        description: 'Flat ₹75 OFF on orders of ₹599 or more',
+        discountType: 'FLAT',
+        discountValue: 75,
+        minOrderSubtotal: 599,
+        maxDiscountAmount: 75,
+        isActive: true,
+        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      }
+    ];
+
+    for (const c of defaultCoupons) {
+      await Coupon.findOneAndUpdate(
+        { code: c.code },
+        { $setOnInsert: c },
+        { upsert: true, new: true }
+      );
+    }
+    console.log('[Seeder] Active promo coupons verified/seeded (FIRST50, DHOBI20, FLAT75)');
+
     console.log('[Seeder] Seeding process completed successfully!');
+
   } catch (error) {
     console.error('[Seeder Error]:', error);
   }

@@ -6,6 +6,8 @@ import { seedData } from '../utils/seeder.js';
 import Garment from '../models/Garment.js';
 import User from '../models/User.js';
 import Order from '../models/Order.js';
+import Coupon from '../models/Coupon.js';
+
 
 process.env.NODE_ENV = 'test';
 const TEST_PORT = 5005;
@@ -704,6 +706,973 @@ async function runVerification() {
         `Order ${createdOrder1?.orderNumber} transitioned through 5 stages to DELIVERED and COD marked as PAID with timestamp.`
       );
     }
+
+    // =========================================================
+    // TEST 11: Demo Rider Seeding & Authentication (RBAC)
+    // =========================================================
+    let riderToken = null;
+    let seededRider = null;
+    {
+      const start = performance.now();
+      // 1. Rider Login
+      const resRiderLogin = await apiRequest('/auth/login', {
+        method: 'POST',
+        body: {
+          email: 'rider@indodhobi.com',
+          password: 'rider123'
+        }
+      });
+      riderToken = resRiderLogin.data?.token;
+      seededRider = resRiderLogin.data?.user;
+
+      // 2. Admin retrieves riders list
+      const resGetRidersAdmin = await apiRequest('/orders/riders', {
+        headers: { Authorization: `Bearer ${adminToken}` }
+      });
+
+      // 3. Negative RBAC: Customer attempts to retrieve riders list
+      const resGetRidersCust = await apiRequest('/orders/riders', {
+        headers: { Authorization: `Bearer ${customerToken}` }
+      });
+
+      const passed =
+        resRiderLogin.status === 200 &&
+        Boolean(riderToken) &&
+        resRiderLogin.data?.user?.role === 'rider' &&
+        resGetRidersAdmin.status === 200 &&
+        Array.isArray(resGetRidersAdmin.data?.riders) &&
+        resGetRidersAdmin.data.riders.some((r) => r.email === 'rider@indodhobi.com') &&
+        resGetRidersCust.status === 403;
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        11,
+        'Demo Rider Seeding, Authentication & Fleet RBAC',
+        passed,
+        `Login: ${resRiderLogin.status}, Riders: ${resGetRidersAdmin.status}, Cust RBAC: ${resGetRidersCust.status}`,
+        duration,
+        `Demo Rider authenticated (${resRiderLogin.data?.user?.name}). Fleet list active for Admin. Protected with 403 for Customer.`
+      );
+    }
+
+    // =========================================================
+    // TEST 12: Admin Rider Assignment & Status Audit Trail
+    // =========================================================
+    let logisticsOrder = null;
+    {
+      const start = performance.now();
+      // 1. Customer creates a fresh COD order for logistics lifecycle test
+      const shirt = garmentsList.find((g) => g.name.includes('Shirt')) || garmentsList[0];
+      const resCreate = await apiRequest('/orders', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: {
+          items: [{ garmentId: shirt._id, quantity: 2, serviceType: 'WASH_AND_IRON', ironingType: 'STANDARD_STEAM' }],
+          pickupSchedule: { date: '2026-10-25', timeSlot: '10:00 AM - 01:00 PM' },
+          deliverySchedule: { date: '2026-10-27', timeSlot: '02:00 PM - 05:00 PM' },
+          pickupAddress: {
+            flatAndBuilding: 'Flat 402, Royal Palms Apartments',
+            streetAndLandmark: 'Barakhamba Road',
+            city: 'New Delhi',
+            pincode: '110001',
+            contactPhone: '9876543210'
+          },
+          paymentMethod: 'COD'
+        }
+      });
+      logisticsOrder = resCreate.data?.order;
+
+      const riderId = seededRider._id || seededRider.id;
+
+      // 2. Admin assigns rider
+      const resAssign = await apiRequest(`/orders/${logisticsOrder._id}/assign-rider`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: { riderId }
+      });
+
+      const updatedOrder = resAssign.data?.order;
+      const historyHasAssignment = updatedOrder?.statusHistory?.some(
+        (h) => h.status === 'PICKUP_ASSIGNED' && h.updaterRole === 'admin'
+      );
+
+      const assignedId = String(updatedOrder?.logistics?.assignedRider?._id || updatedOrder?.logistics?.assignedRider || '');
+      const expectedId = String(riderId);
+
+      const passed =
+        resCreate.status === 201 &&
+        resAssign.status === 200 &&
+        assignedId === expectedId &&
+        updatedOrder?.orderStatus === 'PICKUP_ASSIGNED' &&
+        historyHasAssignment;
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        12,
+        'Admin Rider Assignment & Status History Audit Trail',
+        passed,
+        `Create: ${resCreate.status}, Assign: ${resAssign.status}`,
+        duration,
+        `Order ${logisticsOrder?.orderNumber} assigned to Rider ${seededRider?.name}. Status progressed to PICKUP_ASSIGNED and audit history logged.`
+      );
+    }
+
+    // =========================================================
+    // TEST 13: OTP Privacy & Security Protection Check
+    // =========================================================
+    let validPickupOtp = null;
+    let validDeliveryOtp = null;
+    {
+      const start = performance.now();
+      // 1. Rider fetches assigned tasks
+      const resRiderTasks = await apiRequest('/orders/rider-tasks', {
+        headers: { Authorization: `Bearer ${riderToken}` }
+      });
+
+      const taskForOrder = resRiderTasks.data?.tasks?.find((t) => t._id === logisticsOrder._id);
+      const riderCannotSeePickupOtp = !taskForOrder?.verificationCodes?.pickupOtp;
+      const riderCannotSeeDeliveryOtp = !taskForOrder?.verificationCodes?.deliveryOtp;
+
+      // 2. Customer fetches their own order details
+      const resCustomerOrders = await apiRequest('/orders/my-orders', {
+        headers: { Authorization: `Bearer ${customerToken}` }
+      });
+      const custOrder = resCustomerOrders.data?.orders?.find((o) => o._id === logisticsOrder._id);
+      validPickupOtp = custOrder?.verificationCodes?.pickupOtp;
+      validDeliveryOtp = custOrder?.verificationCodes?.deliveryOtp;
+
+      const passed =
+        resRiderTasks.status === 200 &&
+        Boolean(taskForOrder) &&
+        riderCannotSeePickupOtp &&
+        riderCannotSeeDeliveryOtp &&
+        resCustomerOrders.status === 200 &&
+        Boolean(validPickupOtp) &&
+        validPickupOtp.length === 4 &&
+        Boolean(validDeliveryOtp) &&
+        validDeliveryOtp.length === 4;
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        13,
+        'OTP Privacy & Zero-Knowledge Security Enforcement',
+        passed,
+        `Rider Tasks: ${resRiderTasks.status}, Customer: ${resCustomerOrders.status}`,
+        duration,
+        `Rider tasks payload strictly stripped of OTPs (Zero-Knowledge). Customer possesses valid 4-digit codes (${validPickupOtp} / ${validDeliveryOtp}).`
+      );
+    }
+
+    // =========================================================
+    // TEST 14: Doorstep Pickup Verification & Physical Bag Tagging
+    // =========================================================
+    {
+      const start = performance.now();
+      // 1. Negative Test: Tampered OTP
+      const resBadOtp = await apiRequest(`/orders/${logisticsOrder._id}/verify-pickup`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${riderToken}` },
+        body: {
+          otp: '0000',
+          bagTagId: 'BAG-DEL-402'
+        }
+      });
+
+      // 2. Negative Test: Missing Bag Tag ID
+      const resMissingTag = await apiRequest(`/orders/${logisticsOrder._id}/verify-pickup`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${riderToken}` },
+        body: {
+          otp: validPickupOtp,
+          bagTagId: ''
+        }
+      });
+
+      // 3. Positive Test: Valid OTP + Bag Tag ID + Garment Count + Inspection Notes
+      const resValidPickup = await apiRequest(`/orders/${logisticsOrder._id}/verify-pickup`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${riderToken}` },
+        body: {
+          otp: validPickupOtp,
+          bagTagId: 'BAG-DEL-402',
+          inspectionNotes: 'All buttons intact; slight collar crease',
+          verifiedGarmentCount: 2
+        }
+      });
+
+      const updated = resValidPickup.data?.order;
+      const historyHasPickup = updated?.statusHistory?.some((h) => h.status === 'PICKED_UP');
+
+      const passed =
+        resBadOtp.status === 400 &&
+        resMissingTag.status === 400 &&
+        resValidPickup.status === 200 &&
+        updated?.orderStatus === 'PICKED_UP' &&
+        updated?.logistics?.bagTagId === 'BAG-DEL-402' &&
+        updated?.logistics?.verifiedGarmentCount === 2 &&
+        Boolean(updated?.logistics?.pickedUpAt) &&
+        historyHasPickup;
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        14,
+        'Doorstep Pickup Verification & Bag Tagging',
+        passed,
+        `Bad OTP: ${resBadOtp.status}, No Tag: ${resMissingTag.status}, Valid: ${resValidPickup.status}`,
+        duration,
+        `Tampered OTP rejected (400). Missing Bag Tag rejected (400). Valid pickup confirmed (200), Bag Tag BAG-DEL-402 sealed, status PICKED_UP.`
+      );
+    }
+
+    // =========================================================
+    // TEST 15: Doorstep Delivery OTP & Automatic COD Settlement
+    // =========================================================
+    {
+      const start = performance.now();
+      // 1. Advance order to OUT_FOR_DELIVERY
+      await apiRequest(`/orders/${logisticsOrder._id}/status`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: { orderStatus: 'OUT_FOR_DELIVERY' }
+      });
+
+      // 2. Negative Test: Tampered Delivery OTP
+      const resBadOtp = await apiRequest(`/orders/${logisticsOrder._id}/verify-delivery`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${riderToken}` },
+        body: {
+          otp: '9999',
+          codCollectionMethod: 'UPI_QR'
+        }
+      });
+
+      // 3. Negative Test: Missing COD collection method on unpaid COD order
+      const resMissingMethod = await apiRequest(`/orders/${logisticsOrder._id}/verify-delivery`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${riderToken}` },
+        body: {
+          otp: validDeliveryOtp,
+          codCollectionMethod: ''
+        }
+      });
+
+      // 4. Positive Test: Valid OTP + COD collected via UPI_QR
+      const resValidDelivery = await apiRequest(`/orders/${logisticsOrder._id}/verify-delivery`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${riderToken}` },
+        body: {
+          otp: validDeliveryOtp,
+          codCollectionMethod: 'UPI_QR'
+        }
+      });
+
+      const finalOrder = resValidDelivery.data?.order;
+      const historyHasDelivered = finalOrder?.statusHistory?.some((h) => h.status === 'DELIVERED');
+
+      const passed =
+        resBadOtp.status === 400 &&
+        resMissingMethod.status === 400 &&
+        resValidDelivery.status === 200 &&
+        finalOrder?.orderStatus === 'DELIVERED' &&
+        finalOrder?.payment?.status === 'PAID' &&
+        finalOrder?.payment?.onlineSubMethod === 'UPI' &&
+        Boolean(finalOrder?.payment?.paidAt) &&
+        Boolean(finalOrder?.logistics?.deliveredAt) &&
+        historyHasDelivered;
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        15,
+        'Doorstep Delivery OTP & Automatic COD Settlement',
+        passed,
+        `Bad OTP: ${resBadOtp.status}, No Method: ${resMissingMethod.status}, Valid: ${resValidDelivery.status}`,
+        duration,
+        `Tampered OTP rejected (400). Missing COD method rejected (400). Valid OTP confirmed (200), order DELIVERED, COD auto-settled to PAID via UPI_QR.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 16: Sparse Email Index & Passwordless SMS Customers
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 16] Sparse Email Index & Passwordless SMS Customers...`);
+
+      let user1 = null;
+      let user2 = null;
+      let collisionError = null;
+
+      try {
+        user1 = await User.create({
+          name: 'Suresh Passwordless',
+          phone: '9811122233',
+          role: 'customer',
+          isPhoneVerified: true
+        });
+
+        user2 = await User.create({
+          name: 'Pooja Passwordless',
+          phone: '9811122244',
+          role: 'customer',
+          isPhoneVerified: true
+        });
+      } catch (err) {
+        collisionError = err;
+      }
+
+      const passed =
+        !collisionError &&
+        Boolean(user1?._id) &&
+        Boolean(user2?._id) &&
+        user1.phone === '9811122233' &&
+        user2.phone === '9811122244' &&
+        user1.email === undefined &&
+        user2.email === undefined &&
+        user1.isPhoneVerified === true &&
+        user2.isPhoneVerified === true;
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        16,
+        'Sparse Email Index & Passwordless Customers',
+        passed,
+        collisionError ? 'Collision Error' : '200 / Created',
+        duration,
+        `2 passwordless customers saved without email collision. Sparse index active: ${passed ? 'YES' : 'NO'}. Error: ${collisionError?.message || 'None'}`
+      );
+    }
+
+    // =========================================================================
+    // TEST 17: Customer Firebase OTP Login, Auto-Onboarding & Token Issuance
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 17] Customer Firebase OTP Authentication & Auto-Onboarding...`);
+
+      // 1. Missing Token Validation
+      const resMissingToken = await apiRequest('/auth/customer/firebase-login', {
+        method: 'POST',
+        body: {}
+      });
+
+      // 2. New Customer Auto-Onboarding via Firebase Token
+      const resNewCustomer = await apiRequest('/auth/customer/firebase-login', {
+        method: 'POST',
+        body: {
+          idToken: 'test_firebase_token_9899112233',
+          name: 'Aarav Sharma'
+        }
+      });
+
+      const customerToken = resNewCustomer.data?.token;
+      const createdUserId = resNewCustomer.data?.user?._id || resNewCustomer.data?.user?.id;
+
+      // 3. Repeat Login for Existing Customer
+      const resRepeatCustomer = await apiRequest('/auth/customer/firebase-login', {
+        method: 'POST',
+        body: {
+          idToken: 'test_firebase_token_9899112233'
+        }
+      });
+
+      const repeatUserId = resRepeatCustomer.data?.user?._id || resRepeatCustomer.data?.user?.id;
+
+      // 4. Verify Issued IndoDhobi JWT against /api/auth/me
+      const resMe = await apiRequest('/auth/me', {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${customerToken}` }
+      });
+
+      const passed =
+        resMissingToken.status === 400 &&
+        resNewCustomer.status === 200 &&
+        resNewCustomer.data?.isNewUser === true &&
+        resNewCustomer.data?.user?.name === 'Aarav Sharma' &&
+        resNewCustomer.data?.user?.phone === '9899112233' &&
+        resNewCustomer.data?.user?.role === 'customer' &&
+        Boolean(customerToken) &&
+        resRepeatCustomer.status === 200 &&
+        resRepeatCustomer.data?.isNewUser === false &&
+        repeatUserId === createdUserId &&
+        resMe.status === 200 &&
+        resMe.data?.user?.phone === '9899112233';
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        17,
+        'Customer Firebase OTP Login & Auto-Onboarding',
+        passed,
+        `No Token: ${resMissingToken.status}, New User: ${resNewCustomer.status}, Repeat: ${resRepeatCustomer.status}, Me: ${resMe.status}`,
+        duration,
+        `New customer automatically onboarded with phone 9899112233. Repeat login returned existing record (isNewUser: false). JWT verified against /api/auth/me.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 18: Staff Authentication Strict Enforcement & Cross-Role Security
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 18] Staff Authentication Strict Enforcement & Cross-Role Security...`);
+
+      // 1. Customer attempts staff portal login -> Must return 403 Forbidden
+      const resCustomerAttempt = await apiRequest('/auth/staff/login', {
+        method: 'POST',
+        body: {
+          email: 'customer@indodhobi.com',
+          password: 'password123'
+        }
+      });
+
+      // 2. Bad password attempt
+      const resBadPassword = await apiRequest('/auth/staff/login', {
+        method: 'POST',
+        body: {
+          email: 'admin@indodhobi.com',
+          password: 'wrong_password_attempt'
+        }
+      });
+
+      // 3. Valid Admin Staff Login
+      const resAdminStaff = await apiRequest('/auth/staff/login', {
+        method: 'POST',
+        body: {
+          email: 'admin@indodhobi.com',
+          password: 'admin123'
+        }
+      });
+
+      // 4. Valid Rider Staff Login
+      const resRiderStaff = await apiRequest('/auth/staff/login', {
+        method: 'POST',
+        body: {
+          email: 'rider@indodhobi.com',
+          password: 'rider123'
+        }
+      });
+
+      const passed =
+        resCustomerAttempt.status === 403 &&
+        resCustomerAttempt.data?.message?.includes('Customers must sign in using Mobile Number & SMS OTP') &&
+        resBadPassword.status === 401 &&
+        resAdminStaff.status === 200 &&
+        resAdminStaff.data?.user?.role === 'admin' &&
+        Boolean(resAdminStaff.data?.token) &&
+        resRiderStaff.status === 200 &&
+        resRiderStaff.data?.user?.role === 'rider' &&
+        Boolean(resRiderStaff.data?.token);
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        18,
+        'Staff Authentication Strict Enforcement & Cross-Role Security',
+        passed,
+        `Customer Rejection: ${resCustomerAttempt.status}, Bad Pass: ${resBadPassword.status}, Admin: ${resAdminStaff.status}, Rider: ${resRiderStaff.status}`,
+        duration,
+        `Customer rejected with 403 Forbidden on staff portal. Admin & Rider successfully authenticated with JWTs.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 19: Coupon Seeding & Validation Engine (/api/orders/coupons & validate-coupon)
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 19] Coupon Seeding & Validation Engine...`);
+
+      // 1. Fetch available coupons
+      const resCoupons = await apiRequest('/orders/coupons', { method: 'GET' });
+      const couponsList = resCoupons.data?.coupons || [];
+      const hasFirst50 = couponsList.some((c) => c.code === 'FIRST50');
+      const hasDhobi20 = couponsList.some((c) => c.code === 'DHOBI20');
+      const hasFlat75 = couponsList.some((c) => c.code === 'FLAT75');
+
+      // 2. Test below min subtotal (FLAT75 requires >= 599, test with 200) -> 400 Bad Request
+      const resBelowMin = await apiRequest('/orders/validate-coupon', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: { code: 'FLAT75', subtotal: 200 }
+      });
+
+      // 3. Test capped percentage discount (FIRST50 on 300 -> 50% = 150, capped at 100) -> 200 OK
+      const resCapped = await apiRequest('/orders/validate-coupon', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: { code: 'FIRST50', subtotal: 300 }
+      });
+
+      const passed =
+        resCoupons.status === 200 &&
+        hasFirst50 &&
+        hasDhobi20 &&
+        hasFlat75 &&
+        resBelowMin.status === 400 &&
+        resBelowMin.data?.message?.includes('minimum subtotal') &&
+        resCapped.status === 200 &&
+        resCapped.data?.valid === true &&
+        resCapped.data?.discountAmount === 100 &&
+        resCapped.data?.code === 'FIRST50';
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        19,
+        'Coupon Seeding & Validation Engine',
+        passed,
+        `Coupons: ${resCoupons.status}, Below Min: ${resBelowMin.status}, Valid Capped: ${resCapped.status}`,
+        duration,
+        `Seeded coupons verified (FIRST50, DHOBI20, FLAT75). Minimum subtotal rejected (400). FIRST50 capped at ₹100 discount.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 20: Order Creation with Promo Coupon + Express 24h Turnaround
+    // =========================================================================
+    let expressCouponOrder = null;
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 20] Order Creation with Promo Coupon + Express 24h Turnaround...`);
+
+      const menShirt = await Garment.findOne({ name: 'Men Shirt' });
+
+      // 5 Men Shirts with WASH_AND_IRON + CRISP_STARCH = 5 * (35 + 25) = 5 * 60 = ₹300 subtotal
+      const orderPayload = {
+        items: [
+          {
+            garmentId: menShirt._id,
+            quantity: 5,
+            serviceType: 'WASH_AND_IRON',
+            ironingType: 'CRISP_STARCH'
+          }
+        ],
+        preferences: {
+          detergentType: 'Standard',
+          packagingType: 'Folded'
+        },
+        isExpress: true,
+        couponCode: 'FIRST50',
+        pickupSchedule: {
+          date: '2026-10-25',
+          timeSlot: '10:00 AM - 01:00 PM'
+        },
+        deliverySchedule: {
+          date: '2026-10-26',
+          timeSlot: '10:00 AM - 01:00 PM'
+        },
+        pickupAddress: {
+          flatAndBuilding: 'Flat 101, Express Tower',
+          streetAndLandmark: 'Connaught Place',
+          city: 'New Delhi',
+          pincode: '110001',
+          contactPhone: '9876543210'
+        },
+        paymentMethod: 'COD'
+      };
+
+      const resOrder = await apiRequest('/orders', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: orderPayload
+      });
+
+      expressCouponOrder = resOrder.data?.order;
+      const pb = expressCouponOrder?.pricingBreakdown;
+
+      const passed =
+        resOrder.status === 201 &&
+        expressCouponOrder?.isExpress === true &&
+        pb?.subtotal === 300 &&
+        pb?.discountAmount === 100 &&
+        pb?.couponCode === 'FIRST50' &&
+        pb?.pickupDeliveryFee === 49 &&
+        pb?.expressSurcharge === 99 &&
+        pb?.taxAmount === 17 &&
+        pb?.grandTotal === 365;
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        20,
+        'Order Creation with Promo Coupon + Express 24h Surcharge',
+        passed,
+        resOrder.status,
+        duration,
+        `Order ${expressCouponOrder?.orderNumber} created with 24h Express. Subtotal ₹300, Discount -₹100, Delivery ₹49, Express +₹99, GST ₹17, Grand Total ₹365.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 21: Customer Self-Service Order Cancellation & Slot Capacity Release
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 21] Customer Self-Service Cancellation & Slot Capacity Release...`);
+
+      const testDate = '2026-10-28';
+      const testSlot = '10:00 AM - 01:00 PM';
+
+      // 1. Check initial slot capacity
+      const resSlotsBefore = await apiRequest(`/orders/slots?date=${testDate}`);
+      const slotBefore = resSlotsBefore.data?.slots?.find((s) => s.slot === testSlot);
+      const capacityBefore = slotBefore?.remainingCapacity ?? 15;
+
+      // 2. Book an order for this slot
+      const menShirt = await Garment.findOne({ name: 'Men Shirt' });
+      const resBookOrder = await apiRequest('/orders', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: {
+          items: [{ garmentId: menShirt._id, quantity: 1, serviceType: 'WASH_AND_FOLD' }],
+          pickupSchedule: { date: testDate, timeSlot: testSlot },
+          deliverySchedule: { date: '2026-10-30', timeSlot: testSlot },
+          pickupAddress: {
+            flatAndBuilding: 'Flat 99, Green Park',
+            streetAndLandmark: 'Near Metro Station',
+            city: 'New Delhi',
+            pincode: '110016',
+            contactPhone: '9876543210'
+          },
+          paymentMethod: 'COD'
+        }
+      });
+
+      const bookedOrder = resBookOrder.data?.order;
+
+      // Verify slot capacity decreased by 1
+      const resSlotsAfterBook = await apiRequest(`/orders/slots?date=${testDate}`);
+      const slotAfterBook = resSlotsAfterBook.data?.slots?.find((s) => s.slot === testSlot);
+      const capacityAfterBook = slotAfterBook?.remainingCapacity;
+
+      // 3. Customer cancels the order
+      const resCancel = await apiRequest(`/orders/${bookedOrder._id}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: { reason: 'Change of schedule by customer' }
+      });
+
+      // 4. Verify slot capacity released back
+      const resSlotsAfterCancel = await apiRequest(`/orders/slots?date=${testDate}`);
+      const slotAfterCancel = resSlotsAfterCancel.data?.slots?.find((s) => s.slot === testSlot);
+      const capacityAfterCancel = slotAfterCancel?.remainingCapacity;
+
+      const dbOrder = await Order.findById(bookedOrder._id);
+      const lastHistory = dbOrder?.statusHistory?.[dbOrder.statusHistory.length - 1];
+
+      const passed =
+        resBookOrder.status === 201 &&
+        capacityAfterBook === capacityBefore - 1 &&
+        resCancel.status === 200 &&
+        resCancel.data?.order?.orderStatus === 'CANCELLED' &&
+        dbOrder?.orderStatus === 'CANCELLED' &&
+        lastHistory?.status === 'CANCELLED' &&
+        capacityAfterCancel === capacityBefore;
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        21,
+        'Customer Self-Service Order Cancellation & Slot Capacity Release',
+        passed,
+        `Cancel: ${resCancel.status}, Slot Restored: ${capacityAfterCancel === capacityBefore ? 'YES' : 'NO'}`,
+        duration,
+        `Order ${bookedOrder?.orderNumber} cancelled by customer. Slot capacity decreased from ${capacityBefore} to ${capacityAfterBook}, and restored back to ${capacityAfterCancel}.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 22: Post-Pickup Cancellation Lock (Strict Anti-Fraud)
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 22] Post-Pickup Cancellation Lock...`);
+
+      const pickedUpOrder = await Order.create({
+        orderNumber: `IDB-2026-PICKUP-LOCK`,
+        customer: expressCouponOrder.customer,
+        items: expressCouponOrder.items,
+        pickupSchedule: { date: '2026-10-25', timeSlot: '10:00 AM - 01:00 PM' },
+        deliverySchedule: { date: '2026-10-27', timeSlot: '10:00 AM - 01:00 PM' },
+        pickupAddress: expressCouponOrder.pickupAddress,
+        pricingBreakdown: expressCouponOrder.pricingBreakdown,
+        payment: { method: 'COD', status: 'PENDING' },
+        orderStatus: 'PICKED_UP'
+      });
+
+      const resCancelPickedUp = await apiRequest(`/orders/${pickedUpOrder._id}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: { reason: 'Want to cancel after pickup' }
+      });
+
+      const dbOrderAfter = await Order.findById(pickedUpOrder._id);
+
+      const passed =
+        resCancelPickedUp.status === 400 &&
+        resCancelPickedUp.data?.message?.includes('cannot be cancelled after clothes have been picked up') &&
+        dbOrderAfter?.orderStatus === 'PICKED_UP';
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        22,
+        'Post-Pickup Cancellation Lock',
+        passed,
+        resCancelPickedUp.status,
+        duration,
+        `Cancellation rejected with 400 Bad Request once status reaches PICKED_UP. Order state remained locked.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 23: Admin Garment Rate-Card CMS (POST & PUT /api/catalog/garments)
+    // =========================================================================
+    let createdGarmentId = null;
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 23] Admin Garment Rate-Card CMS...`);
+
+      // 1. Admin creates a new garment
+      const resCreateGarment = await apiRequest('/catalog/garments', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: {
+          name: 'Designer Sherwani',
+          category: 'Men',
+          iconName: 'Shirt',
+          pricing: {
+            washOnly: 150,
+            standardSteamIron: 80,
+            crispStarchPress: 120,
+            delicatePress: 160,
+            dryClean: 350
+          },
+          isActive: true
+        }
+      });
+
+      createdGarmentId = resCreateGarment.data?.data?._id;
+
+      // 2. Admin updates the dryClean price to 400
+      const resUpdateGarment = await apiRequest(`/catalog/garments/${createdGarmentId}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: {
+          pricing: {
+            dryClean: 400
+          }
+        }
+      });
+
+      // 3. Verify updated price reflects in public catalog
+      const resCatalog = await apiRequest('/catalog/garments?search=Sherwani');
+      const sherwani = resCatalog.data?.data?.find((g) => g.name === 'Designer Sherwani');
+
+      const passed =
+        resCreateGarment.status === 201 &&
+        resUpdateGarment.status === 200 &&
+        resUpdateGarment.data?.data?.pricing?.dryClean === 400 &&
+        sherwani?.pricing?.dryClean === 400;
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        23,
+        'Admin Garment Rate-Card CMS',
+        passed,
+        `Create: ${resCreateGarment.status}, Update: ${resUpdateGarment.status}`,
+        duration,
+        `Created 'Designer Sherwani' with dryClean ₹350, updated to ₹400. Live catalog reflected updated rate immediately.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 24: Admin Promo Coupon Creation & Toggle
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 24] Admin Promo Coupon Creation & Toggle...`);
+
+      // 1. Admin creates coupon MONSOON100
+      const resCreateCoupon = await apiRequest('/orders/coupons', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: {
+          code: 'MONSOON100',
+          description: 'Monsoon special flat ₹100 off on ₹499+',
+          discountType: 'FLAT',
+          discountValue: 100,
+          minOrderSubtotal: 499,
+          maxDiscountAmount: 100,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        }
+      });
+
+      const couponId = resCreateCoupon.data?.coupon?._id;
+
+      // 2. Customer validates coupon while active
+      const resValidateActive = await apiRequest('/orders/validate-coupon', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: { code: 'MONSOON100', subtotal: 600 }
+      });
+
+      // 3. Admin toggles coupon to inactive
+      const resToggle = await apiRequest(`/orders/coupons/${couponId}/toggle`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken}` }
+      });
+
+      // 4. Customer attempts to validate deactivated coupon -> Should reject with 400
+      const resValidateInactive = await apiRequest('/orders/validate-coupon', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: { code: 'MONSOON100', subtotal: 600 }
+      });
+
+      const passed =
+        resCreateCoupon.status === 201 &&
+        resValidateActive.status === 200 &&
+        resValidateActive.data?.discountAmount === 100 &&
+        resToggle.status === 200 &&
+        resToggle.data?.coupon?.isActive === false &&
+        resValidateInactive.status === 400;
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        24,
+        'Admin Promo Coupon Creation & Toggle',
+        passed,
+        `Create: ${resCreateCoupon.status}, Toggle: ${resToggle.status}, Inactive Rejection: ${resValidateInactive.status}`,
+        duration,
+        `Coupon MONSOON100 created and validated (₹100 discount). Toggled to INACTIVE and rejected invalid checkout with 400.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 25: Customer Saved Address Book (POST & DELETE /api/auth/addresses)
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 25] Customer Saved Address Book...`);
+
+      // 1. Add Home address (marked as default)
+      const resAddHome = await apiRequest('/auth/addresses', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: {
+          label: 'Home',
+          flatAndBuilding: 'Tower 4, Apt 12B, Palm Grove',
+          streetAndLandmark: 'Vasant Kunj Sector C',
+          city: 'New Delhi',
+          pincode: '110070',
+          isDefault: true
+        }
+      });
+
+      // 2. Add Work address with isDefault: true -> Home should automatically become isDefault: false
+      const resAddWork = await apiRequest('/auth/addresses', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: {
+          label: 'Work',
+          flatAndBuilding: 'Unit 9A, Cyber One',
+          streetAndLandmark: 'DLF Cyber City Phase 2',
+          city: 'Gurugram',
+          pincode: '122002',
+          isDefault: true
+        }
+      });
+
+      const addressesAfterWork = resAddWork.data?.addresses || [];
+      const homeAddr = addressesAfterWork.find((a) => a.flatAndBuilding === 'Tower 4, Apt 12B, Palm Grove');
+      const workAddr = addressesAfterWork.find((a) => a.flatAndBuilding === 'Unit 9A, Cyber One');
+      const defaultSwitched = homeAddr?.isDefault === false && workAddr?.isDefault === true;
+
+      // 3. Delete Work address
+      const resDeleteWork = await apiRequest(`/auth/addresses/${workAddr?._id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${customerToken}` }
+      });
+
+      const remainingAddresses = resDeleteWork.data?.addresses || [];
+      const remainingWork = remainingAddresses.find((a) => a._id?.toString() === workAddr?._id?.toString());
+      const hasDefault = remainingAddresses.some((a) => a.isDefault === true);
+
+      const passed =
+        resAddHome.status === 201 &&
+        resAddWork.status === 201 &&
+        defaultSwitched &&
+        resDeleteWork.status === 200 &&
+        !remainingWork &&
+        hasDefault;
+
+      const duration = Math.round(performance.now() - start);
+      recordResult(
+        25,
+        'Customer Saved Address Book',
+        passed,
+        `Add: 201, Default Switch: YES, Delete: ${resDeleteWork.status}`,
+        duration,
+        `Added Home & Work addresses with automatic isDefault switching. Deleted Work address and verified Home reverted to default.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 26: Admin Revenue Analytics & Order Search
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 26] Admin Revenue Analytics & Order Search...`);
+
+      // 1. Fetch aggregated business analytics
+      const resAnalytics = await apiRequest('/orders/analytics', {
+        headers: { Authorization: `Bearer ${adminToken}` }
+      });
+
+      const analyticsData = resAnalytics.data?.analytics;
+      const analyticsValid =
+        resAnalytics.status === 200 &&
+        typeof analyticsData?.totalOrders === 'number' &&
+        analyticsData.totalOrders >= 2 &&
+        typeof analyticsData?.settledRevenue === 'number' &&
+        typeof analyticsData?.pendingCodRevenue === 'number' &&
+        typeof analyticsData?.expressOrdersCount === 'number' &&
+        analyticsData.expressOrdersCount >= 1;
+
+      // 2. Create order with specific bagTagId for search verification
+      const taggedOrder = await Order.create({
+        orderNumber: 'IDB-2026-SEARCH-BAG',
+        customer: expressCouponOrder.customer,
+        items: expressCouponOrder.items,
+        pickupSchedule: { date: '2026-10-26', timeSlot: '10:00 AM - 01:00 PM' },
+        deliverySchedule: { date: '2026-10-28', timeSlot: '10:00 AM - 01:00 PM' },
+        pickupAddress: expressCouponOrder.pickupAddress,
+        pricingBreakdown: expressCouponOrder.pricingBreakdown,
+        payment: { method: 'COD', status: 'PENDING' },
+        logistics: { bagTagId: 'BAG-PHASE4-TEST' },
+        orderStatus: 'BOOKED'
+      });
+
+      // 3. Search orders by bagTagId
+      const resSearchBag = await apiRequest('/orders/all?search=BAG-PHASE4-TEST', {
+        headers: { Authorization: `Bearer ${adminToken}` }
+      });
+
+      const searchPassed =
+        resSearchBag.status === 200 &&
+        resSearchBag.data?.orders?.length === 1 &&
+        resSearchBag.data?.orders[0]?.orderNumber === 'IDB-2026-SEARCH-BAG' &&
+        resSearchBag.data?.orders[0]?.logistics?.bagTagId === 'BAG-PHASE4-TEST';
+
+      const passed = analyticsValid && searchPassed;
+      const duration = Math.round(performance.now() - start);
+
+      recordResult(
+        26,
+        'Admin Revenue Analytics & Order Search',
+        passed,
+        `Analytics: ${resAnalytics.status}, Search: ${resSearchBag.status}`,
+        duration,
+        `Analytics computed accurately (Total: ${analyticsData?.totalOrders}, Settled: ₹${analyticsData?.settledRevenue}, Pending COD: ₹${analyticsData?.pendingCodRevenue}). Search by bagTagId returned exact matching order.`
+      );
+    }
+
+
 
   } catch (error) {
     console.error('Fatal Test Suite Error:', error);

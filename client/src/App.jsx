@@ -12,6 +12,7 @@ import BookingPage from './pages/BookingPage';
 import PricingPage from './pages/PricingPage';
 import MyOrdersPage from './pages/MyOrdersPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
+import RiderDashboardPage from './pages/RiderDashboardPage';
 import OrderSuccessPage from './pages/OrderSuccessPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -77,6 +78,14 @@ function App() {
                   element={
                     <ProtectedRoute adminOnly={true}>
                       <AdminDashboardPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/rider"
+                  element={
+                    <ProtectedRoute riderOnly={true}>
+                      <RiderDashboardPage />
                     </ProtectedRoute>
                   }
                 />

@@ -75,6 +75,45 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const customerLoginWithFirebase = async ({ idToken, name, phone }) => {
+    try {
+      const res = await authService.customerFirebaseLogin({ idToken, name, phone });
+      if (res.success) {
+        setToken(res.token);
+        setUser(res.user);
+        localStorage.setItem('indodhobi_token', res.token);
+        localStorage.setItem('indodhobi_user', JSON.stringify(res.user));
+        const firstName = res.user.name ? res.user.name.split(' ')[0] : 'Customer';
+        toast.success(res.isNewUser ? `Welcome to IndoDhobi, ${firstName}!` : `Welcome back, ${firstName}!`);
+        return { success: true, user: res.user, isNewUser: res.isNewUser };
+      }
+      return { success: false, message: res.message };
+    } catch (error) {
+      const msg = error.response?.data?.message || 'Phone verification failed.';
+      toast.error(msg);
+      return { success: false, message: msg };
+    }
+  };
+
+  const loginAsStaff = async (email, password) => {
+    try {
+      const res = await authService.staffLogin(email, password);
+      if (res.success) {
+        setToken(res.token);
+        setUser(res.user);
+        localStorage.setItem('indodhobi_token', res.token);
+        localStorage.setItem('indodhobi_user', JSON.stringify(res.user));
+        toast.success(`Staff access granted. Welcome, ${res.user.name.split(' ')[0]}!`);
+        return { success: true, user: res.user };
+      }
+      return { success: false, message: res.message };
+    } catch (error) {
+      const msg = error.response?.data?.message || 'Staff authentication failed.';
+      toast.error(msg);
+      return { success: false, message: msg };
+    }
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
@@ -88,6 +127,40 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('indodhobi_user', JSON.stringify(updatedData));
   };
 
+  const addAddress = async (addressData) => {
+    try {
+      const res = await authService.addAddress(addressData);
+      if (res.success && res.addresses) {
+        const updatedUser = { ...user, addresses: res.addresses };
+        updateUser(updatedUser);
+        toast.success('Address saved to your address book!');
+        return { success: true, addresses: res.addresses };
+      }
+      return { success: false, message: res.message };
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to save address.';
+      toast.error(msg);
+      return { success: false, message: msg };
+    }
+  };
+
+  const deleteAddress = async (addressId) => {
+    try {
+      const res = await authService.deleteAddress(addressId);
+      if (res.success && res.addresses) {
+        const updatedUser = { ...user, addresses: res.addresses };
+        updateUser(updatedUser);
+        toast.success('Address removed.');
+        return { success: true, addresses: res.addresses };
+      }
+      return { success: false, message: res.message };
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to delete address.';
+      toast.error(msg);
+      return { success: false, message: msg };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -95,9 +168,13 @@ export const AuthProvider = ({ children }) => {
         token,
         loading,
         login,
+        loginAsStaff,
+        customerLoginWithFirebase,
         register,
         logout,
         updateUser,
+        addAddress,
+        deleteAddress,
         isAuthenticated: Boolean(token && user),
         isAdmin: user?.role === 'admin',
         isRider: user?.role === 'rider'
@@ -106,6 +183,7 @@ export const AuthProvider = ({ children }) => {
       {children}
     </AuthContext.Provider>
   );
+
 };
 
 export const useAuth = () => {

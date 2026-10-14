@@ -2,6 +2,9 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import mongoose from 'mongoose';
 import { connectDB } from './config/db.js';
 import { seedData } from './utils/seeder.js';
 import authRoutes from './routes/authRoutes.js';
@@ -11,6 +14,9 @@ import { sanitizeInput, apiLimiter } from './middleware/securityMiddleware.js';
 import errorHandler from './middleware/errorMiddleware.js';
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -49,11 +55,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint
+// Enhanced Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
-    status: 'online',
-    service: 'IndoDhobi Backend API',
+    status: 'ok',
+    service: 'IndoDhobi API',
+    uptime: process.uptime(),
+    dbState: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
     timestamp: new Date().toISOString(),
     razorpayConfigured: Boolean(
       process.env.RAZORPAY_KEY_ID &&
@@ -67,7 +75,27 @@ app.use('/api/auth', authRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/orders', orderRoutes);
 
-// 404 handler
+// Production Static Asset Serving
+if (process.env.NODE_ENV === 'production') {
+  const clientDist = path.join(__dirname, '../client/dist');
+  app.use(express.static(clientDist));
+  app.get('*', (req, res, next) => {
+    if (req.originalUrl.startsWith('/api')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
+
+// 404 handler for API routes
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `API endpoint ${req.originalUrl} not found.`
+  });
+});
+
+// General 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
@@ -84,20 +112,38 @@ export const startServer = async () => {
     await connectDB();
     await seedData();
 
-    const serverInstance = app.listen(PORT, () => {
-      console.log(`===================================================`);
-      console.log(`🧺 IndoDhobi Backend Server running on port ${PORT}`);
-      console.log(`🔗 API Base: http://localhost:${PORT}/api`);
-      console.log(`🔐 Demo Customer: customer@indodhobi.com | password123`);
-      console.log(`👑 Demo Admin:    admin@indodhobi.com    | admin123`);
-      console.log(`===================================================`);
-    });
-    return serverInstance;
+    const startListening = (port) => {
+      const serverInstance = app.listen(port, () => {
+        console.log(`===================================================`);
+        console.log(`🧺 IndoDhobi Backend Server running on port ${port}`);
+        console.log(`🔗 API Base: http://localhost:${port}/api`);
+        console.log(`🔐 Demo Customer: customer@indodhobi.com | password123`);
+        console.log(`👑 Demo Admin:    admin@indodhobi.com    | admin123`);
+        console.log(`===================================================`);
+      });
+
+      serverInstance.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          const nextPort = Number(port) + 1;
+          console.warn(`\n⚠️  Port ${port} is occupied (commonly macOS AirPlay Receiver on port 5000).`);
+          console.log(`🔄 Automatically switching to port ${nextPort}...\n`);
+          startListening(nextPort);
+        } else {
+          console.error('Fatal Server Error:', err);
+          process.exit(1);
+        }
+      });
+
+      return serverInstance;
+    };
+
+    return startListening(PORT);
   } catch (error) {
     console.error('Fatal: Failed to start IndoDhobi server:', error);
     process.exit(1);
   }
 };
+
 
 export { app };
 export default app;

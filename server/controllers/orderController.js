@@ -1,6 +1,9 @@
 import Order from '../models/Order.js';
 import Garment from '../models/Garment.js';
+import User from '../models/User.js';
+import Coupon from '../models/Coupon.js';
 import { createRazorpayOrder, verifyRazorpaySignature } from '../utils/razorpay.js';
+
 
 export const MAX_ORDERS_PER_SLOT = 15;
 
@@ -139,8 +142,11 @@ export const createOrder = async (req, res) => {
       deliverySchedule,
       pickupAddress,
       paymentMethod,
-      onlineSubMethod
+      onlineSubMethod,
+      isExpress,
+      couponCode
     } = req.body;
+
 
     // 1. Basic validation
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -233,10 +239,47 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // 5. Delivery fee & Tax calculation (Free delivery >= ₹399, otherwise ₹49; 5% GST)
+    // 5. Express Surcharge & Coupon Calculation
+    const expressOrder = Boolean(isExpress);
+    const expressSurcharge = expressOrder ? 99 : 0;
+
+    let discountAmount = 0;
+    let appliedCouponCode = null;
+
+    if (couponCode && typeof couponCode === 'string' && couponCode.trim()) {
+      const cleanCode = couponCode.trim().toUpperCase();
+      const coupon = await Coupon.findOne({ code: cleanCode });
+
+      if (!coupon || !coupon.isActive || new Date() > coupon.expiresAt) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid or expired coupon code.'
+        });
+      }
+
+      if (subtotal < coupon.minOrderSubtotal) {
+        return res.status(400).json({
+          success: false,
+          message: `Coupon requires a minimum subtotal of ₹${coupon.minOrderSubtotal}. Your current subtotal is ₹${subtotal}.`
+        });
+      }
+
+      if (coupon.discountType === 'PERCENTAGE') {
+        discountAmount = Math.round((subtotal * coupon.discountValue) / 100);
+        if (coupon.maxDiscountAmount) {
+          discountAmount = Math.min(discountAmount, coupon.maxDiscountAmount);
+        }
+      } else if (coupon.discountType === 'FLAT') {
+        discountAmount = coupon.discountValue;
+      }
+
+      discountAmount = Math.min(discountAmount, subtotal);
+      appliedCouponCode = coupon.code;
+    }
+
+    // Delivery fee & Tax calculation (Free delivery >= ₹399, otherwise ₹49; 5% GST on taxable base)
     const pickupDeliveryFee = subtotal >= 399 ? 0 : 49;
-    const expressSurcharge = 0;
-    const taxableBase = subtotal + pickupDeliveryFee + expressSurcharge;
+    const taxableBase = Math.max(0, subtotal - discountAmount) + pickupDeliveryFee + expressSurcharge;
     const taxAmount = Math.round(taxableBase * 0.05); // 5% GST rounded
     const grandTotal = taxableBase + taxAmount;
 
@@ -269,7 +312,11 @@ export const createOrder = async (req, res) => {
       };
     }
 
-    // 8. Save order
+    // 8. Generate 4-digit doorstep verification OTPs
+    const pickupOtp = Math.floor(1000 + Math.random() * 9000).toString();
+    const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
+
+    // 9. Save order
     const order = await Order.create({
       orderNumber,
       customer: req.user._id,
@@ -279,6 +326,7 @@ export const createOrder = async (req, res) => {
         packagingType: preferences?.packagingType || 'Folded',
         specialInstructions: preferences?.specialInstructions || ''
       },
+      isExpress: expressOrder,
       pickupSchedule,
       deliverySchedule,
       pickupAddress: {
@@ -290,13 +338,37 @@ export const createOrder = async (req, res) => {
       },
       pricingBreakdown: {
         subtotal,
+        discountAmount,
+        couponCode: appliedCouponCode,
         pickupDeliveryFee,
         expressSurcharge,
         taxAmount,
         grandTotal
       },
+
       payment: paymentData,
-      orderStatus: 'BOOKED'
+      orderStatus: 'BOOKED',
+      verificationCodes: {
+        pickupOtp,
+        deliveryOtp
+      },
+      logistics: {
+        assignedRider: null,
+        bagTagId: '',
+        inspectionNotes: '',
+        verifiedGarmentCount: 0,
+        pickedUpAt: null,
+        deliveredAt: null
+      },
+      statusHistory: [
+        {
+          status: 'BOOKED',
+          timestamp: new Date(),
+          updatedBy: req.user._id,
+          updaterRole: req.user.role || 'customer',
+          note: 'Order placed by customer'
+        }
+      ]
     });
 
     return res.status(201).json({
@@ -493,10 +565,14 @@ export const switchToCod = async (req, res) => {
 // @desc    Get logged-in user's orders
 // @route   GET /api/orders/my-orders
 // @access  Private
+// @desc    Get logged-in user's orders
+// @route   GET /api/orders/my-orders
+// @access  Private
 export const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({ customer: req.user._id })
       .populate('items.garment', 'name category iconName')
+      .populate('logistics.assignedRider', 'name phone email')
       .sort({ createdAt: -1 });
 
     return res.json({
@@ -520,7 +596,8 @@ export const getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
       .populate('customer', 'name email phone')
-      .populate('items.garment', 'name category iconName');
+      .populate('items.garment', 'name category iconName')
+      .populate('logistics.assignedRider', 'name phone email');
 
     if (!order) {
       return res.status(404).json({
@@ -575,12 +652,41 @@ export const getAllOrders = async (req, res) => {
       ];
     }
 
-    if (search) {
-      filter.orderNumber = { $regex: search, $options: 'i' };
+    if (search && search.trim()) {
+      const trimmedSearch = search.trim();
+      const matchingCustomers = await User.find({
+        $or: [
+          { name: { $regex: trimmedSearch, $options: 'i' } },
+          { phone: { $regex: trimmedSearch, $options: 'i' } },
+          { email: { $regex: trimmedSearch, $options: 'i' } }
+        ]
+      }).select('_id');
+      const customerIds = matchingCustomers.map(c => c._id);
+
+      const searchConditions = [
+        { orderNumber: { $regex: trimmedSearch, $options: 'i' } },
+        { 'logistics.bagTagId': { $regex: trimmedSearch, $options: 'i' } },
+        { 'pickupAddress.contactPhone': { $regex: trimmedSearch, $options: 'i' } }
+      ];
+
+      if (customerIds.length > 0) {
+        searchConditions.push({ customer: { $in: customerIds } });
+      }
+
+      if (filter.$or) {
+        filter.$and = [
+          { $or: filter.$or },
+          { $or: searchConditions }
+        ];
+        delete filter.$or;
+      } else {
+        filter.$or = searchConditions;
+      }
     }
 
     const orders = await Order.find(filter)
       .populate('customer', 'name email phone')
+      .populate('logistics.assignedRider', 'name phone email')
       .sort({ createdAt: -1 });
 
     return res.json({
@@ -602,7 +708,7 @@ export const getAllOrders = async (req, res) => {
 // @access  Private (Admin / Rider)
 export const updateOrderStatus = async (req, res) => {
   try {
-    const { orderStatus, paymentStatus, transactionId } = req.body;
+    const { orderStatus, paymentStatus, transactionId, note } = req.body;
     const order = await Order.findById(req.params.id);
 
     if (!order) {
@@ -628,6 +734,18 @@ export const updateOrderStatus = async (req, res) => {
       }
     }
 
+    if (!order.statusHistory) {
+      order.statusHistory = [];
+    }
+
+    order.statusHistory.push({
+      status: orderStatus || order.orderStatus,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+      updaterRole: req.user.role,
+      note: note || `Order status updated to ${orderStatus || order.orderStatus}`
+    });
+
     await order.save();
 
     return res.json({
@@ -643,3 +761,631 @@ export const updateOrderStatus = async (req, res) => {
     });
   }
 };
+
+// @desc    Get all registered riders
+// @route   GET /api/orders/riders
+// @access  Private (Admin only)
+export const getRiders = async (req, res) => {
+  try {
+    const riders = await User.find({ role: 'rider' }).select('_id name phone email');
+    return res.json({
+      success: true,
+      count: riders.length,
+      riders
+    });
+  } catch (error) {
+    console.error('[Get Riders Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve riders list.'
+    });
+  }
+};
+
+// @desc    Assign rider to an order
+// @route   PATCH /api/orders/:id/assign-rider
+// @access  Private (Admin only)
+export const assignRider = async (req, res) => {
+  try {
+    const riderId = req.body.riderId || req.body._id || req.body.id;
+    if (!riderId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rider ID is required.'
+      });
+    }
+
+    const rider = await User.findOne({ _id: riderId, role: 'rider' });
+    if (!rider) {
+      return res.status(404).json({
+        success: false,
+        message: 'Rider not found or user is not a registered rider.'
+      });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.'
+      });
+    }
+
+    order.logistics.assignedRider = rider._id;
+    if (order.orderStatus === 'BOOKED') {
+      order.orderStatus = 'PICKUP_ASSIGNED';
+    }
+
+    if (!order.statusHistory) {
+      order.statusHistory = [];
+    }
+
+    order.statusHistory.push({
+      status: order.orderStatus,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+      updaterRole: req.user.role,
+      note: `Rider assigned: ${rider.name}`
+    });
+
+    await order.save();
+    await order.populate('logistics.assignedRider', 'name phone email');
+    await order.populate('customer', 'name email phone');
+
+    return res.json({
+      success: true,
+      message: `Order assigned to rider ${rider.name} successfully.`,
+      order
+    });
+  } catch (error) {
+    console.error('[Assign Rider Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to assign rider to order.'
+    });
+  }
+};
+
+// @desc    Get tasks assigned to rider (or active logistics orders for admin)
+// @route   GET /api/orders/rider-tasks
+// @access  Private (Rider & Admin)
+export const getRiderTasks = async (req, res) => {
+  try {
+    const filter = {};
+    if (req.user.role === 'rider') {
+      filter['logistics.assignedRider'] = req.user._id;
+    } else if (req.query.riderId) {
+      filter['logistics.assignedRider'] = req.query.riderId;
+    }
+
+    if (!req.query.status) {
+      filter.orderStatus = { $ne: 'CANCELLED' };
+    } else if (req.query.status !== 'ALL') {
+      filter.orderStatus = req.query.status;
+    }
+
+    // IMPORTANT SECURITY: Exclude OTPs from rider tasks response payload
+    const tasks = await Order.find(filter)
+      .select('-verificationCodes.pickupOtp -verificationCodes.deliveryOtp')
+      .populate('customer', 'name email phone')
+      .populate('logistics.assignedRider', 'name phone email')
+      .sort({ 'pickupSchedule.date': 1, 'deliverySchedule.date': 1, createdAt: -1 });
+
+    // Explicit sanitize to guarantee zero OTP leakage
+    const sanitizedTasks = tasks.map((t) => {
+      const obj = t.toObject();
+      if (obj.verificationCodes) {
+        delete obj.verificationCodes.pickupOtp;
+        delete obj.verificationCodes.deliveryOtp;
+      }
+      return obj;
+    });
+
+    return res.json({
+      success: true,
+      count: sanitizedTasks.length,
+      tasks: sanitizedTasks
+    });
+  } catch (error) {
+    console.error('[Get Rider Tasks Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve rider tasks.'
+    });
+  }
+};
+
+// @desc    Verify doorstep pickup with customer OTP, bag tagging, inspection notes
+// @route   POST /api/orders/:id/verify-pickup
+// @access  Private (Rider & Admin)
+export const verifyPickup = async (req, res) => {
+  try {
+    const { otp, bagTagId, inspectionNotes, verifiedGarmentCount } = req.body;
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.'
+      });
+    }
+
+    if (!bagTagId || typeof bagTagId !== 'string' || !bagTagId.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Bag Tag ID is required at pickup.'
+      });
+    }
+
+    if (!otp || String(otp).trim() !== String(order.verificationCodes?.pickupOtp)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid pickup verification OTP. Please request the 4-digit OTP from the customer.'
+      });
+    }
+
+    const garmentTotal = order.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+    const countNumber = Number(verifiedGarmentCount) > 0 ? Number(verifiedGarmentCount) : garmentTotal;
+
+    order.orderStatus = 'PICKED_UP';
+    order.logistics.bagTagId = bagTagId.trim();
+    order.logistics.inspectionNotes = inspectionNotes ? String(inspectionNotes).trim() : '';
+    order.logistics.verifiedGarmentCount = countNumber;
+    order.logistics.pickedUpAt = new Date();
+
+    if (!order.logistics.assignedRider && req.user.role === 'rider') {
+      order.logistics.assignedRider = req.user._id;
+    }
+
+    if (!order.statusHistory) {
+      order.statusHistory = [];
+    }
+
+    order.statusHistory.push({
+      status: 'PICKED_UP',
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+      updaterRole: req.user.role,
+      note: `Picked up with Bag Tag: ${bagTagId.trim()}. Verified garments: ${countNumber}`
+    });
+
+    await order.save();
+    await order.populate('customer', 'name email phone');
+    await order.populate('logistics.assignedRider', 'name phone email');
+
+    return res.json({
+      success: true,
+      message: 'Doorstep pickup successfully verified and logged with bag tag!',
+      order
+    });
+  } catch (error) {
+    console.error('[Verify Pickup Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to verify pickup.'
+    });
+  }
+};
+
+// @desc    Verify doorstep delivery with customer OTP & automatic COD settlement
+// @route   POST /api/orders/:id/verify-delivery
+// @access  Private (Rider & Admin)
+export const verifyDelivery = async (req, res) => {
+  try {
+    const { otp, codCollectionMethod } = req.body;
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.'
+      });
+    }
+
+    if (!otp || String(otp).trim() !== String(order.verificationCodes?.deliveryOtp)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid delivery verification OTP. Please request the 4-digit OTP from the customer.'
+      });
+    }
+
+    // If order is COD and payment is not PAID, enforce payment collection method
+    if (order.payment?.method === 'COD' && order.payment?.status !== 'PAID') {
+      if (!codCollectionMethod || !['CASH', 'UPI_QR'].includes(codCollectionMethod)) {
+        return res.status(400).json({
+          success: false,
+          message: 'COD collection method (CASH or UPI_QR) is required for unpaid orders.'
+        });
+      }
+
+      order.payment.status = 'PAID';
+      order.payment.onlineSubMethod = codCollectionMethod === 'UPI_QR' ? 'UPI' : null;
+      order.payment.transactionId = `COD_${codCollectionMethod}_${Date.now()}`;
+      order.payment.paidAt = new Date();
+    }
+
+    order.orderStatus = 'DELIVERED';
+    order.logistics.deliveredAt = new Date();
+
+    if (!order.statusHistory) {
+      order.statusHistory = [];
+    }
+
+    order.statusHistory.push({
+      status: 'DELIVERED',
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+      updaterRole: req.user.role,
+      note: `Order delivered to customer. Payment status: ${order.payment.status}`
+    });
+
+    await order.save();
+    await order.populate('customer', 'name email phone');
+    await order.populate('logistics.assignedRider', 'name phone email');
+
+    return res.json({
+      success: true,
+      message: 'Doorstep delivery verified successfully and payment settled!',
+      order
+    });
+  } catch (error) {
+    console.error('[Verify Delivery Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to verify delivery.'
+    });
+  }
+};
+
+// @desc    Get all active coupons
+// @route   GET /api/orders/coupons
+// @access  Public
+export const getActiveCoupons = async (req, res) => {
+  try {
+    const coupons = await Coupon.find({
+      isActive: true,
+      expiresAt: { $gt: new Date() }
+    }).sort({ minOrderSubtotal: 1 });
+
+    return res.json({
+      success: true,
+      count: coupons.length,
+      coupons
+    });
+  } catch (error) {
+    console.error('[Get Coupons Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve active coupons.'
+    });
+  }
+};
+
+// @desc    Validate a promo coupon for a given cart subtotal
+// @route   POST /api/orders/validate-coupon
+// @access  Private
+export const validateCoupon = async (req, res) => {
+  try {
+    const { code, subtotal } = req.body;
+
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a coupon code.'
+      });
+    }
+
+    const cleanCode = code.trim().toUpperCase();
+    const coupon = await Coupon.findOne({ code: cleanCode });
+
+    if (!coupon || !coupon.isActive || new Date() > coupon.expiresAt) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired coupon code.'
+      });
+    }
+
+    const orderSubtotal = Number(subtotal) || 0;
+    if (orderSubtotal < coupon.minOrderSubtotal) {
+      return res.status(400).json({
+        success: false,
+        message: `Coupon requires a minimum subtotal of ₹${coupon.minOrderSubtotal}. Your current subtotal is ₹${orderSubtotal}.`
+      });
+    }
+
+    let discountAmount = 0;
+    if (coupon.discountType === 'PERCENTAGE') {
+      discountAmount = Math.round((orderSubtotal * coupon.discountValue) / 100);
+      if (coupon.maxDiscountAmount) {
+        discountAmount = Math.min(discountAmount, coupon.maxDiscountAmount);
+      }
+    } else if (coupon.discountType === 'FLAT') {
+      discountAmount = coupon.discountValue;
+    }
+
+    discountAmount = Math.min(discountAmount, orderSubtotal);
+
+    return res.json({
+      success: true,
+      valid: true,
+      code: coupon.code,
+      discountAmount,
+      description: coupon.description
+    });
+  } catch (error) {
+    console.error('[Validate Coupon Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to validate coupon code.'
+    });
+  }
+};
+
+// @desc    Create a new coupon (Admin only)
+// @route   POST /api/orders/coupons
+// @access  Private/Admin
+export const createCoupon = async (req, res) => {
+  try {
+    const {
+      code,
+      description,
+      discountType,
+      discountValue,
+      minOrderSubtotal,
+      maxDiscountAmount,
+      expiresAt
+    } = req.body;
+
+    if (!code || !description || !discountType || discountValue === undefined || !expiresAt) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide all required fields (code, description, discountType, discountValue, expiresAt).'
+      });
+    }
+
+    const cleanCode = code.trim().toUpperCase();
+    const existing = await Coupon.findOne({ code: cleanCode });
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: `Coupon code '${cleanCode}' already exists.`
+      });
+    }
+
+    const coupon = await Coupon.create({
+      code: cleanCode,
+      description,
+      discountType,
+      discountValue: Number(discountValue),
+      minOrderSubtotal: Number(minOrderSubtotal) || 0,
+      maxDiscountAmount: maxDiscountAmount !== undefined && maxDiscountAmount !== null ? Number(maxDiscountAmount) : null,
+      expiresAt: new Date(expiresAt)
+    });
+
+    return res.status(201).json({
+      success: true,
+      coupon
+    });
+  } catch (error) {
+    console.error('[Create Coupon Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create coupon.'
+    });
+  }
+};
+
+// @desc    Cancel an order before pickup (Customer or Admin)
+// @route   POST /api/orders/:id/cancel
+// @access  Private
+export const cancelOrder = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.'
+      });
+    }
+
+    // Check authorization: Must be the customer who placed the order or an admin
+    const isOwner = order.customer.toString() === req.user._id.toString();
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to cancel this order.'
+      });
+    }
+
+    // Cancellation is allowed strictly in BOOKED or PICKUP_ASSIGNED states
+    const cancellableStatuses = ['BOOKED', 'PICKUP_ASSIGNED'];
+    if (!cancellableStatuses.includes(order.orderStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Order cannot be cancelled after clothes have been picked up.'
+      });
+    }
+
+    order.orderStatus = 'CANCELLED';
+
+    // If payment was already collected, mark as REFUNDED
+    if (order.payment.status === 'PAID') {
+      order.payment.status = 'REFUNDED';
+    }
+
+    if (!order.statusHistory) {
+      order.statusHistory = [];
+    }
+
+    order.statusHistory.push({
+      status: 'CANCELLED',
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+      updaterRole: req.user.role || 'customer',
+      note: reason || 'Cancelled by customer before pickup'
+    });
+
+    await order.save();
+
+    return res.json({
+      success: true,
+      message: 'Order cancelled successfully.',
+      order
+    });
+  } catch (error) {
+    console.error('[Cancel Order Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to cancel order.'
+    });
+  }
+};
+
+// @desc    Get all coupons including inactive (Admin only)
+// @route   GET /api/orders/coupons/all
+// @access  Private/Admin
+export const getAllCoupons = async (req, res) => {
+  try {
+    const coupons = await Coupon.find().sort({ createdAt: -1 });
+    return res.json({
+      success: true,
+      count: coupons.length,
+      coupons
+    });
+  } catch (error) {
+    console.error('[Get All Coupons Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve coupons.'
+    });
+  }
+};
+
+// @desc    Toggle coupon active status (Admin only)
+// @route   PATCH /api/orders/coupons/:id/toggle
+// @access  Private/Admin
+export const toggleCoupon = async (req, res) => {
+  try {
+    const coupon = await Coupon.findById(req.params.id);
+    if (!coupon) {
+      return res.status(404).json({
+        success: false,
+        message: 'Coupon not found.'
+      });
+    }
+
+    coupon.isActive = !coupon.isActive;
+    await coupon.save();
+
+    return res.json({
+      success: true,
+      message: `Coupon '${coupon.code}' is now ${coupon.isActive ? 'ACTIVE' : 'INACTIVE'}`,
+      coupon
+    });
+  } catch (error) {
+    console.error('[Toggle Coupon Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to toggle coupon status.'
+    });
+  }
+};
+
+// @desc    Get comprehensive revenue & operational analytics (Admin only)
+// @route   GET /api/orders/analytics
+// @access  Private/Admin
+export const getOrderAnalytics = async (req, res) => {
+  try {
+    const allOrders = await Order.find();
+
+    let totalRevenue = 0;
+    let settledRevenue = 0;
+    let pendingCodRevenue = 0;
+    let expressOrdersCount = 0;
+    let activeOrders = 0;
+    let deliveredOrders = 0;
+    let cancelledOrders = 0;
+
+    const statusBreakdown = {
+      BOOKED: 0,
+      PICKUP_ASSIGNED: 0,
+      PICKED_UP: 0,
+      IN_WASH: 0,
+      IRONING: 0,
+      QUALITY_CHECK: 0,
+      OUT_FOR_DELIVERY: 0,
+      DELIVERED: 0,
+      CANCELLED: 0
+    };
+
+    allOrders.forEach((o) => {
+      const grand = o.pricingBreakdown?.grandTotal || 0;
+      const status = o.orderStatus;
+
+      // Status breakdown
+      if (statusBreakdown[status] !== undefined) {
+        statusBreakdown[status] += 1;
+      } else {
+        statusBreakdown[status] = 1;
+      }
+
+      // Counts
+      if (status === 'DELIVERED') {
+        deliveredOrders += 1;
+      } else if (status === 'CANCELLED') {
+        cancelledOrders += 1;
+      } else {
+        activeOrders += 1;
+      }
+
+      if (o.isExpress) {
+        expressOrdersCount += 1;
+      }
+
+      // Revenue: non-cancelled orders count towards total revenue
+      if (status !== 'CANCELLED') {
+        totalRevenue += grand;
+      }
+
+      // Settled revenue: strictly PAID orders
+      if (o.payment?.status === 'PAID') {
+        settledRevenue += grand;
+      }
+
+      // Pending COD revenue: COD method, PENDING status, and not cancelled
+      if (
+        o.payment?.method === 'COD' &&
+        o.payment?.status === 'PENDING' &&
+        status !== 'CANCELLED'
+      ) {
+        pendingCodRevenue += grand;
+      }
+    });
+
+    return res.json({
+      success: true,
+      analytics: {
+        totalOrders: allOrders.length,
+        activeOrders,
+        deliveredOrders,
+        cancelledOrders,
+        expressOrdersCount,
+        totalRevenue,
+        settledRevenue,
+        pendingCodRevenue,
+        statusBreakdown
+      }
+    });
+  } catch (error) {
+    console.error('[Get Order Analytics Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to compute order analytics.'
+    });
+  }
+};
+

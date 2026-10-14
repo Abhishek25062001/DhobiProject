@@ -37,6 +37,14 @@ export const authService = {
     const res = await API.post('/auth/login', { email, password });
     return res.data;
   },
+  customerFirebaseLogin: async ({ idToken, name, phone }) => {
+    const res = await API.post('/auth/customer/firebase-login', { idToken, name, phone });
+    return res.data;
+  },
+  staffLogin: async (email, password) => {
+    const res = await API.post('/auth/staff/login', { email, password });
+    return res.data;
+  },
   register: async (userData) => {
     const res = await API.post('/auth/register', userData);
     return res.data;
@@ -49,17 +57,40 @@ export const authService = {
     const res = await API.put('/auth/profile', profileData);
     return res.data;
   },
+  addAddress: async (addressData) => {
+    const res = await API.post('/auth/addresses', addressData);
+    return res.data;
+  },
+  deleteAddress: async (addressId) => {
+    const res = await API.delete(`/auth/addresses/${addressId}`);
+    return res.data;
+  },
 };
 
+
 export const catalogService = {
-  getGarments: async (category = '', search = '') => {
+  getGarments: async (category = '', search = '', includeInactive = false) => {
     const params = {};
     if (category && category !== 'All') params.category = category;
     if (search) params.search = search;
+    if (includeInactive) params.includeInactive = 'true';
     const res = await API.get('/catalog/garments', { params });
     return res.data;
   },
+  createGarment: async (garmentData) => {
+    const res = await API.post('/catalog/garments', garmentData);
+    return res.data;
+  },
+  updateGarment: async (id, garmentData) => {
+    const res = await API.put(`/catalog/garments/${id}`, garmentData);
+    return res.data;
+  },
   saveGarment: async (garmentData) => {
+    if (garmentData.id || garmentData._id) {
+      const id = garmentData.id || garmentData._id;
+      const res = await API.put(`/catalog/garments/${id}`, garmentData);
+      return res.data;
+    }
     const res = await API.post('/catalog/garments', garmentData);
     return res.data;
   },
@@ -106,6 +137,55 @@ export const orderService = {
     const res = await API.patch(`/orders/${id}/status`, statusData);
     return res.data;
   },
+  getRiders: async () => {
+    const res = await API.get('/orders/riders');
+    return res.data;
+  },
+  assignRider: async (orderId, riderId) => {
+    const res = await API.patch(`/orders/${orderId}/assign-rider`, { riderId });
+    return res.data;
+  },
+  getRiderTasks: async (filters = {}) => {
+    const res = await API.get('/orders/rider-tasks', { params: filters });
+    return res.data;
+  },
+  verifyPickup: async (orderId, pickupData) => {
+    const res = await API.post(`/orders/${orderId}/verify-pickup`, pickupData);
+    return res.data;
+  },
+  verifyDelivery: async (orderId, deliveryData) => {
+    const res = await API.post(`/orders/${orderId}/verify-delivery`, deliveryData);
+    return res.data;
+  },
+  getCoupons: async () => {
+    const res = await API.get('/orders/coupons');
+    return res.data;
+  },
+  getAllCoupons: async () => {
+    const res = await API.get('/orders/coupons/all');
+    return res.data;
+  },
+  toggleCoupon: async (id) => {
+    const res = await API.patch(`/orders/coupons/${id}/toggle`);
+    return res.data;
+  },
+  getAnalytics: async () => {
+    const res = await API.get('/orders/analytics');
+    return res.data;
+  },
+  validateCoupon: async (code, subtotal) => {
+    const res = await API.post('/orders/validate-coupon', { code, subtotal });
+    return res.data;
+  },
+  createCoupon: async (couponData) => {
+    const res = await API.post('/orders/coupons', couponData);
+    return res.data;
+  },
+  cancelOrder: async (orderId, reason = '') => {
+    const res = await API.post(`/orders/${orderId}/cancel`, { reason });
+    return res.data;
+  },
 };
+
 
 export default API;

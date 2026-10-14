@@ -1,6 +1,14 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+export const normalizePhone = (phone) => {
+  if (!phone) return '';
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.length === 10) return digits;
+  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+  return digits.slice(-10);
+};
+
 const addressSchema = new mongoose.Schema({
   label: {
     type: String,
@@ -42,21 +50,29 @@ const userSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: [true, 'Please provide an email'],
-    unique: true,
     lowercase: true,
     trim: true,
-    match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email address']
+    default: undefined,
+    set: (v) => (v && typeof v === 'string' && v.trim() ? v.trim().toLowerCase() : undefined),
+    validate: {
+      validator: function(v) {
+        return !v || /^\S+@\S+\.\S+$/.test(v);
+      },
+      message: 'Please provide a valid email address'
+    }
   },
   phone: {
     type: String,
     required: [true, 'Please provide your mobile number'],
-    unique: true,
-    trim: true
+    trim: true,
+    set: normalizePhone
   },
+
   password: {
     type: String,
-    required: [true, 'Please provide a password'],
+    required: function() {
+      return this.role !== 'customer' && !this.firebaseUid;
+    },
     minlength: 6,
     select: false
   },
@@ -65,13 +81,27 @@ const userSchema = new mongoose.Schema({
     enum: ['customer', 'rider', 'admin'],
     default: 'customer'
   },
+  firebaseUid: {
+    type: String,
+    sparse: true,
+    index: true,
+    default: undefined
+  },
+  isPhoneVerified: {
+    type: Boolean,
+    default: false
+  },
   addresses: [addressSchema]
 }, {
   timestamps: true
 });
 
+// Production Indexes
+userSchema.index({ email: 1 }, { unique: true, sparse: true, background: true });
+userSchema.index({ phone: 1 }, { unique: true });
+
 userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) {
+  if (!this.password || !this.isModified('password')) {
     return next();
   }
   const salt = await bcrypt.genSalt(10);
@@ -80,6 +110,7 @@ userSchema.pre('save', async function (next) {
 });
 
 userSchema.methods.matchPassword = async function (enteredPassword) {
+  if (!this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);
 };
 

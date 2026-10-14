@@ -110,8 +110,14 @@ const orderSchema = new mongoose.Schema({
     pincode: { type: String, required: true },
     contactPhone: { type: String, required: true }
   },
+  isExpress: {
+    type: Boolean,
+    default: false
+  },
   pricingBreakdown: {
     subtotal: { type: Number, required: true, min: 0 },
+    discountAmount: { type: Number, default: 0 },
+    couponCode: { type: String, default: null },
     pickupDeliveryFee: { type: Number, required: true, default: 0 },
     expressSurcharge: { type: Number, required: true, default: 0 },
     taxAmount: { type: Number, required: true, min: 0 },
@@ -130,10 +136,11 @@ const orderSchema = new mongoose.Schema({
     },
     status: {
       type: String,
-      enum: ['PENDING', 'PAID', 'FAILED'],
+      enum: ['PENDING', 'PAID', 'FAILED', 'REFUNDED'],
       default: 'PENDING',
       index: true
     },
+
     transactionId: {
       type: String,
       default: null
@@ -170,7 +177,70 @@ const orderSchema = new mongoose.Schema({
     ],
     default: 'BOOKED',
     index: true
-  }
+  },
+  verificationCodes: {
+    pickupOtp: {
+      type: String,
+      default: null
+    },
+    deliveryOtp: {
+      type: String,
+      default: null
+    }
+  },
+  logistics: {
+    assignedRider: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    bagTagId: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    inspectionNotes: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    verifiedGarmentCount: {
+      type: Number,
+      default: 0
+    },
+    pickedUpAt: {
+      type: Date,
+      default: null
+    },
+    deliveredAt: {
+      type: Date,
+      default: null
+    }
+  },
+  statusHistory: [
+    {
+      status: {
+        type: String,
+        required: true
+      },
+      timestamp: {
+        type: Date,
+        default: Date.now
+      },
+      updatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      updaterRole: {
+        type: String,
+        default: 'customer'
+      },
+      note: {
+        type: String,
+        default: ''
+      }
+    }
+  ]
 }, {
   timestamps: true
 });
@@ -178,6 +248,7 @@ const orderSchema = new mongoose.Schema({
 // Production Compound Indexes
 orderSchema.index({ customer: 1, createdAt: -1 });
 orderSchema.index({ orderStatus: 1, 'pickupSchedule.date': 1 });
+orderSchema.index({ 'logistics.assignedRider': 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 export default Order;
