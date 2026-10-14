@@ -480,6 +480,35 @@ const MyOrdersPage = () => {
                             </div>
                           )}
 
+                          {/* Stain & Inspection Photos if present */}
+                          {order.logistics?.inspectionPhotos?.length > 0 && (
+                            <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                              <span className="font-bold text-slate-800 block text-[11px]">
+                                Doorstep Stain &amp; Fabric Inspection Photos ({order.logistics.inspectionPhotos.length}):
+                              </span>
+                              <div className="grid grid-cols-3 gap-2">
+                                {order.logistics.inspectionPhotos.map((photo, pIdx) => (
+                                  <a
+                                    key={pIdx}
+                                    href={photo.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="block aspect-square rounded-xl overflow-hidden border border-slate-200 group relative hover:opacity-90 transition-opacity bg-slate-50"
+                                  >
+                                    <img
+                                      src={photo.url}
+                                      alt={`Inspection Photo ${pIdx + 1}`}
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                    />
+                                    <span className="absolute bottom-1 right-1 bg-slate-900/70 text-[9px] text-white px-1.5 py-0.5 rounded font-mono">
+                                      View
+                                    </span>
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
                           {order.preferences?.specialInstructions && (
                             <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-[11px]">
                               <span className="font-bold text-slate-700">Special Notes: </span>

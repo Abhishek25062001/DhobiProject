@@ -3,6 +3,8 @@ import User from '../models/User.js';
 import Garment from '../models/Garment.js';
 import Order from '../models/Order.js';
 import Coupon from '../models/Coupon.js';
+import TimeSlot from '../models/TimeSlot.js';
+import PlatformConfig from '../models/PlatformConfig.js';
 import dotenv from 'dotenv';
 
 import { connectDB } from '../config/db.js';
@@ -459,6 +461,27 @@ export const seedData = async () => {
       );
     }
     console.log('[Seeder] Active promo coupons verified/seeded (FIRST50, DHOBI20, FLAT75)');
+
+    // 5. Seed Default Platform Configuration
+    await PlatformConfig.getOrCreateActiveConfig();
+    console.log('[Seeder] Platform configuration verified/seeded');
+
+    // 6. Seed Default Time Slots
+    const defaultSlots = [
+      { label: '08:00 AM - 10:00 AM', startHour: 8, endHour: 10, maxCapacity: 15, sortOrder: 1, isActive: true },
+      { label: '10:00 AM - 01:00 PM', startHour: 10, endHour: 13, maxCapacity: 15, sortOrder: 2, isActive: true },
+      { label: '02:00 PM - 05:00 PM', startHour: 14, endHour: 17, maxCapacity: 15, sortOrder: 3, isActive: true },
+      { label: '06:00 PM - 09:00 PM', startHour: 18, endHour: 21, maxCapacity: 15, sortOrder: 4, isActive: true }
+    ];
+
+    for (const slot of defaultSlots) {
+      await TimeSlot.findOneAndUpdate(
+        { label: slot.label },
+        { $setOnInsert: slot },
+        { upsert: true, new: true }
+      );
+    }
+    console.log('[Seeder] Default 4 time slots verified/seeded');
 
     console.log('[Seeder] Seeding process completed successfully!');
 

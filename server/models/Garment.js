@@ -17,6 +17,14 @@ const garmentSchema = new mongoose.Schema({
     default: 'Shirt',
     trim: true
   },
+  imageUrl: {
+    type: String,
+    default: ''
+  },
+  cloudinaryPublicId: {
+    type: String,
+    default: ''
+  },
   pricing: {
     washOnly: {
       type: Number,

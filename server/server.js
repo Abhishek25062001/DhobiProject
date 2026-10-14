@@ -10,6 +10,7 @@ import { seedData } from './utils/seeder.js';
 import authRoutes from './routes/authRoutes.js';
 import catalogRoutes from './routes/catalogRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
+import configRoutes from './routes/configRoutes.js';
 import { sanitizeInput, apiLimiter } from './middleware/securityMiddleware.js';
 import errorHandler from './middleware/errorMiddleware.js';
 
@@ -37,9 +38,9 @@ app.use(cors({
   credentials: true
 }));
 
-// Body parser
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// Body parser with 20mb limit for Base64 image uploads
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // NoSQL Injection input sanitization (strips '$' and '.' operators)
 app.use(sanitizeInput);
@@ -74,6 +75,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/config', configRoutes);
 
 // Production Static Asset Serving
 if (process.env.NODE_ENV === 'production') {

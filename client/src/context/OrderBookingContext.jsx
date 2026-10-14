@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
 import { format, addDays } from 'date-fns';
+import { configService } from '../services/api';
 
 const OrderBookingContext = createContext(null);
 
@@ -62,6 +63,42 @@ export const OrderBookingProvider = ({ children }) => {
     pincode: '',
     contactPhone: ''
   });
+
+  const [platformConfig, setPlatformConfig] = useState({
+    businessName: 'IndoDhobi Laundry & Dry Cleaning Pvt. Ltd.',
+    gstin: '07AABCI1234F1Z5',
+    sacCode: '999712',
+    supportPhone: '+91 98765 43210',
+    freeDeliveryThreshold: 399,
+    deliveryFee: 49,
+    expressSurcharge: 99,
+    gstPercentage: 5,
+    minStandardTurnaroundHours: 24,
+    detergentOptions: [],
+    packagingOptions: [],
+    serviceTypes: [],
+    ironingTiers: []
+  });
+  const [slots, setSlots] = useState([]);
+  const [loadingConfig, setLoadingConfig] = useState(true);
+
+  const fetchPlatformConfig = async () => {
+    try {
+      const res = await configService.getPublicConfig();
+      if (res.success) {
+        if (res.config) setPlatformConfig(res.config);
+        if (res.slots && Array.isArray(res.slots)) setSlots(res.slots);
+      }
+    } catch (err) {
+      console.error('[Platform Config Load Error]:', err);
+    } finally {
+      setLoadingConfig(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPlatformConfig();
+  }, []);
 
   // Cart operations
   const addItem = (garment, serviceType = 'WASH_AND_FOLD', ironingType = 'NONE') => {
@@ -193,7 +230,7 @@ export const OrderBookingProvider = ({ children }) => {
     setAppliedCoupon(null);
   };
 
-  // Live Pricing Calculations
+  // Live Pricing Calculations dynamically derived from PlatformConfig
   const {
     subtotal,
     itemCount,
@@ -205,15 +242,39 @@ export const OrderBookingProvider = ({ children }) => {
     grandTotal,
     amountNeededForFreeDelivery
   } = useMemo(() => {
+    const freeThreshold = platformConfig?.freeDeliveryThreshold !== undefined ? platformConfig.freeDeliveryThreshold : 399;
+    const baseDelivery = platformConfig?.deliveryFee !== undefined ? platformConfig.deliveryFee : 49;
+    const baseExpress = platformConfig?.expressSurcharge !== undefined ? platformConfig.expressSurcharge : 99;
+    const gstRate = (platformConfig?.gstPercentage !== undefined ? platformConfig.gstPercentage : 5) / 100;
+
     const sub = cartItems.reduce((acc, curr) => acc + curr.lineTotal, 0);
     const count = cartItems.reduce((acc, curr) => acc + curr.quantity, 0);
-    const delivery = sub >= 399 ? 0 : sub > 0 ? 49 : 0;
-    const expressFee = isExpress && sub > 0 ? 99 : 0;
+    const delivery = sub >= freeThreshold ? 0 : sub > 0 ? baseDelivery : 0;
+    const expressFee = isExpress && sub > 0 ? baseExpress : 0;
     const discount = appliedCoupon ? Math.min(appliedCoupon.discountAmount, sub) : 0;
-    const taxableBase = Math.max(0, sub - discount) + delivery + expressFee;
-    const tax = Math.round(taxableBase * 0.05);
+
+    let extraPreferenceFee = 0;
+    if (preferences?.detergentType && platformConfig?.detergentOptions) {
+      const selectedDetergent = platformConfig.detergentOptions.find(
+        (d) => d.code === preferences.detergentType || d.name === preferences.detergentType
+      );
+      if (selectedDetergent && selectedDetergent.extraPricePerOrder > 0) {
+        extraPreferenceFee += selectedDetergent.extraPricePerOrder;
+      }
+    }
+    if (preferences?.packagingType && platformConfig?.packagingOptions) {
+      const selectedPackaging = platformConfig.packagingOptions.find(
+        (p) => p.code === preferences.packagingType || p.name === preferences.packagingType
+      );
+      if (selectedPackaging && selectedPackaging.extraPricePerOrder > 0) {
+        extraPreferenceFee += selectedPackaging.extraPricePerOrder;
+      }
+    }
+
+    const taxableBase = Math.max(0, sub - discount) + delivery + expressFee + extraPreferenceFee;
+    const tax = Math.round(taxableBase * gstRate);
     const total = taxableBase + tax;
-    const neededForFree = Math.max(0, 399 - sub);
+    const neededForFree = Math.max(0, freeThreshold - sub);
 
     return {
       subtotal: sub,
@@ -226,7 +287,7 @@ export const OrderBookingProvider = ({ children }) => {
       grandTotal: total,
       amountNeededForFreeDelivery: neededForFree
     };
-  }, [cartItems, isExpress, appliedCoupon]);
+  }, [cartItems, isExpress, appliedCoupon, preferences, platformConfig]);
 
   return (
     <OrderBookingContext.Provider
@@ -261,7 +322,12 @@ export const OrderBookingProvider = ({ children }) => {
         taxAmount,
         grandTotal,
         amountNeededForFreeDelivery,
-        freeDeliveryThreshold: 399
+        freeDeliveryThreshold: platformConfig?.freeDeliveryThreshold !== undefined ? platformConfig.freeDeliveryThreshold : 399,
+        platformConfig,
+        slots,
+        timeSlots: slots,
+        loadingConfig,
+        fetchPlatformConfig
       }}
     >
 

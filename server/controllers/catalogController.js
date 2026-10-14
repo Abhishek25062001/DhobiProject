@@ -1,4 +1,5 @@
 import Garment from '../models/Garment.js';
+import { uploadImageToCloudinary } from '../utils/cloudinary.js';
 
 // @desc    Get all active garments with optional category filter
 // @route   GET /api/catalog/garments
@@ -41,7 +42,7 @@ export const getGarments = async (req, res) => {
 // @access  Private/Admin
 export const createGarment = async (req, res) => {
   try {
-    const { name, category, iconName, pricing, isActive } = req.body;
+    const { name, category, iconName, pricing, isActive, imageUrl, cloudinaryPublicId, imageBase64 } = req.body;
 
     if (!name || !category || !pricing) {
       return res.status(400).json({
@@ -50,10 +51,21 @@ export const createGarment = async (req, res) => {
       });
     }
 
+    let finalImageUrl = imageUrl || '';
+    let finalPublicId = cloudinaryPublicId || '';
+
+    if (imageBase64) {
+      const uploadResult = await uploadImageToCloudinary(imageBase64, 'indodhobi/garments');
+      finalImageUrl = uploadResult.imageUrl;
+      finalPublicId = uploadResult.publicId;
+    }
+
     const garment = await Garment.create({
       name,
       category,
       iconName: iconName || 'Shirt',
+      imageUrl: finalImageUrl,
+      cloudinaryPublicId: finalPublicId,
       pricing,
       isActive: isActive !== undefined ? Boolean(isActive) : true
     });
@@ -78,7 +90,7 @@ export const createGarment = async (req, res) => {
 export const updateGarment = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, category, iconName, pricing, isActive } = req.body;
+    const { name, category, iconName, pricing, isActive, imageUrl, cloudinaryPublicId, imageBase64 } = req.body;
 
     const garment = await Garment.findById(id);
     if (!garment) {
@@ -91,6 +103,16 @@ export const updateGarment = async (req, res) => {
     if (name) garment.name = name;
     if (category) garment.category = category;
     if (iconName) garment.iconName = iconName;
+
+    if (imageBase64) {
+      const uploadResult = await uploadImageToCloudinary(imageBase64, 'indodhobi/garments');
+      garment.imageUrl = uploadResult.imageUrl;
+      garment.cloudinaryPublicId = uploadResult.publicId;
+    } else {
+      if (imageUrl !== undefined) garment.imageUrl = imageUrl;
+      if (cloudinaryPublicId !== undefined) garment.cloudinaryPublicId = cloudinaryPublicId;
+    }
+
     if (pricing) {
       garment.pricing = {
         washOnly: pricing.washOnly !== undefined ? Number(pricing.washOnly) : garment.pricing.washOnly,

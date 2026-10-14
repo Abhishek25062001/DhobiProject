@@ -2,20 +2,22 @@ import Order from '../models/Order.js';
 import Garment from '../models/Garment.js';
 import User from '../models/User.js';
 import Coupon from '../models/Coupon.js';
+import TimeSlot from '../models/TimeSlot.js';
+import PlatformConfig from '../models/PlatformConfig.js';
+import { uploadImageToCloudinary } from '../utils/cloudinary.js';
 import { createRazorpayOrder, verifyRazorpaySignature } from '../utils/razorpay.js';
-
 
 export const MAX_ORDERS_PER_SLOT = 15;
 
 export const STANDARD_SLOTS = [
-  { slot: '08:00 AM - 10:00 AM', maxCapacity: MAX_ORDERS_PER_SLOT, endHour: 10, endMinute: 0 },
-  { slot: '10:00 AM - 01:00 PM', maxCapacity: MAX_ORDERS_PER_SLOT, endHour: 13, endMinute: 0 },
-  { slot: '02:00 PM - 05:00 PM', maxCapacity: MAX_ORDERS_PER_SLOT, endHour: 17, endMinute: 0 },
-  { slot: '06:00 PM - 09:00 PM', maxCapacity: MAX_ORDERS_PER_SLOT, endHour: 21, endMinute: 0 }
+  { slot: '08:00 AM - 10:00 AM', maxCapacity: 15, endHour: 10, endMinute: 0 },
+  { slot: '10:00 AM - 01:00 PM', maxCapacity: 15, endHour: 13, endMinute: 0 },
+  { slot: '02:00 PM - 05:00 PM', maxCapacity: 15, endHour: 17, endMinute: 0 },
+  { slot: '06:00 PM - 09:00 PM', maxCapacity: 15, endHour: 21, endMinute: 0 }
 ];
 
 // Helper to determine if a slot has already passed
-export const isSlotInPast = (dateStr, slotStr) => {
+export const isSlotInPast = async (dateStr, slotStr) => {
   if (!dateStr || !slotStr) return false;
 
   const now = new Date();
@@ -29,11 +31,17 @@ export const isSlotInPast = (dateStr, slotStr) => {
   }
 
   if (dateStr === todayStr) {
-    const slotObj = STANDARD_SLOTS.find((s) => s.slot === slotStr);
-    if (!slotObj) return false;
+    let endHour = 23;
+    const slotDoc = await TimeSlot.findOne({ label: slotStr });
+    if (slotDoc) {
+      endHour = slotDoc.endHour;
+    } else {
+      const fallback = STANDARD_SLOTS.find((s) => s.slot === slotStr);
+      if (fallback) endHour = fallback.endHour;
+    }
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
-    if (currentHour > slotObj.endHour || (currentHour === slotObj.endHour && currentMinute > slotObj.endMinute)) {
+    if (currentHour > endHour || (currentHour === endHour && currentMinute > 0)) {
       return true;
     }
   }
@@ -92,19 +100,49 @@ export const getAvailableSlots = async (req, res) => {
       });
     }
 
+    // Dynamic TimeSlots from MongoDB
+    let activeSlots = await TimeSlot.find({ isActive: true }).sort({ sortOrder: 1, startHour: 1 });
+    if (!activeSlots || activeSlots.length === 0) {
+      activeSlots = await TimeSlot.create([
+        { label: '08:00 AM - 10:00 AM', startHour: 8, endHour: 10, maxCapacity: 15, sortOrder: 1, isActive: true },
+        { label: '10:00 AM - 01:00 PM', startHour: 10, endHour: 13, maxCapacity: 15, sortOrder: 2, isActive: true },
+        { label: '02:00 PM - 05:00 PM', startHour: 14, endHour: 17, maxCapacity: 15, sortOrder: 3, isActive: true },
+        { label: '06:00 PM - 09:00 PM', startHour: 18, endHour: 21, maxCapacity: 15, sortOrder: 4, isActive: true }
+      ]);
+    }
+
     // Count existing pickup bookings for each slot on this date
     const ordersOnDate = await Order.find({
       'pickupSchedule.date': date,
       orderStatus: { $ne: 'CANCELLED' }
     });
 
-    const slotAvailability = STANDARD_SLOTS.map(({ slot, maxCapacity }) => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
+
+    const slotAvailability = activeSlots.map((slotDoc) => {
+      const slot = slotDoc.label;
+      const maxCapacity = slotDoc.maxCapacity;
+
       const bookedCount = ordersOnDate.filter(
         (o) => o.pickupSchedule?.date === date && o.pickupSchedule?.timeSlot === slot
       ).length;
 
       const remaining = Math.max(0, maxCapacity - bookedCount);
-      const isPast = isSlotInPast(date, slot);
+
+      let isPast = false;
+      if (date < todayStr) {
+        isPast = true;
+      } else if (date === todayStr) {
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        if (currentHour > slotDoc.endHour || (currentHour === slotDoc.endHour && currentMinute > 0)) {
+          isPast = true;
+        }
+      }
 
       return {
         slot,
@@ -181,8 +219,9 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // 3. Past Slot & Capacity Checks
-    if (isSlotInPast(pickupSchedule.date, pickupSchedule.timeSlot)) {
+    // 3. Past Slot & Capacity Checks using dynamic TimeSlot
+    const isPast = await isSlotInPast(pickupSchedule.date, pickupSchedule.timeSlot);
+    if (isPast) {
       return res.status(400).json({
         success: false,
         message: 'Selected pickup time slot has already passed. Please choose a future slot.'
@@ -195,8 +234,9 @@ export const createOrder = async (req, res) => {
       orderStatus: { $ne: 'CANCELLED' }
     });
 
-    const slotConfig = STANDARD_SLOTS.find((s) => s.slot === pickupSchedule.timeSlot) || { maxCapacity: MAX_ORDERS_PER_SLOT };
-    const remaining = slotConfig.maxCapacity - currentBookedCount;
+    const slotDoc = await TimeSlot.findOne({ label: pickupSchedule.timeSlot, isActive: true });
+    const slotCapacity = slotDoc ? slotDoc.maxCapacity : MAX_ORDERS_PER_SLOT;
+    const remaining = slotCapacity - currentBookedCount;
 
     if (remaining <= 0) {
       return res.status(400).json({
@@ -239,9 +279,28 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // 5. Express Surcharge & Coupon Calculation
+    // 5. Dynamic Surcharge, Preferences & Coupon Calculation from PlatformConfig
+    const platformConfig = await PlatformConfig.getOrCreateActiveConfig();
     const expressOrder = Boolean(isExpress);
-    const expressSurcharge = expressOrder ? 99 : 0;
+    const expressSurcharge = expressOrder ? (platformConfig.expressSurcharge ?? 99) : 0;
+
+    let extraPreferenceFee = 0;
+    if (preferences?.detergentType && platformConfig.detergentOptions) {
+      const selectedDetergent = platformConfig.detergentOptions.find(
+        (d) => d.code === preferences.detergentType || d.name === preferences.detergentType
+      );
+      if (selectedDetergent && selectedDetergent.extraPricePerOrder > 0) {
+        extraPreferenceFee += selectedDetergent.extraPricePerOrder;
+      }
+    }
+    if (preferences?.packagingType && platformConfig.packagingOptions) {
+      const selectedPackaging = platformConfig.packagingOptions.find(
+        (p) => p.code === preferences.packagingType || p.name === preferences.packagingType
+      );
+      if (selectedPackaging && selectedPackaging.extraPricePerOrder > 0) {
+        extraPreferenceFee += selectedPackaging.extraPricePerOrder;
+      }
+    }
 
     let discountAmount = 0;
     let appliedCouponCode = null;
@@ -277,10 +336,13 @@ export const createOrder = async (req, res) => {
       appliedCouponCode = coupon.code;
     }
 
-    // Delivery fee & Tax calculation (Free delivery >= ₹399, otherwise ₹49; 5% GST on taxable base)
-    const pickupDeliveryFee = subtotal >= 399 ? 0 : 49;
-    const taxableBase = Math.max(0, subtotal - discountAmount) + pickupDeliveryFee + expressSurcharge;
-    const taxAmount = Math.round(taxableBase * 0.05); // 5% GST rounded
+    // Dynamic Delivery fee & Tax calculation from PlatformConfig
+    const freeThreshold = platformConfig.freeDeliveryThreshold !== undefined ? platformConfig.freeDeliveryThreshold : 399;
+    const baseDeliveryFee = platformConfig.deliveryFee !== undefined ? platformConfig.deliveryFee : 49;
+    const pickupDeliveryFee = subtotal >= freeThreshold ? 0 : baseDeliveryFee;
+    const taxableBase = Math.max(0, subtotal - discountAmount) + pickupDeliveryFee + expressSurcharge + extraPreferenceFee;
+    const gstRate = (platformConfig.gstPercentage !== undefined ? platformConfig.gstPercentage : 5) / 100;
+    const taxAmount = Math.round(taxableBase * gstRate);
     const grandTotal = taxableBase + taxAmount;
 
     // 6. Generate unique Indian Order ID
@@ -900,7 +962,7 @@ export const getRiderTasks = async (req, res) => {
 // @access  Private (Rider & Admin)
 export const verifyPickup = async (req, res) => {
   try {
-    const { otp, bagTagId, inspectionNotes, verifiedGarmentCount } = req.body;
+    const { otp, bagTagId, inspectionNotes, verifiedGarmentCount, inspectionPhotos } = req.body;
     const order = await Order.findById(req.params.id);
 
     if (!order) {
@@ -932,6 +994,32 @@ export const verifyPickup = async (req, res) => {
     order.logistics.inspectionNotes = inspectionNotes ? String(inspectionNotes).trim() : '';
     order.logistics.verifiedGarmentCount = countNumber;
     order.logistics.pickedUpAt = new Date();
+
+    // Process inspection photos (Cloudinary Base64 or URL payloads)
+    if (inspectionPhotos && Array.isArray(inspectionPhotos) && inspectionPhotos.length > 0) {
+      const processedPhotos = [];
+      for (const item of inspectionPhotos) {
+        if (typeof item === 'string') {
+          if (item.startsWith('data:') || item.length > 300) {
+            const uploadRes = await uploadImageToCloudinary(item, 'indodhobi/inspections');
+            processedPhotos.push({ url: uploadRes.imageUrl, publicId: uploadRes.publicId, uploadedAt: new Date() });
+          } else {
+            processedPhotos.push({ url: item, publicId: '', uploadedAt: new Date() });
+          }
+        } else if (item && typeof item === 'object') {
+          if (item.imageBase64 || item.base64) {
+            const uploadRes = await uploadImageToCloudinary(item.imageBase64 || item.base64, 'indodhobi/inspections');
+            processedPhotos.push({ url: uploadRes.imageUrl, publicId: uploadRes.publicId, uploadedAt: new Date() });
+          } else if (item.url) {
+            processedPhotos.push({ url: item.url, publicId: item.publicId || '', uploadedAt: item.uploadedAt || new Date() });
+          }
+        }
+      }
+      if (!order.logistics.inspectionPhotos) {
+        order.logistics.inspectionPhotos = [];
+      }
+      order.logistics.inspectionPhotos.push(...processedPhotos);
+    }
 
     if (!order.logistics.assignedRider && req.user.role === 'rider') {
       order.logistics.assignedRider = req.user._id;

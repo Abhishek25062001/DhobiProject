@@ -187,5 +187,31 @@ export const orderService = {
   },
 };
 
+export const configService = {
+  getPublicConfig: async () => {
+    const res = await API.get('/config/public');
+    return res.data;
+  },
+  updateSettings: async (settingsData) => {
+    const res = await API.put('/config/settings', settingsData);
+    return res.data;
+  },
+  getAllSlots: async () => {
+    const res = await API.get('/config/slots/all');
+    return res.data;
+  },
+  createSlot: async (slotData) => {
+    const res = await API.post('/config/slots', slotData);
+    return res.data;
+  },
+  updateSlot: async (id, slotData) => {
+    const res = await API.put(`/config/slots/${id}`, slotData);
+    return res.data;
+  },
+  uploadImage: async (imagePayload, folder = 'indodhobi') => {
+    const res = await API.post('/config/upload-image', { image: imagePayload, folder });
+    return res.data;
+  }
+};
 
 export default API;

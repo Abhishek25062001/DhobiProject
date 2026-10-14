@@ -57,13 +57,13 @@ const orderSchema = new mongoose.Schema({
   preferences: {
     detergentType: {
       type: String,
-      enum: ['Standard', 'Hypoallergenic', 'Fabric Softener Plus'],
-      default: 'Standard'
+      default: 'Standard',
+      trim: true
     },
     packagingType: {
       type: String,
-      enum: ['Folded', 'On Hangers'],
-      default: 'Folded'
+      default: 'Folded',
+      trim: true
     },
     specialInstructions: {
       type: String,
@@ -78,13 +78,8 @@ const orderSchema = new mongoose.Schema({
     },
     timeSlot: {
       type: String,
-      enum: [
-        '08:00 AM - 10:00 AM',
-        '10:00 AM - 01:00 PM',
-        '02:00 PM - 05:00 PM',
-        '06:00 PM - 09:00 PM'
-      ],
-      required: true
+      required: true,
+      trim: true
     }
   },
   deliverySchedule: {
@@ -94,13 +89,8 @@ const orderSchema = new mongoose.Schema({
     },
     timeSlot: {
       type: String,
-      enum: [
-        '08:00 AM - 10:00 AM',
-        '10:00 AM - 01:00 PM',
-        '02:00 PM - 05:00 PM',
-        '06:00 PM - 09:00 PM'
-      ],
-      required: true
+      required: true,
+      trim: true
     }
   },
   pickupAddress: {
@@ -204,6 +194,13 @@ const orderSchema = new mongoose.Schema({
       trim: true,
       default: ''
     },
+    inspectionPhotos: [
+      {
+        url: { type: String, required: true },
+        publicId: { type: String, default: '' },
+        uploadedAt: { type: Date, default: Date.now }
+      }
+    ],
     verifiedGarmentCount: {
       type: Number,
       default: 0

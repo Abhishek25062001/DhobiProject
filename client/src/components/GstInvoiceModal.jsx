@@ -1,8 +1,23 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Printer, X, CheckCircle2, ShieldCheck, Shirt, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
+import { configService } from '../services/api';
 
-const GstInvoiceModal = ({ order, isOpen, onClose }) => {
+const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
+  const [activeConfig, setActiveConfig] = useState(platformConfig || null);
+
+  useEffect(() => {
+    if (!platformConfig) {
+      configService.getPublicConfig().then((res) => {
+        if (res.success && res.config) {
+          setActiveConfig(res.config);
+        }
+      }).catch(() => {});
+    } else {
+      setActiveConfig(platformConfig);
+    }
+  }, [platformConfig]);
+
   if (!isOpen || !order) return null;
 
   const handlePrint = () => {
@@ -19,7 +34,13 @@ const GstInvoiceModal = ({ order, isOpen, onClose }) => {
     grandTotal: 0
   };
 
-  // 5% GST split: 2.5% CGST + 2.5% SGST
+  const businessName = activeConfig?.businessName || 'IndoDhobi Laundry & Dry Cleaning Pvt. Ltd.';
+  const gstin = activeConfig?.gstin || '07AABCI1234F1Z5';
+  const sacCode = activeConfig?.sacCode || '999712';
+  const gstPercentage = activeConfig?.gstPercentage !== undefined ? activeConfig.gstPercentage : 5;
+  const halfGst = (gstPercentage / 2).toFixed(1).replace(/\.0$/, '');
+
+  // GST split: CGST + SGST dynamically based on activeConfig.gstPercentage
   const cgstAmount = (pb.taxAmount / 2).toFixed(2);
   const sgstAmount = (pb.taxAmount / 2).toFixed(2);
 
@@ -75,12 +96,12 @@ const GstInvoiceModal = ({ order, isOpen, onClose }) => {
                   Indo<span className="text-primary-600">Dhobi</span>
                 </h1>
               </div>
-              <p className="font-semibold text-slate-700">IndoDhobi Laundry &amp; Dry Cleaning Pvt. Ltd.</p>
+              <p className="font-semibold text-slate-700">{businessName}</p>
               <p className="text-slate-500">Plot 42, Central Processing Hub, Okhla Phase III</p>
               <p className="text-slate-500">New Delhi - 110020, India</p>
               <div className="mt-2 space-y-0.5 text-[11px] font-mono text-slate-600">
-                <p><strong>GSTIN:</strong> 07AABCI1234F1Z5</p>
-                <p><strong>SAC Code:</strong> 999712 (Laundry &amp; Cleaning Services)</p>
+                <p><strong>GSTIN:</strong> {gstin}</p>
+                <p><strong>SAC Code:</strong> {sacCode} (Laundry &amp; Cleaning Services)</p>
               </div>
             </div>
 
@@ -253,11 +274,11 @@ const GstInvoiceModal = ({ order, isOpen, onClose }) => {
 
               <div className="border-t border-slate-200 my-1 pt-1 space-y-1">
                 <div className="flex justify-between text-[11px] text-slate-500">
-                  <span>Central GST (CGST @ 2.5%):</span>
+                  <span>Central GST (CGST @ {halfGst}%):</span>
                   <span className="font-mono">₹{cgstAmount}</span>
                 </div>
                 <div className="flex justify-between text-[11px] text-slate-500">
-                  <span>State GST (SGST @ 2.5%):</span>
+                  <span>State GST (SGST @ {halfGst}%):</span>
                   <span className="font-mono">₹{sgstAmount}</span>
                 </div>
               </div>

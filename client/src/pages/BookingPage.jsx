@@ -59,13 +59,6 @@ const getGarmentIcon = (iconName) => {
   return <IconComponent className="w-5 h-5 text-primary-600" />;
 };
 
-const TIME_SLOTS = [
-  '08:00 AM - 10:00 AM',
-  '10:00 AM - 01:00 PM',
-  '02:00 PM - 05:00 PM',
-  '06:00 PM - 09:00 PM'
-];
-
 const BookingPage = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, addAddress } = useAuth();
@@ -98,7 +91,10 @@ const BookingPage = () => {
     couponCode,
     taxAmount,
     grandTotal,
-    amountNeededForFreeDelivery
+    amountNeededForFreeDelivery,
+    platformConfig,
+    freeDeliveryThreshold,
+    slots
   } = useOrderBooking();
 
   const [activeStep, setActiveStep] = useState(1);
@@ -265,6 +261,22 @@ const BookingPage = () => {
 
     fetchSlots();
   }, [pickupSchedule.date]);
+
+  const availableSlotsList = React.useMemo(() => {
+    if (slots && slots.length > 0) {
+      return slots.filter((s) => s.isActive !== false).map((s) => s.label);
+    }
+    const fromCapacities = Object.keys(slotCapacities);
+    if (fromCapacities.length > 0) {
+      return fromCapacities;
+    }
+    return [
+      '08:00 AM - 10:00 AM',
+      '10:00 AM - 01:00 PM',
+      '02:00 PM - 05:00 PM',
+      '06:00 PM - 09:00 PM'
+    ];
+  }, [slots, slotCapacities]);
 
   // Validation before advancing to next step
   const handleNextStep = () => {
@@ -509,8 +521,26 @@ const BookingPage = () => {
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-2xl bg-primary-50 flex items-center justify-center shrink-0">
-                              {getGarmentIcon(garment.iconName)}
+                            <div className="w-12 h-12 rounded-2xl bg-primary-50 flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 relative">
+                              {garment.imageUrl ? (
+                                <>
+                                  <img
+                                    src={garment.imageUrl}
+                                    alt={garment.name}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                      const fallback = e.currentTarget.nextElementSibling;
+                                      if (fallback) fallback.style.display = 'flex';
+                                    }}
+                                  />
+                                  <div style={{ display: 'none' }} className="w-full h-full items-center justify-center">
+                                    {getGarmentIcon(garment.iconName)}
+                                  </div>
+                                </>
+                              ) : (
+                                getGarmentIcon(garment.iconName)
+                              )}
                             </div>
                             <div>
                               <h3 className="text-sm font-bold text-slate-900">{garment.name}</h3>
@@ -653,27 +683,35 @@ const BookingPage = () => {
                   1. Detergent Selection:
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {[
-                    { id: 'Standard', name: 'Standard Gentle', desc: 'Mild German liquid detergent for daily wear.' },
-                    { id: 'Hypoallergenic', name: 'Hypoallergenic Baby-Safe', desc: 'Dermatologist-tested, zero fragrance or allergens.' },
-                    { id: 'Fabric Softener Plus', name: 'Fabric Softener Plus', desc: 'Enriched with natural botanical softening conditioners.' }
-                  ].map((d) => (
+                  {(platformConfig?.detergentOptions?.filter((d) => d.isActive !== false)?.length
+                    ? platformConfig.detergentOptions.filter((d) => d.isActive !== false)
+                    : [
+                        { code: 'Standard', name: 'Standard Gentle', description: 'Mild German liquid detergent for daily wear.', extraPricePerOrder: 0 },
+                        { code: 'Hypoallergenic', name: 'Hypoallergenic Baby-Safe', description: 'Dermatologist-tested, zero fragrance or allergens.', extraPricePerOrder: 0 },
+                        { code: 'Fabric Softener Plus', name: 'Fabric Softener Plus', description: 'Enriched with natural botanical softening conditioners.', extraPricePerOrder: 0 }
+                      ]
+                  ).map((d) => (
                     <div
-                      key={d.id}
-                      onClick={() => setPreferences({ ...preferences, detergentType: d.id })}
+                      key={d.code}
+                      onClick={() => setPreferences({ ...preferences, detergentType: d.code })}
                       className={`p-4 rounded-2xl border cursor-pointer transition-all ${
-                        preferences.detergentType === d.id
+                        preferences.detergentType === d.code
                           ? 'border-primary-600 bg-primary-50/70 shadow-xs ring-1 ring-primary-500'
                           : 'border-slate-200 hover:border-slate-300 bg-white'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-bold text-xs text-slate-900">{d.name}</span>
-                        {preferences.detergentType === d.id && (
+                        {preferences.detergentType === d.code && (
                           <CheckCircle2 className="w-4 h-4 text-primary-600" />
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-500">{d.desc}</p>
+                      <p className="text-[11px] text-slate-500">{d.description}</p>
+                      {d.extraPricePerOrder > 0 && (
+                        <span className="inline-block mt-1.5 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60">
+                          +₹{d.extraPricePerOrder}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -685,26 +723,34 @@ const BookingPage = () => {
                   2. Packaging Preference:
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[
-                    { id: 'Folded', title: 'Neatly Folded in Eco-Bags', desc: 'Protected in breathable, biodegradable paper totes for your wardrobe shelves.' },
-                    { id: 'On Hangers', title: 'Crisp on Hangers', desc: 'Ready-to-hang wooden / wire hangers wrapped in dust covers (ideal for suits & sarees).' }
-                  ].map((p) => (
+                  {(platformConfig?.packagingOptions?.filter((p) => p.isActive !== false)?.length
+                    ? platformConfig.packagingOptions.filter((p) => p.isActive !== false)
+                    : [
+                        { code: 'Folded', name: 'Neatly Folded in Eco-Bags', description: 'Protected in breathable, biodegradable paper totes for your wardrobe shelves.', extraPricePerOrder: 0 },
+                        { code: 'On Hangers', name: 'Crisp on Hangers', description: 'Ready-to-hang wooden / wire hangers wrapped in dust covers (ideal for suits & sarees).', extraPricePerOrder: 0 }
+                      ]
+                  ).map((p) => (
                     <div
-                      key={p.id}
-                      onClick={() => setPreferences({ ...preferences, packagingType: p.id })}
+                      key={p.code}
+                      onClick={() => setPreferences({ ...preferences, packagingType: p.code })}
                       className={`p-4 rounded-2xl border cursor-pointer transition-all ${
-                        preferences.packagingType === p.id
+                        preferences.packagingType === p.code
                           ? 'border-primary-600 bg-primary-50/70 shadow-xs ring-1 ring-primary-500'
                           : 'border-slate-200 hover:border-slate-300 bg-white'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-xs text-slate-900">{p.title}</span>
-                        {preferences.packagingType === p.id && (
+                        <span className="font-bold text-xs text-slate-900">{p.name}</span>
+                        {preferences.packagingType === p.code && (
                           <CheckCircle2 className="w-4 h-4 text-primary-600" />
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-500">{p.desc}</p>
+                      <p className="text-[11px] text-slate-500">{p.description}</p>
+                      {p.extraPricePerOrder > 0 && (
+                        <span className="inline-block mt-1.5 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60">
+                          +₹{p.extraPricePerOrder}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -747,7 +793,7 @@ const BookingPage = () => {
                           Express 24-Hour Turnaround
                         </span>
                         <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-black uppercase tracking-wider">
-                          +₹99 Express
+                          +₹{platformConfig?.expressSurcharge ?? 99} Express
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-0.5">
@@ -762,7 +808,7 @@ const BookingPage = () => {
                       const next = !isExpress;
                       setIsExpress(next);
                       if (next) {
-                        toast('⚡ Express 24-Hour delivery enabled (+₹99)', { icon: '⚡' });
+                        toast(`⚡ Express 24-Hour delivery enabled (+₹${platformConfig?.expressSurcharge ?? 99})`, { icon: '⚡' });
                         if (pickupSchedule.date) {
                           const nextDay = format(addDays(new Date(pickupSchedule.date), 1), 'yyyy-MM-dd');
                           setDeliverySchedule((prev) => ({ ...prev, date: nextDay }));
@@ -846,7 +892,7 @@ const BookingPage = () => {
                         Pickup Time Slot
                       </label>
                       <div className="grid grid-cols-2 gap-1.5">
-                        {TIME_SLOTS.map((slot) => {
+                        {availableSlotsList.map((slot) => {
                           const slotInfo = slotCapacities[slot];
                           const remaining = slotInfo ? slotInfo.remaining : 15;
                           const isUnavailable = slotInfo ? !slotInfo.isAvailable : false;
@@ -903,7 +949,7 @@ const BookingPage = () => {
                         Delivery Time Slot
                       </label>
                       <div className="grid grid-cols-2 gap-1.5">
-                        {TIME_SLOTS.map((slot) => (
+                        {availableSlotsList.map((slot) => (
                           <button
                             key={slot}
                             type="button"
@@ -1248,12 +1294,12 @@ const BookingPage = () => {
                 <div>
                   <div className="flex justify-between font-semibold text-teal-900 mb-1">
                     <span>Add ₹{amountNeededForFreeDelivery} more for FREE Delivery!</span>
-                    <span>Threshold: ₹399</span>
+                    <span>Threshold: ₹{freeDeliveryThreshold}</span>
                   </div>
                   <div className="w-full bg-teal-200 h-2 rounded-full overflow-hidden">
                     <div
                       className="bg-teal-600 h-full transition-all duration-300"
-                      style={{ width: `${Math.min(100, (subtotal / 399) * 100)}%` }}
+                      style={{ width: `${Math.min(100, (subtotal / (freeDeliveryThreshold || 399)) * 100)}%` }}
                     />
                   </div>
                 </div>
