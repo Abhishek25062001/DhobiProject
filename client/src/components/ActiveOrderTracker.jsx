@@ -332,8 +332,8 @@ const ActiveOrderTracker = () => {
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-base font-black tracking-widest text-white px-2.5 py-0.5 rounded-lg bg-black/40 border border-white/10">
                     {showDeliveryOtp
-                      ? currentOrder.verificationCodes?.deliveryOtp || '----'
-                      : currentOrder.verificationCodes?.pickupOtp || '----'}
+                      ? currentOrder.verificationCodes?.deliveryOtp || currentOrder.deliveryOtp || '----'
+                      : currentOrder.verificationCodes?.pickupOtp || currentOrder.pickupOtp || '----'}
                   </span>
                   <span className="text-[10px] text-slate-300 leading-tight">
                     Share with rider at doorstep

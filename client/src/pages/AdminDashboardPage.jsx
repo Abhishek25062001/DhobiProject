@@ -2428,13 +2428,13 @@ const AdminDashboardPage = () => {
                     {inspectOrder.logistics.inspectionPhotos.map((photo, pIdx) => (
                       <a
                         key={pIdx}
-                        href={photo.url}
+                        href={photo?.url || photo?.imageUrl || photo}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="block aspect-square rounded-xl overflow-hidden border border-slate-200 group relative hover:opacity-90 transition-opacity bg-slate-100 shadow-xs"
                       >
                         <img
-                          src={photo.url}
+                          src={photo?.url || photo?.imageUrl || photo}
                           alt={`Inspection Photo ${pIdx + 1}`}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                         />

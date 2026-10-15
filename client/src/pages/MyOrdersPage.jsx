@@ -305,7 +305,7 @@ const MyOrdersPage = () => {
                   <div className="border-t border-slate-100 p-6 bg-slate-50/50 space-y-6">
                     
                     {/* Doorstep OTP Verification Banners */}
-                    {['BOOKED', 'PICKUP_ASSIGNED'].includes(order.orderStatus) && order.verificationCodes?.pickupOtp && (
+                    {['BOOKED', 'ORDER_PLACED', 'CONFIRMED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'OUT_FOR_PICKUP'].includes(order.orderStatus) && (order.verificationCodes?.pickupOtp || order.pickupOtp) && (
                       <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-300 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
@@ -321,12 +321,12 @@ const MyOrdersPage = () => {
                           </div>
                         </div>
                         <div className="px-4 py-2 rounded-xl bg-white border-2 border-amber-400 text-center font-mono font-black text-xl text-amber-950 shadow-xs tracking-widest shrink-0">
-                          {order.verificationCodes.pickupOtp}
+                          {order.verificationCodes?.pickupOtp || order.pickupOtp}
                         </div>
                       </div>
                     )}
 
-                    {order.orderStatus === 'OUT_FOR_DELIVERY' && order.verificationCodes?.deliveryOtp && (
+                    {['OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(order.orderStatus) && (order.verificationCodes?.deliveryOtp || order.deliveryOtp) && (
                       <div className="p-4 rounded-2xl bg-teal-500/10 border border-teal-300 text-teal-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0">
@@ -342,7 +342,7 @@ const MyOrdersPage = () => {
                           </div>
                         </div>
                         <div className="px-4 py-2 rounded-xl bg-white border-2 border-teal-500 text-center font-mono font-black text-xl text-teal-950 shadow-xs tracking-widest shrink-0">
-                          {order.verificationCodes.deliveryOtp}
+                          {order.verificationCodes?.deliveryOtp || order.deliveryOtp}
                         </div>
                       </div>
                     )}
@@ -490,13 +490,13 @@ const MyOrdersPage = () => {
                                 {order.logistics.inspectionPhotos.map((photo, pIdx) => (
                                   <a
                                     key={pIdx}
-                                    href={photo.url}
+                                    href={photo?.url || photo?.imageUrl || photo}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="block aspect-square rounded-xl overflow-hidden border border-slate-200 group relative hover:opacity-90 transition-opacity bg-slate-50"
                                   >
                                     <img
-                                      src={photo.url}
+                                      src={photo?.url || photo?.imageUrl || photo}
                                       alt={`Inspection Photo ${pIdx + 1}`}
                                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                                     />

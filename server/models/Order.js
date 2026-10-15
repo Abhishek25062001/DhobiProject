@@ -203,6 +203,7 @@ const orderSchema = new mongoose.Schema({
     inspectionPhotos: [
       {
         url: { type: String, required: true },
+        imageUrl: { type: String },
         publicId: { type: String, default: '' },
         uploadedAt: { type: Date, default: Date.now }
       }
@@ -245,11 +246,32 @@ const orderSchema = new mongoose.Schema({
     }
   ]
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
 
-// Pre-validate hook to guarantee clean COD payments
+// Mirror virtual getters so order.pickupOtp and order.deliveryOtp work seamlessly
+orderSchema.virtual('pickupOtp').get(function () {
+  return this.verificationCodes?.pickupOtp;
+});
+
+orderSchema.virtual('deliveryOtp').get(function () {
+  return this.verificationCodes?.deliveryOtp;
+});
+
+// Pre-validate hook to guarantee 4-digit OTPs and clean COD payments
 orderSchema.pre('validate', function (next) {
+  if (!this.verificationCodes) {
+    this.verificationCodes = {};
+  }
+  if (!this.verificationCodes.pickupOtp) {
+    this.verificationCodes.pickupOtp = String(Math.floor(1000 + Math.random() * 9000));
+  }
+  if (!this.verificationCodes.deliveryOtp) {
+    this.verificationCodes.deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
+  }
+
   if (this.payment) {
     if (this.payment.method === 'COD') {
       if (!this.payment.onlineSubMethod || (this.payment.status !== 'PAID' && !['UPI', 'CARD'].includes(this.payment.onlineSubMethod))) {
@@ -262,6 +284,38 @@ orderSchema.pre('validate', function (next) {
   }
   next();
 });
+
+// Static helper to backfill missing OTPs on existing database orders
+orderSchema.statics.backfillMissingOtps = async function () {
+  try {
+    const ordersToBackfill = await this.find({
+      $or: [
+        { 'verificationCodes.pickupOtp': { $exists: false } },
+        { 'verificationCodes.pickupOtp': null },
+        { 'verificationCodes.pickupOtp': '' },
+        { 'verificationCodes.deliveryOtp': { $exists: false } },
+        { 'verificationCodes.deliveryOtp': null },
+        { 'verificationCodes.deliveryOtp': '' }
+      ]
+    });
+
+    if (ordersToBackfill.length > 0) {
+      for (const ord of ordersToBackfill) {
+        if (!ord.verificationCodes) ord.verificationCodes = {};
+        if (!ord.verificationCodes.pickupOtp) {
+          ord.verificationCodes.pickupOtp = String(Math.floor(1000 + Math.random() * 9000));
+        }
+        if (!ord.verificationCodes.deliveryOtp) {
+          ord.verificationCodes.deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
+        }
+        await ord.save();
+      }
+      console.log(`[Order Model]: Backfilled OTPs for ${ordersToBackfill.length} legacy orders.`);
+    }
+  } catch (err) {
+    console.error('[Order Model]: Error backfilling legacy OTPs:', err.message);
+  }
+};
 
 // Production Compound Indexes
 orderSchema.index({ customer: 1, createdAt: -1 });

@@ -115,17 +115,31 @@ const Navbar = () => {
                   className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900 text-sm font-medium transition-colors"
                   title="View your profile & account"
                 >
-                  {user?.profileImage?.url ? (
-                    <img
-                      src={user.profileImage.url}
-                      alt={user?.name || 'User'}
-                      className="w-7 h-7 rounded-lg object-cover border border-slate-200"
-                    />
-                  ) : (
-                    <div className="w-7 h-7 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs">
-                      {user?.name?.charAt(0) || 'U'}
-                    </div>
-                  )}
+                  {(() => {
+                    const avatarSrc = user?.profileImage?.url || user?.profileImage?.imageUrl || (typeof user?.profileImage === 'string' ? user.profileImage : '');
+                    return (
+                      <div className="relative w-7 h-7 shrink-0 flex items-center justify-center">
+                        {avatarSrc ? (
+                          <img
+                            src={avatarSrc}
+                            alt={user?.name || 'User'}
+                            className="w-7 h-7 rounded-lg object-cover border border-slate-200"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              const fallback = e.currentTarget.parentElement?.querySelector('.navbar-avatar-fallback');
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                        ) : null}
+                        <div
+                          className="navbar-avatar-fallback w-7 h-7 rounded-lg bg-primary-100 text-primary-700 items-center justify-center font-bold text-xs"
+                          style={{ display: avatarSrc ? 'none' : 'flex' }}
+                        >
+                          {user?.name?.charAt(0) || 'U'}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <span className="max-w-[100px] truncate">{user?.name?.split(' ')[0]}</span>
                   {user?.role === 'admin' && (
                     <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
@@ -222,17 +236,31 @@ const Navbar = () => {
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
                 >
-                  {user?.profileImage?.url ? (
-                    <img
-                      src={user.profileImage.url}
-                      alt={user?.name || 'User'}
-                      className="w-9 h-9 rounded-xl object-cover border border-slate-200"
-                    />
-                  ) : (
-                    <div className="w-9 h-9 rounded-xl bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-sm">
-                      {user?.name?.charAt(0) || 'U'}
-                    </div>
-                  )}
+                  {(() => {
+                    const avatarSrc = user?.profileImage?.url || user?.profileImage?.imageUrl || (typeof user?.profileImage === 'string' ? user.profileImage : '');
+                    return (
+                      <div className="relative w-9 h-9 shrink-0 flex items-center justify-center">
+                        {avatarSrc ? (
+                          <img
+                            src={avatarSrc}
+                            alt={user?.name || 'User'}
+                            className="w-9 h-9 rounded-xl object-cover border border-slate-200"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              const fallback = e.currentTarget.parentElement?.querySelector('.navbar-mobile-avatar-fallback');
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                        ) : null}
+                        <div
+                          className="navbar-mobile-avatar-fallback w-9 h-9 rounded-xl bg-primary-100 text-primary-700 items-center justify-center font-bold text-sm"
+                          style={{ display: avatarSrc ? 'none' : 'flex' }}
+                        >
+                          {user?.name?.charAt(0) || 'U'}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div>
                     <p className="font-semibold text-slate-900 text-sm">{user?.name}</p>
                     <p className="text-xs text-slate-500">{user?.email || user?.phone}</p>

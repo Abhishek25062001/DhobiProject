@@ -520,15 +520,27 @@ const RiderDashboardPage = () => {
                 </div>
 
                 {/* Bottom Action Buttons */}
-                <div className="pt-3 border-t border-slate-100 flex items-center gap-2">
+                <div className="pt-3 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  {task.orderStatus === 'BOOKED' && !task.logistics?.assignedRider && (
+                    <button
+                      type="button"
+                      onClick={() => handleAcceptOrder(task._id)}
+                      disabled={actionLoading}
+                      className="w-full lg:w-auto py-2.5 px-4 rounded-xl font-bold text-xs bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Accept Order</span>
+                    </button>
+                  )}
+
                   {isPickup && (
                     <button
                       type="button"
                       onClick={() => openPickupModal(task)}
-                      className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                      className="w-full lg:w-auto py-2.5 px-4 rounded-xl font-bold text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 flex items-center justify-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer"
                     >
                       <Tag className="w-3.5 h-3.5" />
-                      <span>Verify Doorstep Pickup &amp; Bag Tag</span>
+                      <span>Verify Pickup &amp; Bag Tag</span>
                     </button>
                   )}
 
@@ -537,10 +549,10 @@ const RiderDashboardPage = () => {
                       type="button"
                       onClick={() => handleMarkOutForDelivery(task._id)}
                       disabled={actionLoading}
-                      className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                      className="w-full lg:w-auto py-2.5 px-4 rounded-xl font-bold text-xs bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer"
                     >
                       <Truck className="w-3.5 h-3.5" />
-                      <span>Dispatch (Mark Out for Delivery)</span>
+                      <span>Mark Out for Delivery</span>
                     </button>
                   )}
 
@@ -548,15 +560,15 @@ const RiderDashboardPage = () => {
                     <button
                       type="button"
                       onClick={() => openDeliveryModal(task)}
-                      className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                      className="w-full lg:w-auto py-2.5 px-4 rounded-xl font-bold text-xs bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Verify Doorstep Delivery (Enter OTP)</span>
+                      <span>Verify Delivery &amp; Collect OTP</span>
                     </button>
                   )}
 
                   {isDelivered && (
-                    <div className="w-full py-2 rounded-xl bg-emerald-50 text-emerald-800 font-bold text-xs flex items-center justify-center gap-1.5 border border-emerald-200">
+                    <div className="w-full lg:w-auto py-2 px-3 rounded-xl bg-emerald-50 text-emerald-800 font-bold text-xs flex items-center justify-center gap-1.5 border border-emerald-200 shrink-0">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                       <span>Delivered Successfully</span>
                     </div>
@@ -571,9 +583,10 @@ const RiderDashboardPage = () => {
 
       {/* MODAL: VERIFY DOORSTEP PICKUP */}
       {pickupModalOrder && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 space-y-5 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden my-auto animate-in fade-in duration-200">
+            {/* Header (shrink-0) */}
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-xl bg-amber-100 text-amber-700">
                   <Tag className="w-5 h-5" />
@@ -586,14 +599,17 @@ const RiderDashboardPage = () => {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setPickupModalOrder(null)}
-                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600"
+                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer transition-colors"
+                title="Close modal"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleVerifyPickup} className="space-y-4 text-xs">
+            {/* Scrollable Form Body (flex-1 overflow-y-auto px-5 py-4 space-y-4) */}
+            <form id="pickup-form" onSubmit={handleVerifyPickup} className="flex-1 overflow-y-auto px-5 py-4 space-y-4 text-xs">
               
               {/* Pickup OTP */}
               <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 space-y-1">
@@ -692,7 +708,7 @@ const RiderDashboardPage = () => {
                   <div className="grid grid-cols-3 gap-2 pt-1">
                     {stainPhotos.map((photo, pIdx) => (
                       <div key={pIdx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 group bg-white shadow-xs">
-                        <img src={photo.url} alt={`Stain ${pIdx + 1}`} className="w-full h-full object-cover" />
+                        <img src={photo?.url || photo?.imageUrl || photo} alt={`Stain ${pIdx + 1}`} className="w-full h-full object-cover" />
                         <button
                           type="button"
                           onClick={() => handleRemoveStainPhoto(pIdx)}
@@ -706,35 +722,38 @@ const RiderDashboardPage = () => {
                   </div>
                 )}
               </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setPickupModalOrder(null)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold flex items-center gap-1.5 shadow-sm"
-                >
-                  {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                  <span>Verify &amp; Seal Laundry Bag</span>
-                </button>
-              </div>
-
             </form>
+
+            {/* Footer (shrink-0) */}
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setPickupModalOrder(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="pickup-form"
+                disabled={actionLoading}
+                className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors disabled:opacity-50"
+              >
+                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                <span>Verify &amp; Seal Laundry Bag</span>
+              </button>
+            </div>
+
           </div>
         </div>
       )}
 
       {/* MODAL: VERIFY DOORSTEP DELIVERY */}
       {deliveryModalOrder && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 space-y-5 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden my-auto animate-in fade-in duration-200">
+            {/* Header (shrink-0) */}
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-xl bg-teal-100 text-teal-700">
                   <CheckCircle2 className="w-5 h-5" />
@@ -747,14 +766,17 @@ const RiderDashboardPage = () => {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setDeliveryModalOrder(null)}
-                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600"
+                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer transition-colors"
+                title="Close modal"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleVerifyDelivery} className="space-y-4 text-xs">
+            {/* Scrollable Form Body (flex-1 overflow-y-auto px-5 py-4 space-y-4) */}
+            <form id="delivery-form" onSubmit={handleVerifyDelivery} className="flex-1 overflow-y-auto px-5 py-4 space-y-4 text-xs">
               
               {/* Delivery OTP */}
               <div className="p-3.5 rounded-2xl bg-teal-50 border border-teal-200 space-y-1">
@@ -792,7 +814,7 @@ const RiderDashboardPage = () => {
                     <button
                       type="button"
                       onClick={() => setCodCollectionMethod('CASH')}
-                      className={`p-2.5 rounded-xl border font-bold flex items-center justify-center gap-1.5 transition-all ${
+                      className={`p-2.5 rounded-xl border font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                         codCollectionMethod === 'CASH'
                           ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                           : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-100/50'
@@ -805,7 +827,7 @@ const RiderDashboardPage = () => {
                     <button
                       type="button"
                       onClick={() => setCodCollectionMethod('UPI_QR')}
-                      className={`p-2.5 rounded-xl border font-bold flex items-center justify-center gap-1.5 transition-all ${
+                      className={`p-2.5 rounded-xl border font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                         codCollectionMethod === 'UPI_QR'
                           ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
                           : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-100/50'
@@ -818,25 +840,28 @@ const RiderDashboardPage = () => {
                 </div>
               )}
 
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setDeliveryModalOrder(null)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 shadow-sm"
-                >
-                  {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                  <span>Confirm Handover &amp; Complete</span>
-                </button>
-              </div>
-
             </form>
+
+            {/* Footer (shrink-0) */}
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setDeliveryModalOrder(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="delivery-form"
+                disabled={actionLoading}
+                className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold flex items-center gap-1.5 shadow-sm cursor-pointer transition-colors disabled:opacity-50"
+              >
+                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                <span>Verify Delivery &amp; Confirm Handover</span>
+              </button>
+            </div>
+
           </div>
         </div>
       )}

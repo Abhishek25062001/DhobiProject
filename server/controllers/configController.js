@@ -202,10 +202,12 @@ export const uploadImage = async (req, res) => {
     }
 
     const result = await uploadImageToCloudinary(imagePayload, folder);
+    const targetUrl = result.url || result.imageUrl;
 
     return res.json({
       success: true,
-      imageUrl: result.imageUrl,
+      url: targetUrl,
+      imageUrl: targetUrl,
       publicId: result.publicId
     });
   } catch (error) {

@@ -16,6 +16,8 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import { sanitizeInput, apiLimiter } from './middleware/securityMiddleware.js';
 import errorHandler from './middleware/errorMiddleware.js';
 
+import Order from './models/Order.js';
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -25,10 +27,20 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Production HTTP security headers via Helmet
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginResourcePolicy: { policy: 'cross-origin' }
-}));
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://*.cloudinary.com", "https:*"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://checkout.razorpay.com", "https://apis.google.com", "https://www.gstatic.com"],
+        frameSrc: ["'self'", "https://api.razorpay.com", "https://checkout.razorpay.com", "https://*.firebaseapp.com", "https://www.google.com"],
+        connectSrc: ["'self'", "https://api.razorpay.com", "https://lumberjack.razorpay.com", "https://*.googleapis.com", "https://*.firebaseio.com", "https://res.cloudinary.com", "http://localhost:*", "ws://localhost:*"]
+      }
+    }
+  })
+);
 
 // Enable CORS for client
 app.use(cors({
@@ -40,9 +52,9 @@ app.use(cors({
   credentials: true
 }));
 
-// Body parser with 20mb limit for Base64 image uploads
-app.use(express.json({ limit: '20mb' }));
-app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+// Body parser with 25mb limit for Base64 image uploads
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // NoSQL Injection input sanitization (strips '$' and '.' operators)
 app.use(sanitizeInput);
@@ -120,6 +132,7 @@ export const startServer = async () => {
   try {
     await connectDB();
     await seedData();
+    await Order.backfillMissingOtps();
 
     const startListening = (port) => {
       const serverInstance = app.listen(port, () => {

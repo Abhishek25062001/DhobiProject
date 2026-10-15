@@ -12,22 +12,29 @@ const generateToken = (id, role = 'customer') => {
   );
 };
 
-export const formatUser = (user) => ({
-  _id: user._id,
-  id: user._id,
-  name: user.name,
-  email: user.email,
-  phone: user.phone,
-  role: user.role,
-  isActive: user.isActive !== false,
-  isPhoneVerified: Boolean(user.isPhoneVerified),
-  isProfileComplete: user.isProfileComplete !== false,
-  profileImage: user.profileImage || { url: '', publicId: '' },
-  alternatePhones: user.alternatePhones || [],
-  preferences: user.preferences || { defaultDetergent: 'Standard', defaultPackaging: 'Folded' },
-  addresses: user.addresses || [],
-  riderDetails: user.riderDetails || null
-});
+export const formatUser = (user) => {
+  const avatarUrl = user?.profileImage?.url || user?.profileImage?.imageUrl || (typeof user?.profileImage === 'string' ? user.profileImage : '');
+  return {
+    _id: user._id,
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+    isActive: user.isActive !== false,
+    isPhoneVerified: Boolean(user.isPhoneVerified),
+    isProfileComplete: user.isProfileComplete !== false,
+    profileImage: {
+      url: avatarUrl,
+      imageUrl: avatarUrl,
+      publicId: user?.profileImage?.publicId || ''
+    },
+    alternatePhones: user.alternatePhones || [],
+    preferences: user.preferences || { defaultDetergent: 'Standard', defaultPackaging: 'Folded' },
+    addresses: user.addresses || [],
+    riderDetails: user.riderDetails || null
+  };
+};
 
 // @desc    Register a new customer/user
 // @route   POST /api/auth/register
@@ -320,9 +327,11 @@ export const uploadAvatar = async (req, res) => {
     }
 
     const uploadRes = await uploadImageToCloudinary(imagePayload, 'indodhobi/avatars');
+    const avatarUrl = uploadRes.url || uploadRes.imageUrl;
     user.profileImage = {
-      url: uploadRes.imageUrl,
-      publicId: uploadRes.publicId
+      url: avatarUrl,
+      imageUrl: avatarUrl,
+      publicId: uploadRes.publicId || ''
     };
 
     await user.save();
@@ -330,6 +339,9 @@ export const uploadAvatar = async (req, res) => {
     return res.json({
       success: true,
       message: 'Profile photo updated successfully.',
+      url: avatarUrl,
+      imageUrl: avatarUrl,
+      publicId: uploadRes.publicId || '',
       profileImage: user.profileImage,
       user: formatUser(user)
     });

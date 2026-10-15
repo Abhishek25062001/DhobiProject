@@ -285,15 +285,31 @@ const ProfilePage = () => {
             {/* Avatar with Camera Button */}
             <div className="relative group">
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-gradient-to-tr from-primary-600 to-teal-500 text-white flex items-center justify-center font-black text-2xl sm:text-3xl shadow-md border-2 border-white">
-                {user?.profileImage?.url ? (
-                  <img
-                    src={user.profileImage.url}
-                    alt={user.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <span>{user?.name?.charAt(0) || 'U'}</span>
-                )}
+                {(() => {
+                  const avatarSrc = user?.profileImage?.url || user?.profileImage?.imageUrl || (typeof user?.profileImage === 'string' ? user.profileImage : '');
+                  return (
+                    <>
+                      {avatarSrc ? (
+                        <img
+                          src={avatarSrc}
+                          alt={user?.name || 'User'}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            const fallback = e.currentTarget.parentElement?.querySelector('.profile-avatar-fallback');
+                            if (fallback) fallback.style.display = 'inline';
+                          }}
+                        />
+                      ) : null}
+                      <span
+                        className="profile-avatar-fallback"
+                        style={{ display: avatarSrc ? 'none' : 'inline' }}
+                      >
+                        {user?.name?.charAt(0) || 'U'}
+                      </span>
+                    </>
+                  );
+                })()}
               </div>
               <label
                 htmlFor="avatar-upload-input"

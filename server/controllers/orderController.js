@@ -776,15 +776,32 @@ export const switchToCod = async (req, res) => {
 // @desc    Get logged-in user's orders
 // @route   GET /api/orders/my-orders
 // @access  Private
-// @desc    Get logged-in user's orders
-// @route   GET /api/orders/my-orders
-// @access  Private
 export const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({ customer: req.user._id })
       .populate('items.garment', 'name category iconName')
       .populate('logistics.assignedRider', 'name phone email')
       .sort({ createdAt: -1 });
+
+    // Auto-backfill OTPs if any legacy order is missing them
+    for (const order of orders) {
+      let needsSave = false;
+      if (!order.verificationCodes) {
+        order.verificationCodes = {};
+        needsSave = true;
+      }
+      if (!order.verificationCodes.pickupOtp) {
+        order.verificationCodes.pickupOtp = String(Math.floor(1000 + Math.random() * 9000));
+        needsSave = true;
+      }
+      if (!order.verificationCodes.deliveryOtp) {
+        order.verificationCodes.deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
+        needsSave = true;
+      }
+      if (needsSave) {
+        await order.save();
+      }
+    }
 
     return res.json({
       success: true,
@@ -812,6 +829,26 @@ export const getMyActiveOrders = async (req, res) => {
       .populate('items.garment', 'name category iconName imageUrl')
       .populate('logistics.assignedRider', 'name phone email')
       .sort({ updatedAt: -1 });
+
+    // Auto-backfill OTPs if any active order is missing them
+    for (const order of activeOrders) {
+      let needsSave = false;
+      if (!order.verificationCodes) {
+        order.verificationCodes = {};
+        needsSave = true;
+      }
+      if (!order.verificationCodes.pickupOtp) {
+        order.verificationCodes.pickupOtp = String(Math.floor(1000 + Math.random() * 9000));
+        needsSave = true;
+      }
+      if (!order.verificationCodes.deliveryOtp) {
+        order.verificationCodes.deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
+        needsSave = true;
+      }
+      if (needsSave) {
+        await order.save();
+      }
+    }
 
     return res.json({
       success: true,
@@ -1158,14 +1195,30 @@ export const getRiderTasks = async (req, res) => {
 // @access  Private (Rider & Admin)
 export const verifyPickup = async (req, res) => {
   try {
-    const { otp, pickupOtp, bagTagId, inspectionNotes, verifiedGarmentCount, inspectionPhotos } = req.body;
-    const effectiveOtp = otp || pickupOtp;
+    const submittedOtp = String(req.body.otp || req.body.pickupOtp || '').trim();
+    const { bagTagId, inspectionNotes, verifiedGarmentCount, inspectionPhotos } = req.body;
     const order = await Order.findById(req.params.id);
 
     if (!order) {
       return res.status(404).json({
         success: false,
         message: 'Order not found.'
+      });
+    }
+
+    // Allow pickup verification when order is in any pre-pickup state
+    const allowedPrePickupStates = [
+      'BOOKED',
+      'ORDER_PLACED',
+      'CONFIRMED',
+      'PICKUP_ASSIGNED',
+      'PICKUP_SCHEDULED',
+      'OUT_FOR_PICKUP'
+    ];
+    if (!allowedPrePickupStates.includes(order.orderStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot verify pickup for order in '${order.orderStatus}' status.`
       });
     }
 
@@ -1176,7 +1229,8 @@ export const verifyPickup = async (req, res) => {
       });
     }
 
-    if (!effectiveOtp || String(effectiveOtp).trim() !== String(order.verificationCodes?.pickupOtp)) {
+    const actualOtp = String(order.verificationCodes?.pickupOtp || order.pickupOtp || '').trim();
+    if (!submittedOtp || submittedOtp !== actualOtp) {
       return res.status(400).json({
         success: false,
         message: 'Invalid pickup verification OTP. Please request the 4-digit OTP from the customer.'
@@ -1199,16 +1253,41 @@ export const verifyPickup = async (req, res) => {
         if (typeof item === 'string') {
           if (item.startsWith('data:') || item.length > 300) {
             const uploadRes = await uploadImageToCloudinary(item, 'indodhobi/inspections');
-            processedPhotos.push({ url: uploadRes.imageUrl, publicId: uploadRes.publicId, uploadedAt: new Date() });
+            const pUrl = uploadRes.url || uploadRes.imageUrl;
+            processedPhotos.push({
+              url: pUrl,
+              imageUrl: pUrl,
+              publicId: uploadRes.publicId || '',
+              uploadedAt: new Date()
+            });
           } else {
-            processedPhotos.push({ url: item, publicId: '', uploadedAt: new Date() });
+            processedPhotos.push({
+              url: item,
+              imageUrl: item,
+              publicId: '',
+              uploadedAt: new Date()
+            });
           }
         } else if (item && typeof item === 'object') {
           if (item.imageBase64 || item.base64) {
             const uploadRes = await uploadImageToCloudinary(item.imageBase64 || item.base64, 'indodhobi/inspections');
-            processedPhotos.push({ url: uploadRes.imageUrl, publicId: uploadRes.publicId, uploadedAt: new Date() });
-          } else if (item.url) {
-            processedPhotos.push({ url: item.url, publicId: item.publicId || '', uploadedAt: item.uploadedAt || new Date() });
+            const pUrl = uploadRes.url || uploadRes.imageUrl;
+            processedPhotos.push({
+              url: pUrl,
+              imageUrl: pUrl,
+              publicId: uploadRes.publicId || '',
+              uploadedAt: new Date()
+            });
+          } else {
+            const pUrl = item.url || item.imageUrl || '';
+            if (pUrl) {
+              processedPhotos.push({
+                url: pUrl,
+                imageUrl: pUrl,
+                publicId: item.publicId || '',
+                uploadedAt: item.uploadedAt || new Date()
+              });
+            }
           }
         }
       }
@@ -1257,7 +1336,8 @@ export const verifyPickup = async (req, res) => {
 // @access  Private (Rider & Admin)
 export const verifyDelivery = async (req, res) => {
   try {
-    const { otp, codCollectionMethod } = req.body;
+    const submittedOtp = String(req.body.otp || req.body.deliveryOtp || '').trim();
+    const { codCollectionMethod } = req.body;
     const order = await Order.findById(req.params.id);
 
     if (!order) {
@@ -1267,7 +1347,8 @@ export const verifyDelivery = async (req, res) => {
       });
     }
 
-    if (!otp || String(otp).trim() !== String(order.verificationCodes?.deliveryOtp)) {
+    const actualOtp = String(order.verificationCodes?.deliveryOtp || order.deliveryOtp || '').trim();
+    if (!submittedOtp || submittedOtp !== actualOtp) {
       return res.status(400).json({
         success: false,
         message: 'Invalid delivery verification OTP. Please request the 4-digit OTP from the customer.'
