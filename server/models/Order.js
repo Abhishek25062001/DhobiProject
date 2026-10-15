@@ -144,7 +144,7 @@ const orderSchema = new mongoose.Schema({
     },
     status: {
       type: String,
-      enum: ['PENDING', 'PAID', 'FAILED', 'REFUNDED'],
+      enum: ['PENDING', 'PAID', 'FAILED', 'REFUNDED', 'CANCELLED'],
       default: 'PENDING',
       index: true
     },
@@ -379,7 +379,12 @@ orderSchema.pre('validate', function (next) {
 
   // Payment COD & Reconciliation integrity
   if (this.payment) {
-    if (this.payment.method === 'COD') {
+    if (this.orderStatus === 'CANCELLED') {
+      if (this.payment.status !== 'REFUNDED') {
+        this.payment.status = 'CANCELLED';
+      }
+      this.payment.reconciliationStatus = 'NOT_APPLICABLE';
+    } else if (this.payment.method === 'COD') {
       if (!this.payment.codAmount && this.pricingBreakdown?.grandTotal) {
         this.payment.codAmount = this.pricingBreakdown.grandTotal;
       }

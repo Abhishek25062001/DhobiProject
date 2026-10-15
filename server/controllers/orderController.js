@@ -999,6 +999,14 @@ export const updateOrderStatus = async (req, res) => {
 
     if (orderStatus) {
       order.orderStatus = orderStatus;
+      if (orderStatus === 'CANCELLED') {
+        if (order.payment?.status === 'PAID') {
+          order.payment.status = 'REFUNDED';
+        } else if (!paymentStatus) {
+          order.payment.status = 'CANCELLED';
+        }
+        order.payment.reconciliationStatus = 'NOT_APPLICABLE';
+      }
     }
 
     if (paymentStatus) {
@@ -1887,10 +1895,13 @@ export const cancelOrder = async (req, res) => {
 
     order.orderStatus = 'CANCELLED';
 
-    // If payment was already collected, mark as REFUNDED
+    // If payment was already collected, mark as REFUNDED, else mark as CANCELLED (no payment due)
     if (order.payment.status === 'PAID') {
       order.payment.status = 'REFUNDED';
+    } else {
+      order.payment.status = 'CANCELLED';
     }
+    order.payment.reconciliationStatus = 'NOT_APPLICABLE';
 
     if (!order.statusHistory) {
       order.statusHistory = [];

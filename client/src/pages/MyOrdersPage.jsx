@@ -308,12 +308,35 @@ const MyOrdersPage = () => {
                     {/* Payment Badge */}
                     <div className="text-right">
                       <div className="flex items-center gap-1.5 sm:justify-end">
-                        <span className={`w-2 h-2 rounded-full ${
-                          order.payment?.status === 'PAID' ? 'bg-emerald-500' : 'bg-amber-500 animate-ping'
-                        }`} />
-                        <span className="text-xs font-bold text-slate-800">
-                          {order.payment?.status === 'PAID' ? 'PAID' : `${order.payment?.method} - PENDING`}
-                        </span>
+                        {order.orderStatus === 'CANCELLED' || order.payment?.status === 'CANCELLED' ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-slate-400" />
+                            <span className="text-xs font-bold text-slate-500">
+                              CANCELLED
+                            </span>
+                          </>
+                        ) : order.payment?.status === 'REFUNDED' ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                            <span className="text-xs font-bold text-indigo-700">
+                              REFUNDED
+                            </span>
+                          </>
+                        ) : order.payment?.status === 'PAID' ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            <span className="text-xs font-bold text-emerald-800">
+                              PAID
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                            <span className="text-xs font-bold text-amber-800">
+                              {order.payment?.method || 'COD'} - PENDING
+                            </span>
+                          </>
+                        )}
                       </div>
                       <span className="text-sm font-black text-slate-900 block mt-0.5">
                         ₹{order.pricingBreakdown?.grandTotal}
@@ -500,7 +523,7 @@ const MyOrdersPage = () => {
                                   </div>
                                 )}
 
-                                {order.payment?.method === 'COD' && order.payment?.status !== 'PAID' && (
+                                {order.orderStatus !== 'CANCELLED' && order.payment?.method === 'COD' && order.payment?.status !== 'PAID' && order.payment?.status !== 'CANCELLED' && (
                                   <div className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-[11px] flex items-center gap-2">
                                     <QrCode className="w-4 h-4 text-amber-700 shrink-0" />
                                     <p className="leading-relaxed">
@@ -640,7 +663,7 @@ const MyOrdersPage = () => {
                         </div>
 
                         {/* Payment Actions for Unpaid / Pending Online Orders */}
-                        {order.payment?.method === 'ONLINE' && order.payment?.status !== 'PAID' && (
+                        {order.orderStatus !== 'CANCELLED' && order.payment?.method === 'ONLINE' && order.payment?.status !== 'PAID' && order.payment?.status !== 'CANCELLED' && (
                           <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row gap-2">
                             <button
                               type="button"

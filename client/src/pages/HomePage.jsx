@@ -12,7 +12,9 @@ import {
   Layers, 
   Flame, 
   Award,
-  ChevronRight
+  ChevronRight,
+  MapPin,
+  Building2
 } from 'lucide-react';
 import { useOrderBooking } from '../context/OrderBookingContext';
 import ActiveOrderTracker from '../components/ActiveOrderTracker';
@@ -408,6 +410,141 @@ const HomePage = () => {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* OPERATIONAL HUBS & SERVICE AREAS */}
+      <section id="operational-areas" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-50 text-teal-800 text-xs font-bold border border-teal-200 mb-2">
+              <MapPin className="w-3.5 h-3.5 text-teal-600" />
+              <span>Doorstep Fleet Network</span>
+            </div>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+              Our Operational Hubs &amp; Service Areas
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-xl">
+              Commercial laundry plants and dedicated doorstep riders operating 7 days a week across major urban clusters.
+            </p>
+          </div>
+          <Link
+            to="/operational-areas"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition-all self-start sm:self-auto shrink-0"
+          >
+            <span>Check All Pincodes</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col justify-between space-y-4 hover:border-primary-300 transition-all">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-primary-50 text-primary-700 border border-primary-200">
+                  Flagship Hub
+                </span>
+                <span className="text-[11px] font-semibold text-slate-400">48-Hr Turnaround</span>
+              </div>
+              <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-primary-600 shrink-0" />
+                <span>Delhi NCR Central &amp; South</span>
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Connaught Place, Chanakyapuri, Vasant Kunj, Hauz Khas, Saket, GK, Defence Colony, Dwarka, Rohini.
+              </p>
+              <div className="text-[11px] font-mono font-semibold text-slate-700 bg-slate-50 p-2 rounded-xl">
+                Pincodes: 110001 - 110085
+              </div>
+            </div>
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+              <span className="text-emerald-700 font-bold flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Active 7 AM - 9 PM</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col justify-between space-y-4 hover:border-teal-300 transition-all">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                  Express Hub
+                </span>
+                <span className="text-[11px] font-semibold text-slate-400">24-48-Hr Express</span>
+              </div>
+              <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-teal-600 shrink-0" />
+                <span>Gurugram CyberCity</span>
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                DLF Phase 1 to 5, Cyber Hub, Golf Course Road, Sector 14, 29, 43, 56, Sohna Road.
+              </p>
+              <div className="text-[11px] font-mono font-semibold text-slate-700 bg-slate-50 p-2 rounded-xl">
+                Pincodes: 122001 - 122018
+              </div>
+            </div>
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+              <span className="text-emerald-700 font-bold flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Active 7 AM - 9 PM</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col justify-between space-y-4 hover:border-indigo-300 transition-all">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  Expressway Hub
+                </span>
+                <span className="text-[11px] font-semibold text-slate-400">48-Hr Turnaround</span>
+              </div>
+              <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>Noida &amp; Greater Noida</span>
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Sector 18, Sector 50, Sector 62, Sector 137, Expressway High-Rises, Pari Chowk.
+              </p>
+              <div className="text-[11px] font-mono font-semibold text-slate-700 bg-slate-50 p-2 rounded-xl">
+                Pincodes: 201301 - 201310
+              </div>
+            </div>
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+              <span className="text-emerald-700 font-bold flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Active 7 AM - 9 PM</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col justify-between space-y-4 hover:border-amber-300 transition-all">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                  Southern Hub
+                </span>
+                <span className="text-[11px] font-semibold text-slate-400">48-Hr Turnaround</span>
+              </div>
+              <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Bengaluru Tech Hub</span>
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Indiranagar, Koramangala 1-8, HSR Layout, Whitefield, Bellandur ORR, MG Road.
+              </p>
+              <div className="text-[11px] font-mono font-semibold text-slate-700 bg-slate-50 p-2 rounded-xl">
+                Pincodes: 560001 - 560103
+              </div>
+            </div>
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+              <span className="text-emerald-700 font-bold flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Active 7 AM - 9 PM</span>
+              </span>
+            </div>
+          </div>
         </div>
       </section>
 

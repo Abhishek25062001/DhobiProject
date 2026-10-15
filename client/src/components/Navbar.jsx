@@ -45,6 +45,7 @@ const Navbar = () => {
       { name: 'Home', path: '/' },
       { name: 'Book Laundry', path: '/book', highlight: true },
       { name: 'Pricing & Services', path: '/pricing' },
+      { name: 'Service Areas', path: '/operational-areas' },
       { name: 'My Orders', path: '/my-orders' }
     ];
   } else {
@@ -52,7 +53,8 @@ const Navbar = () => {
     navLinks = [
       { name: 'Home', path: '/' },
       { name: 'Book Laundry', path: '/book', highlight: true },
-      { name: 'Pricing & Services', path: '/pricing' }
+      { name: 'Pricing & Services', path: '/pricing' },
+      { name: 'Service Areas', path: '/operational-areas' }
     ];
   }
 

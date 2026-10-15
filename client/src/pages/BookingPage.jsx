@@ -1404,25 +1404,101 @@ const BookingPage = () => {
                     </button>
                   </div>
 
-                  {/* Available Coupons Pills */}
+                  {/* Available Coupons List with Full Details */}
                   {availableCoupons.length > 0 && (
-                    <div className="space-y-1 pt-1">
-                      <span className="text-[10px] text-slate-400 block font-semibold">Available for you:</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {availableCoupons.map((c) => (
-                          <button
-                            key={c.code}
-                            type="button"
-                            onClick={() => handleApplyCoupon(c.code)}
-                            className="py-1 px-2 rounded-lg border border-dashed border-primary-300 bg-primary-50/60 hover:bg-primary-100/80 text-primary-700 text-[10px] font-mono font-bold transition-all cursor-pointer flex items-center gap-1"
-                            title={c.description}
-                          >
-                            <span>{c.code}</span>
-                            <span className="text-slate-400 font-sans font-normal">
-                              ({c.discountType === 'PERCENTAGE' ? `${c.discountValue}%` : `₹${c.discountValue}`})
-                            </span>
-                          </button>
-                        ))}
+                    <div className="space-y-2 pt-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-slate-700 font-bold flex items-center gap-1">
+                          <Percent className="w-3 h-3 text-teal-600" />
+                          <span>Available Offers ({availableCoupons.length})</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400">Tap to apply</span>
+                      </div>
+                      
+                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                        {availableCoupons.map((c) => {
+                          const minReq = Number(c.minOrderSubtotal) || 0;
+                          const isEligible = subtotal >= minReq;
+                          const isApplied = appliedCoupon?.code === c.code;
+
+                          return (
+                            <div
+                              key={c.code}
+                              className={`p-2.5 rounded-xl border transition-all ${
+                                isApplied
+                                  ? 'bg-teal-50 border-teal-400 ring-1 ring-teal-400'
+                                  : isEligible
+                                  ? 'bg-white hover:bg-teal-50/40 border-teal-200 shadow-2xs'
+                                  : 'bg-slate-50 border-slate-200 opacity-90'
+                              }`}
+                            >
+                              {/* Header: Code + Discount + Action */}
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="px-2 py-0.5 rounded-md border border-dashed border-teal-600 bg-teal-50 text-teal-900 font-mono font-black text-[11px] uppercase tracking-wide">
+                                    {c.code}
+                                  </span>
+                                  <span className="font-extrabold text-xs text-slate-900">
+                                    {c.discountType === 'PERCENTAGE'
+                                      ? `${c.discountValue}% OFF`
+                                      : `₹${c.discountValue} FLAT OFF`}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  disabled={validatingCoupon}
+                                  onClick={() => handleApplyCoupon(c.code)}
+                                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                                    isApplied
+                                      ? 'bg-teal-700 text-white cursor-default'
+                                      : isEligible
+                                      ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                                      : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                                  }`}
+                                >
+                                  {isApplied ? 'Applied' : 'Apply'}
+                                </button>
+                              </div>
+
+                              {/* Description */}
+                              {c.description && (
+                                <p className="text-[10px] text-slate-600 mt-1 leading-snug">
+                                  {c.description}
+                                </p>
+                              )}
+
+                              {/* Full Financial Criteria: Min Order & Max Cashback Limit */}
+                              <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-1.5 border-t border-slate-100 text-[10px]">
+                                <span className="inline-flex items-center gap-1 font-medium text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                  <span>Min Order:</span>
+                                  <strong className="text-slate-800">
+                                    {minReq > 0 ? `₹${minReq}` : 'No Min.'}
+                                  </strong>
+                                </span>
+                                <span className="inline-flex items-center gap-1 font-medium text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                  <span>Max Cashback / Discount:</span>
+                                  <strong className="text-slate-800">
+                                    {c.maxDiscountAmount ? `₹${c.maxDiscountAmount}` : 'Unlimited'}
+                                  </strong>
+                                </span>
+                              </div>
+
+                              {/* Eligibility Feedback */}
+                              <div className="mt-1 text-[10px]">
+                                {isEligible ? (
+                                  <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                    <span>Unlocked &amp; ready to apply</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-amber-700 font-medium">
+                                    Add ₹{minReq - subtotal} more garments to unlock
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

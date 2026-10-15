@@ -17,6 +17,29 @@ import OrderSuccessPage from './pages/OrderSuccessPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ProfilePage from './pages/ProfilePage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TermsOfServicePage from './pages/TermsOfServicePage';
+import OperationalAreasPage from './pages/OperationalAreasPage';
+
+// Dedicated redirect component that ONLY executes when mounted on /partner
+const PartnerRedirect = () => {
+  React.useEffect(() => {
+    window.location.href = 'https://avyaktinfotech.com';
+  }, []);
+
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center space-y-3">
+      <div className="w-8 h-8 border-3 border-primary-600 border-t-transparent rounded-full animate-spin" />
+      <p className="text-sm font-semibold text-slate-700">Redirecting to Avyakt Infotech Partner Portal...</p>
+      <a
+        href="https://avyaktinfotech.com"
+        className="text-xs font-bold text-primary-600 underline"
+      >
+        Click here if you are not redirected automatically
+      </a>
+    </div>
+  );
+};
 
 function App() {
   return (
@@ -104,6 +127,13 @@ function App() {
                 />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                <Route path="/privacy" element={<PrivacyPolicyPage />} />
+                <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+                <Route path="/terms" element={<TermsOfServicePage />} />
+                <Route path="/terms-of-service" element={<TermsOfServicePage />} />
+                <Route path="/operational-areas" element={<OperationalAreasPage />} />
+                <Route path="/service-areas" element={<OperationalAreasPage />} />
+                <Route path="/partner" element={<PartnerRedirect />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>

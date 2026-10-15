@@ -809,7 +809,15 @@ const ProfilePage = () => {
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusStyles[order.orderStatus] || 'bg-slate-100 text-slate-700'}`}>
                           {order.orderStatus?.replace(/_/g, ' ')}
                         </span>
-                        {order.payment?.status === 'PAID' ? (
+                        {order.orderStatus === 'CANCELLED' || order.payment?.status === 'CANCELLED' ? (
+                          <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                            CANCELLED
+                          </span>
+                        ) : order.payment?.status === 'REFUNDED' ? (
+                          <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                            REFUNDED
+                          </span>
+                        ) : order.payment?.status === 'PAID' ? (
                           <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                             PAID
                           </span>

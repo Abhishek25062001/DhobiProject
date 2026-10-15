@@ -1005,11 +1005,17 @@ const AdminDashboardPage = () => {
                             </span>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <span className={`px-1.5 py-0.5 rounded-full font-bold text-[9px] ${
-                                order.payment?.status === 'PAID'
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-amber-100 text-amber-800'
+                                order.orderStatus === 'CANCELLED' || order.payment?.status === 'CANCELLED'
+                                  ? 'bg-slate-100 text-slate-700 border border-slate-300'
+                                  : order.payment?.status === 'REFUNDED'
+                                  ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                                  : order.payment?.status === 'PAID'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                  : 'bg-amber-100 text-amber-800 border border-amber-200'
                               }`}>
-                                {order.payment?.method} ({order.payment?.status})
+                                {order.orderStatus === 'CANCELLED' && order.payment?.status !== 'REFUNDED'
+                                  ? `${order.payment?.method || 'COD'} (CANCELLED)`
+                                  : `${order.payment?.method || 'COD'} (${order.payment?.status})`}
                               </span>
                             </div>
                           </td>

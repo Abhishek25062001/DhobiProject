@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Shirt, Phone, Mail, MapPin, ShieldCheck, HeartHandshake, Sparkles, Clock } from 'lucide-react';
+import { Shirt, Phone, Mail, MapPin, ShieldCheck, HeartHandshake, Sparkles, Clock, ExternalLink } from 'lucide-react';
 
 const Footer = () => {
   return (
@@ -87,21 +87,34 @@ const Footer = () => {
           <div>
             <h5 className="text-white font-semibold text-sm mb-4">Operational Hubs</h5>
             <ul className="space-y-2.5 text-xs text-slate-400">
-              <li className="flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-primary-400 shrink-0" />
-                <span>South Delhi & Connaught Place</span>
+              <li>
+                <Link to="/operational-areas" className="flex items-center gap-2 hover:text-white transition-colors">
+                  <MapPin className="w-3.5 h-3.5 text-primary-400 shrink-0" />
+                  <span>South Delhi &amp; Connaught Place</span>
+                </Link>
               </li>
-              <li className="flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-primary-400 shrink-0" />
-                <span>Gurugram (DLF Phase 1-5, Golf Course Rd)</span>
+              <li>
+                <Link to="/operational-areas" className="flex items-center gap-2 hover:text-white transition-colors">
+                  <MapPin className="w-3.5 h-3.5 text-primary-400 shrink-0" />
+                  <span>Gurugram (DLF Phase 1-5, Golf Course Rd)</span>
+                </Link>
               </li>
-              <li className="flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-primary-400 shrink-0" />
-                <span>Noida & Greater Noida Expressway</span>
+              <li>
+                <Link to="/operational-areas" className="flex items-center gap-2 hover:text-white transition-colors">
+                  <MapPin className="w-3.5 h-3.5 text-primary-400 shrink-0" />
+                  <span>Noida &amp; Greater Noida Expressway</span>
+                </Link>
               </li>
-              <li className="flex items-center gap-2">
-                <MapPin className="w-3.5 h-3.5 text-primary-400 shrink-0" />
-                <span>Bengaluru (Indiranagar, Koramangala)</span>
+              <li>
+                <Link to="/operational-areas" className="flex items-center gap-2 hover:text-white transition-colors">
+                  <MapPin className="w-3.5 h-3.5 text-primary-400 shrink-0" />
+                  <span>Bengaluru (Indiranagar, Koramangala)</span>
+                </Link>
+              </li>
+              <li className="pt-1">
+                <Link to="/operational-areas" className="inline-flex items-center gap-1 text-primary-400 hover:text-primary-300 font-bold text-[11px]">
+                  <span>View All Serviceable Pincodes &rarr;</span>
+                </Link>
               </li>
             </ul>
           </div>
@@ -131,10 +144,22 @@ const Footer = () => {
         {/* Bottom copyright */}
         <div className="pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4">
           <p>© {new Date().getFullYear()} IndoDhobi Technologies Pvt Ltd. All rights reserved.</p>
-          <div className="flex gap-6">
-            <span className="hover:text-slate-400 cursor-pointer">Privacy Policy</span>
-            <span className="hover:text-slate-400 cursor-pointer">Terms of Service</span>
-            <span className="hover:text-slate-400 cursor-pointer">Dhobi Partner Portal</span>
+          <div className="flex flex-wrap items-center gap-5 sm:gap-6">
+            <Link to="/privacy" className="hover:text-primary-400 transition-colors">
+              Privacy Policy
+            </Link>
+            <Link to="/terms" className="hover:text-primary-400 transition-colors">
+              Terms of Service
+            </Link>
+            <a
+              href="https://avyaktinfotech.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-primary-400 transition-colors inline-flex items-center gap-1 font-semibold text-slate-400 hover:text-white"
+            >
+              <span>Dhobi Partner Portal</span>
+              <ExternalLink className="w-3 h-3 text-slate-500" />
+            </a>
           </div>
         </div>
 
