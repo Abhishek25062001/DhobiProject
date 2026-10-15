@@ -252,7 +252,9 @@ const orderSchema = new mongoose.Schema({
 orderSchema.pre('validate', function (next) {
   if (this.payment) {
     if (this.payment.method === 'COD') {
-      this.payment.onlineSubMethod = null;
+      if (!this.payment.onlineSubMethod || (this.payment.status !== 'PAID' && !['UPI', 'CARD'].includes(this.payment.onlineSubMethod))) {
+        this.payment.onlineSubMethod = null;
+      }
       if (!this.payment.status || this.payment.status === '') {
         this.payment.status = 'PENDING';
       }
