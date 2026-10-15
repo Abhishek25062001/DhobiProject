@@ -149,6 +149,14 @@ export const orderService = {
     const res = await API.get('/orders/my-orders');
     return res.data;
   },
+  getMyActiveOrders: async () => {
+    const res = await API.get('/orders/my-active');
+    return res.data;
+  },
+  recordPaymentFailure: async (orderId, failureData = {}) => {
+    const res = await API.post(`/orders/${orderId}/payment-failed`, failureData);
+    return res.data;
+  },
   getOrderById: async (id) => {
     const res = await API.get(`/orders/${id}`);
     return res.data;

@@ -385,7 +385,7 @@ const BookingPage = () => {
           // COD Order placed instantly
           toast.success('Order booked successfully with Cash on Delivery!');
           clearCart();
-          navigate('/order-success', { state: { order: res.order } });
+          navigate('/my-orders', { state: { order: res.order } });
         }
       } else {
         toast.error(res.message || 'Failed to place order.');

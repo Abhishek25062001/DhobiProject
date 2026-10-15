@@ -58,6 +58,34 @@ export const launchRazorpayCheckout = async ({
       theme: {
         color: '#4f46e5'
       },
+      method: {
+        upi: true,
+        card: true,
+        netbanking: true,
+        wallet: true
+      },
+      config: {
+        display: {
+          blocks: {
+            upiBlock: {
+              name: 'Pay via UPI ID / QR',
+              instruments: [
+                { method: 'upi', flows: ['collect', 'qr', 'intent'] }
+              ]
+            },
+            otherBlock: {
+              name: 'Cards, NetBanking & Wallets',
+              instruments: [
+                { method: 'card' },
+                { method: 'netbanking' },
+                { method: 'wallet' }
+              ]
+            }
+          },
+          sequence: ['block.upiBlock', 'block.otherBlock'],
+          preferences: { show_default_blocks: true }
+        }
+      },
       handler: async function (response) {
         try {
           const verifyPayload = {
@@ -84,7 +112,13 @@ export const launchRazorpayCheckout = async ({
         }
       },
       modal: {
-        ondismiss: function () {
+        ondismiss: async function () {
+          try {
+            await orderService.recordPaymentFailure(order._id, {
+              reason: 'User dismissed checkout modal',
+              errorCode: 'MODAL_DISMISSED'
+            });
+          } catch {}
           toast('Payment dismissed. You can retry payment anytime from My Orders.', { icon: 'ℹ️' });
           if (onDismiss) {
             onDismiss();
@@ -94,7 +128,14 @@ export const launchRazorpayCheckout = async ({
     };
 
     const rzp = new window.Razorpay(options);
-    rzp.on('payment.failed', function (response) {
+    rzp.on('payment.failed', async function (response) {
+      try {
+        await orderService.recordPaymentFailure(order._id, {
+          reason: response.error?.description || 'Transaction declined by bank/network',
+          errorCode: response.error?.code || 'PAYMENT_FAILED',
+          paymentId: response.error?.metadata?.payment_id
+        });
+      } catch {}
       toast.error(`Payment failed: ${response.error?.description || 'Transaction declined'}`);
     });
     rzp.open();
