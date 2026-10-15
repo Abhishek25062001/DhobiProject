@@ -25,7 +25,8 @@ export const formatUser = (user) => ({
   profileImage: user.profileImage || { url: '', publicId: '' },
   alternatePhones: user.alternatePhones || [],
   preferences: user.preferences || { defaultDetergent: 'Standard', defaultPackaging: 'Folded' },
-  addresses: user.addresses || []
+  addresses: user.addresses || [],
+  riderDetails: user.riderDetails || null
 });
 
 // @desc    Register a new customer/user

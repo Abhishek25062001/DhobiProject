@@ -146,7 +146,28 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  addresses: [addressSchema]
+  addresses: [addressSchema],
+  riderDetails: {
+    vehicleType: {
+      type: String,
+      enum: ['Bike', 'Scooter', 'EV Van', 'Cycle'],
+      default: 'Bike'
+    },
+    vehicleNumber: {
+      type: String,
+      default: '',
+      trim: true
+    },
+    assignedZone: {
+      type: String,
+      default: 'All Zones',
+      trim: true
+    },
+    joiningDate: {
+      type: Date,
+      default: Date.now
+    }
+  }
 }, {
   timestamps: true
 });

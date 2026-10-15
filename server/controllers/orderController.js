@@ -4,6 +4,7 @@ import User from '../models/User.js';
 import Coupon from '../models/Coupon.js';
 import TimeSlot from '../models/TimeSlot.js';
 import PlatformConfig from '../models/PlatformConfig.js';
+import Notification from '../models/Notification.js';
 import { uploadImageToCloudinary } from '../utils/cloudinary.js';
 import { createRazorpayOrder, verifyRazorpaySignature } from '../utils/razorpay.js';
 
@@ -985,6 +986,16 @@ export const updateOrderStatus = async (req, res) => {
 
     await order.save();
 
+    // Automatically notify customer of order status update
+    Notification.createNotification({
+      recipient: order.customer,
+      title: 'Order Status Updated',
+      message: `Your Order #${order.orderNumber} is now ${String(orderStatus || order.orderStatus).replace(/_/g, ' ')}.`,
+      type: 'ORDER_UPDATE',
+      orderId: order._id,
+      orderNumber: order.orderNumber
+    });
+
     return res.json({
       success: true,
       message: 'Order status updated successfully',
@@ -1068,6 +1079,16 @@ export const assignRider = async (req, res) => {
     await order.save();
     await order.populate('logistics.assignedRider', 'name phone email');
     await order.populate('customer', 'name email phone');
+
+    // Automatically notify customer of assigned rider
+    Notification.createNotification({
+      recipient: order.customer._id || order.customer,
+      title: 'Rider Assigned to Your Order',
+      message: `Rider ${rider.name} (${rider.phone || 'Contact via app'}) has been assigned to your Order #${order.orderNumber}.`,
+      type: 'RIDER_ASSIGNED',
+      orderId: order._id,
+      orderNumber: order.orderNumber
+    });
 
     return res.json({
       success: true,
