@@ -5,8 +5,7 @@ import { app } from '../server.js';
 import User from '../models/User.js';
 import Order from '../models/Order.js';
 import Garment from '../models/Garment.js';
-import TimeSlot from '../models/TimeSlot.js';
-import PlatformConfig from '../models/PlatformConfig.js';
+import { seedData } from '../utils/seeder.js';
 import jwt from 'jsonwebtoken';
 
 dotenv.config();
@@ -22,44 +21,35 @@ const runE2ETest = async () => {
 
     await mongoose.disconnect();
     await mongoose.connect(uri);
-    console.log('[E2E Test] Connected to In-Memory DB:', uri);
+    console.log('[E2E Test] Connected to In-Memory DB');
 
-    // Bootstrap PlatformConfig and TimeSlots
-    await PlatformConfig.getOrCreateActiveConfig();
-    await TimeSlot.create({
-      label: '09:00 AM - 12:00 PM',
-      startHour: 9,
-      endHour: 12,
-      maxCapacity: 20,
-      isActive: true
-    });
+    // Run seedData to populate default garments, slots, and config
+    await seedData();
 
-    const garment = await Garment.create({
-      name: 'Formal Shirt',
-      category: 'Men',
-      pricing: {
-        washAndIron: 60,
-        washAndFold: 40,
-        dryClean: 120,
-        steamIronOnly: 30
-      },
-      isActive: true
-    });
+    const garment = await Garment.findOne({ isActive: true });
+    if (!garment) throw new Error('No seeded garment found');
 
-    // Create Customer & Rider users
-    const customer = await User.create({
-      name: 'E2E Customer',
-      phone: '9876543210',
-      role: 'customer',
-      password: 'hashedPassword123'
-    });
+    // Retrieve or create Customer & Rider users
+    let customer = await User.findOne({ role: 'customer' });
+    let rider = await User.findOne({ role: 'rider' });
 
-    const rider = await User.create({
-      name: 'E2E Rider',
-      phone: '9876543211',
-      role: 'rider',
-      password: 'hashedPassword123'
-    });
+    if (!customer) {
+      customer = await User.create({
+        name: 'E2E Customer',
+        phone: '9876543210',
+        role: 'customer',
+        password: 'hashedPassword123'
+      });
+    }
+
+    if (!rider) {
+      rider = await User.create({
+        name: 'E2E Rider',
+        phone: '9876543211',
+        role: 'rider',
+        password: 'hashedPassword123'
+      });
+    }
 
     const customerToken = jwt.sign(
       { id: customer._id, role: 'customer' },
@@ -71,7 +61,7 @@ const runE2ETest = async () => {
       process.env.JWT_SECRET || 'HFN39uXzKcG72zi1RnG84qHGjwv2sgvMSY7mTxsdOha'
     );
 
-    const PORT = 5099;
+    const PORT = 5098;
     serverInstance = app.listen(PORT);
     console.log(`[E2E Test] Test server listening on port ${PORT}`);
 
@@ -99,11 +89,11 @@ const runE2ETest = async () => {
       ],
       pickupSchedule: {
         date: '2026-10-20',
-        timeSlot: '09:00 AM - 12:00 PM'
+        timeSlot: '10:00 AM - 01:00 PM'
       },
       deliverySchedule: {
         date: '2026-10-22',
-        timeSlot: '09:00 AM - 12:00 PM'
+        timeSlot: '02:00 PM - 05:00 PM'
       },
       pickupAddress: {
         flatAndBuilding: 'Flat 101, Galaxy Tower',
