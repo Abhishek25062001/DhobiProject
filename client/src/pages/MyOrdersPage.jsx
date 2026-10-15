@@ -28,7 +28,8 @@ import {
   FileText,
   Ban,
   Zap,
-  Printer
+  Printer,
+  QrCode
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
