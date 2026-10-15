@@ -962,7 +962,8 @@ export const getRiderTasks = async (req, res) => {
 // @access  Private (Rider & Admin)
 export const verifyPickup = async (req, res) => {
   try {
-    const { otp, bagTagId, inspectionNotes, verifiedGarmentCount, inspectionPhotos } = req.body;
+    const { otp, pickupOtp, bagTagId, inspectionNotes, verifiedGarmentCount, inspectionPhotos } = req.body;
+    const effectiveOtp = otp || pickupOtp;
     const order = await Order.findById(req.params.id);
 
     if (!order) {
@@ -979,7 +980,7 @@ export const verifyPickup = async (req, res) => {
       });
     }
 
-    if (!otp || String(otp).trim() !== String(order.verificationCodes?.pickupOtp)) {
+    if (!effectiveOtp || String(effectiveOtp).trim() !== String(order.verificationCodes?.pickupOtp)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid pickup verification OTP. Please request the 4-digit OTP from the customer.'

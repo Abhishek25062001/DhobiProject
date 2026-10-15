@@ -7,6 +7,8 @@ import Garment from '../models/Garment.js';
 import User from '../models/User.js';
 import Order from '../models/Order.js';
 import Coupon from '../models/Coupon.js';
+import PlatformConfig from '../models/PlatformConfig.js';
+import TimeSlot from '../models/TimeSlot.js';
 
 
 process.env.NODE_ENV = 'test';
@@ -1669,6 +1671,328 @@ async function runVerification() {
         `Analytics: ${resAnalytics.status}, Search: ${resSearchBag.status}`,
         duration,
         `Analytics computed accurately (Total: ${analyticsData?.totalOrders}, Settled: ₹${analyticsData?.settledRevenue}, Pending COD: ₹${analyticsData?.pendingCodRevenue}). Search by bagTagId returned exact matching order.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 27: Dynamic PlatformConfig & Live Pricing Rule Mutation
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 27] Dynamic PlatformConfig & Live Pricing Rule Mutation...`);
+
+      // 1. Admin updates PlatformConfig settings (deliveryFee: 59, expressSurcharge: 129)
+      const resUpdateSettings = await apiRequest('/config/settings', {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: {
+          deliveryFee: 59,
+          expressSurcharge: 129
+        }
+      });
+
+      const configUpdated =
+        resUpdateSettings.status === 200 &&
+        resUpdateSettings.data?.config?.deliveryFee === 59 &&
+        resUpdateSettings.data?.config?.expressSurcharge === 129;
+
+      // 2. Customer places an express order (< 399 subtotal to trigger deliveryFee)
+      const shirt = garmentsList[0] || (await Garment.findOne({ isActive: true }));
+      const resPlaceOrder = await apiRequest('/orders', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: {
+          items: [{ garmentId: shirt._id, quantity: 1, serviceType: 'WASH_AND_FOLD' }],
+          pickupSchedule: { date: '2026-11-01', timeSlot: '10:00 AM - 01:00 PM' },
+          deliverySchedule: { date: '2026-11-02', timeSlot: '10:00 AM - 01:00 PM' },
+          pickupAddress: {
+            flatAndBuilding: 'Suite 27 Testing Tower',
+            streetAndLandmark: 'Connaught Place',
+            city: 'New Delhi',
+            pincode: '110001',
+            contactPhone: '9876543210'
+          },
+          isExpress: true,
+          paymentMethod: 'COD'
+        }
+      });
+
+      const order27 = resPlaceOrder.data?.order;
+      const pb27 = order27?.pricingBreakdown;
+
+      const itemPrice = shirt.pricing.washOnly;
+      const expectedSubtotal = itemPrice;
+      const expectedDelivery = 59;
+      const expectedExpress = 129;
+      const expectedBase = expectedSubtotal + expectedDelivery + expectedExpress;
+      const expectedTax = Math.round(expectedBase * 0.05);
+      const expectedTotal = expectedBase + expectedTax;
+
+      const pricingCorrect =
+        resPlaceOrder.status === 201 &&
+        pb27?.subtotal === expectedSubtotal &&
+        pb27?.pickupDeliveryFee === expectedDelivery &&
+        pb27?.expressSurcharge === expectedExpress &&
+        pb27?.taxAmount === expectedTax &&
+        pb27?.grandTotal === expectedTotal;
+
+      // 3. Admin restores default platform config (49 and 99)
+      const resRestoreSettings = await apiRequest('/config/settings', {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: {
+          deliveryFee: 49,
+          expressSurcharge: 99
+        }
+      });
+
+      const restored =
+        resRestoreSettings.status === 200 &&
+        resRestoreSettings.data?.config?.deliveryFee === 49 &&
+        resRestoreSettings.data?.config?.expressSurcharge === 99;
+
+      const passed = configUpdated && pricingCorrect && restored;
+      const duration = Math.round(performance.now() - start);
+
+      recordResult(
+        27,
+        'Dynamic PlatformConfig & Live Pricing Rule Mutation',
+        passed,
+        `Update: ${resUpdateSettings.status}, Order: ${resPlaceOrder.status}, Restore: ${resRestoreSettings.status}`,
+        duration,
+        `Admin modified delivery fee (₹49 -> ₹59) & express surcharge (₹99 -> ₹129). Order ${order27?.orderNumber} dynamically computed live fees (Fee: ₹${pb27?.pickupDeliveryFee}, Express: ₹${pb27?.expressSurcharge}, Total: ₹${pb27?.grandTotal}). Default settings restored successfully.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 28: Dynamic TimeSlot Database Management
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 28] Dynamic TimeSlot Database Management...`);
+
+      const newSlotLabel = '04:00 PM - 06:00 PM';
+      // 1. Admin creates a new dynamic slot
+      const resCreateSlot = await apiRequest('/config/slots', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: {
+          label: newSlotLabel,
+          startHour: 16,
+          endHour: 18,
+          maxCapacity: 8,
+          sortOrder: 5,
+          isActive: true
+        }
+      });
+
+      const createdSlot = resCreateSlot.data?.slot;
+      const slotCreated =
+        resCreateSlot.status === 201 &&
+        createdSlot?.label === newSlotLabel &&
+        createdSlot?.maxCapacity === 8;
+
+      // 2. Query available slots for a future date
+      const testDate28 = '2026-11-15';
+      const resSlotsQuery = await apiRequest(`/orders/slots?date=${testDate28}`);
+      const dynamicSlotFromApi = resSlotsQuery.data?.slots?.find((s) => s.slot === newSlotLabel);
+      const queryVerified =
+        resSlotsQuery.status === 200 &&
+        dynamicSlotFromApi &&
+        dynamicSlotFromApi.maxCapacity === 8 &&
+        dynamicSlotFromApi.remainingCapacity === 8 &&
+        dynamicSlotFromApi.isAvailable === true;
+
+      // 3. Admin updates slot capacity to 12
+      const resUpdateSlot = await apiRequest(`/config/slots/${createdSlot?._id}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: {
+          maxCapacity: 12
+        }
+      });
+
+      // 4. Query again to verify live updated capacity
+      const resSlotsQueryUpdated = await apiRequest(`/orders/slots?date=${testDate28}`);
+      const updatedSlotFromApi = resSlotsQueryUpdated.data?.slots?.find((s) => s.slot === newSlotLabel);
+      const capacityUpdated =
+        resUpdateSlot.status === 200 &&
+        resUpdateSlot.data?.slot?.maxCapacity === 12 &&
+        updatedSlotFromApi?.maxCapacity === 12 &&
+        updatedSlotFromApi?.remainingCapacity === 12;
+
+      const passed = slotCreated && queryVerified && capacityUpdated;
+      const duration = Math.round(performance.now() - start);
+
+      recordResult(
+        28,
+        'Dynamic TimeSlot Database Management',
+        passed,
+        `Create: ${resCreateSlot.status}, Query: ${resSlotsQuery.status}, Update: ${resUpdateSlot.status}`,
+        duration,
+        `Admin created dynamic slot "${newSlotLabel}" with maxCapacity 8. Live API returned remaining capacity 8. Updated capacity to 12 via DB mutation.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 29: Cloudinary Image Upload & Garment Media Persistence
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 29] Cloudinary Image Upload & Garment Media Persistence...`);
+
+      // 1. Upload a Base64 image via /api/config/upload-image
+      const base64Sample = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      const resUpload = await apiRequest('/config/upload-image', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: {
+          image: base64Sample,
+          folder: 'indodhobi/garments'
+        }
+      });
+
+      const uploadValid =
+        resUpload.status === 200 &&
+        typeof resUpload.data?.imageUrl === 'string' &&
+        resUpload.data.imageUrl.length > 0 &&
+        typeof resUpload.data?.publicId === 'string';
+
+      const uploadedUrl = resUpload.data?.imageUrl;
+      const uploadedPublicId = resUpload.data?.publicId;
+
+      // 2. Update a garment with the Cloudinary image URL and publicId
+      const targetGarment = garmentsList[0] || (await Garment.findOne({ isActive: true }));
+      const resGarmentUpdate = await apiRequest(`/catalog/garments/${targetGarment._id}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: {
+          imageUrl: uploadedUrl,
+          cloudinaryPublicId: uploadedPublicId
+        }
+      });
+
+      const garmentUpdated =
+        resGarmentUpdate.status === 200 &&
+        resGarmentUpdate.data?.data?.imageUrl === uploadedUrl &&
+        resGarmentUpdate.data?.data?.cloudinaryPublicId === uploadedPublicId;
+
+      // 3. Verify public catalog includes imageUrl and cloudinaryPublicId
+      const resCatalog = await apiRequest('/catalog/garments');
+      const verifiedGarment = resCatalog.data?.data?.find(
+        (g) => g._id?.toString() === targetGarment._id?.toString()
+      );
+
+      const catalogVerified =
+        resCatalog.status === 200 &&
+        verifiedGarment?.imageUrl === uploadedUrl &&
+        verifiedGarment?.cloudinaryPublicId === uploadedPublicId;
+
+      const passed = uploadValid && garmentUpdated && catalogVerified;
+      const duration = Math.round(performance.now() - start);
+
+      recordResult(
+        29,
+        'Cloudinary Image Upload & Garment Media Persistence',
+        passed,
+        `Upload: ${resUpload.status}, Update: ${resGarmentUpdate.status}, Catalog: ${resCatalog.status}`,
+        duration,
+        `Uploaded garment media to Cloudinary pipeline (${uploadedPublicId}). Successfully persisted imageUrl on garment '${targetGarment.name}' and verified live catalog retrieval.`
+      );
+    }
+
+    // =========================================================================
+    // TEST 30: Rider Doorstep Stain Photo Upload & Order Inspection Persistence
+    // =========================================================================
+    {
+      const start = performance.now();
+      console.log(`\n[Suite 30] Rider Doorstep Stain Photo Upload & Order Inspection Persistence...`);
+
+      // 1. Customer places an order to test doorstep pickup inspection
+      const shirt = garmentsList[0] || (await Garment.findOne({ isActive: true }));
+      const resCreateOrder = await apiRequest('/orders', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${customerToken}` },
+        body: {
+          items: [{ garmentId: shirt._id, quantity: 2, serviceType: 'WASH_AND_FOLD' }],
+          pickupSchedule: { date: '2026-11-20', timeSlot: '08:00 AM - 10:00 AM' },
+          deliverySchedule: { date: '2026-11-22', timeSlot: '08:00 AM - 10:00 AM' },
+          pickupAddress: {
+            flatAndBuilding: 'Suite 30 Inspection Tower',
+            streetAndLandmark: 'Barakhamba Road',
+            city: 'New Delhi',
+            pincode: '110001',
+            contactPhone: '9876543210'
+          },
+          paymentMethod: 'COD'
+        }
+      });
+
+      const order30 = resCreateOrder.data?.order;
+      const pickupOtp = order30?.verificationCodes?.pickupOtp;
+
+      // 2. Rider verifies pickup with inspection photos & bag tag
+      const inspectionSamplePhotos = [
+        {
+          url: 'https://res.cloudinary.com/dhobiproject/image/upload/v1700000000/indodhobi/inspections/collar_stain.jpg',
+          publicId: 'indodhobi/inspections/collar_stain'
+        }
+      ];
+
+      const resVerifyPickup = await apiRequest(`/orders/${order30?._id}/verify-pickup`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${riderToken}` },
+        body: {
+          otp: pickupOtp,
+          pickupOtp,
+          bagTagId: 'BAG-STAIN-PHOTO-99',
+          verifiedGarmentCount: 2,
+          inspectionNotes: 'Front collar ink stain detected during doorstep pickup verification',
+          inspectionPhotos: inspectionSamplePhotos
+        }
+      });
+
+      const pickupVerified =
+        resVerifyPickup.status === 200 &&
+        resVerifyPickup.data?.order?.orderStatus === 'PICKED_UP' &&
+        resVerifyPickup.data?.order?.logistics?.bagTagId === 'BAG-STAIN-PHOTO-99' &&
+        resVerifyPickup.data?.order?.logistics?.inspectionPhotos?.length === 1 &&
+        resVerifyPickup.data?.order?.logistics?.inspectionPhotos[0]?.url === inspectionSamplePhotos[0].url;
+
+      // 3. Customer checks order history to view doorstep photos
+      const resCustomerHistory = await apiRequest('/orders/my-orders', {
+        headers: { Authorization: `Bearer ${customerToken}` }
+      });
+
+      const customerOrderView = resCustomerHistory.data?.orders?.find(
+        (o) => o._id?.toString() === order30?._id?.toString()
+      );
+      const customerSawPhotos =
+        resCustomerHistory.status === 200 &&
+        customerOrderView?.logistics?.inspectionPhotos?.length === 1 &&
+        customerOrderView?.logistics?.inspectionPhotos[0]?.url === inspectionSamplePhotos[0].url;
+
+      // 4. Admin / Rider retrieves single order details
+      const resSingleOrder = await apiRequest(`/orders/${order30?._id}`, {
+        headers: { Authorization: `Bearer ${adminToken}` }
+      });
+
+      const adminOrderView = resSingleOrder.data?.order;
+      const adminVerified =
+        resSingleOrder.status === 200 &&
+        adminOrderView?.logistics?.inspectionPhotos?.length === 1 &&
+        adminOrderView?.logistics?.inspectionPhotos[0]?.publicId === inspectionSamplePhotos[0].publicId;
+
+      const passed = pickupVerified && customerSawPhotos && adminVerified;
+      const duration = Math.round(performance.now() - start);
+
+      recordResult(
+        30,
+        'Rider Doorstep Stain Photo Upload & Order Inspection Persistence',
+        passed,
+        `Verify: ${resVerifyPickup.status}, CustHistory: ${resCustomerHistory.status}, Details: ${resSingleOrder.status}`,
+        duration,
+        `Rider attached stain inspection photo on pickup verification for Bag Tag 'BAG-STAIN-PHOTO-99'. Cloudinary photo verified in customer order timeline and admin inspection view.`
       );
     }
 

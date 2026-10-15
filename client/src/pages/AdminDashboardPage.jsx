@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { orderService, catalogService } from '../services/api';
+import { orderService, catalogService, configService } from '../services/api';
 import GstInvoiceModal from '../components/GstInvoiceModal';
 import { 
   Users, 
@@ -14,23 +14,30 @@ import {
   RefreshCw, 
   Eye, 
   X, 
-  Loader2,
-  AlertCircle,
-  Bike,
-  Tag,
-  KeyRound,
-  ShieldCheck,
-  Percent,
-  Edit,
-  Plus,
-  Layers,
-  FileText,
-  BarChart3,
-  Check,
-  Calendar,
-  ToggleLeft,
-  ToggleRight,
-  Zap
+  Loader2, 
+  AlertCircle, 
+  Bike, 
+  Tag, 
+  KeyRound, 
+  ShieldCheck, 
+  Percent, 
+  Edit, 
+  Plus, 
+  Layers, 
+  FileText, 
+  BarChart3, 
+  Check, 
+  Calendar, 
+  ToggleLeft, 
+  ToggleRight, 
+  Zap,
+  Sliders,
+  Upload,
+  Image as ImageIcon,
+  Settings,
+  Camera,
+  Trash2,
+  Building2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -87,10 +94,13 @@ const AdminDashboardPage = () => {
   const [editGarmentModal, setEditGarmentModal] = useState(false);
   const [editingGarment, setEditingGarment] = useState(null);
   const [newGarmentModal, setNewGarmentModal] = useState(false);
+  const [uploadingGarmentImage, setUploadingGarmentImage] = useState(false);
   const [newGarmentForm, setNewGarmentForm] = useState({
     name: '',
     category: 'Men',
     iconName: 'Shirt',
+    imageUrl: '',
+    cloudinaryPublicId: '',
     pricing: {
       washOnly: 30,
       standardSteamIron: 20,
@@ -115,6 +125,37 @@ const AdminDashboardPage = () => {
     minOrderSubtotal: 299,
     maxDiscountAmount: 100,
     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  });
+
+  // =========================================================================
+  // TAB 4: PLATFORM SETTINGS & SLOTS CMS STATE
+  // =========================================================================
+  const [platformSettings, setPlatformSettings] = useState({
+    businessName: 'IndoDhobi Laundry & Dry Cleaning Pvt. Ltd.',
+    gstin: '07AABCI1234F1Z5',
+    sacCode: '999712',
+    supportPhone: '+91 98765 43210',
+    freeDeliveryThreshold: 399,
+    deliveryFee: 49,
+    expressSurcharge: 99,
+    gstPercentage: 5,
+    minStandardTurnaroundHours: 24,
+    detergentOptions: [],
+    packagingOptions: []
+  });
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  const [adminSlots, setAdminSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [newSlotModal, setNewSlotModal] = useState(false);
+  const [newSlotForm, setNewSlotForm] = useState({
+    label: '',
+    startHour: 8,
+    endHour: 10,
+    maxCapacity: 15,
+    sortOrder: 1,
+    isActive: true
   });
 
   // =========================================================================
@@ -192,6 +233,36 @@ const AdminDashboardPage = () => {
     }
   };
 
+  const fetchPlatformSettings = async () => {
+    try {
+      setLoadingSettings(true);
+      const res = await configService.getPublicConfig();
+      if (res.success && res.config) {
+        setPlatformSettings(res.config);
+      }
+    } catch (err) {
+      console.error('[Settings Error]:', err);
+      toast.error('Failed to load platform settings.');
+    } finally {
+      setLoadingSettings(false);
+    }
+  };
+
+  const fetchAdminSlots = async () => {
+    try {
+      setLoadingSlots(true);
+      const res = await configService.getAllSlots();
+      if (res.success && res.slots) {
+        setAdminSlots(res.slots);
+      }
+    } catch (err) {
+      console.error('[Slots Error]:', err);
+      toast.error('Failed to load dynamic time slots.');
+    } finally {
+      setLoadingSlots(false);
+    }
+  };
+
   useEffect(() => {
     fetchAllOrders();
     fetchRiders();
@@ -203,6 +274,9 @@ const AdminDashboardPage = () => {
       fetchGarments();
     } else if (activeTab === 'coupons') {
       fetchCoupons();
+    } else if (activeTab === 'settings') {
+      fetchPlatformSettings();
+      fetchAdminSlots();
     }
   }, [activeTab]);
 
@@ -309,6 +383,8 @@ const AdminDashboardPage = () => {
           name: '',
           category: 'Men',
           iconName: 'Shirt',
+          imageUrl: '',
+          cloudinaryPublicId: '',
           pricing: {
             washOnly: 30,
             standardSteamIron: 20,
@@ -325,6 +401,41 @@ const AdminDashboardPage = () => {
     }
   };
 
+  const handleUploadGarmentImage = async (file, isEditing = false) => {
+    if (!file) return;
+    setUploadingGarmentImage(true);
+    try {
+      const reader = new FileReader();
+      const base64Promise = new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+      });
+      reader.readAsDataURL(file);
+      const base64 = await base64Promise;
+      const res = await configService.uploadImage(base64, 'indodhobi/garments');
+      if (res.success && res.imageUrl) {
+        if (isEditing) {
+          setEditingGarment((prev) => ({
+            ...prev,
+            imageUrl: res.imageUrl,
+            cloudinaryPublicId: res.publicId || ''
+          }));
+        } else {
+          setNewGarmentForm((prev) => ({
+            ...prev,
+            imageUrl: res.imageUrl,
+            cloudinaryPublicId: res.publicId || ''
+          }));
+        }
+        toast.success('Garment photo uploaded to Cloudinary!');
+      }
+    } catch (err) {
+      toast.error('Failed to upload garment photo.');
+    } finally {
+      setUploadingGarmentImage(false);
+    }
+  };
+
   const handleUpdateGarmentPricing = async (e) => {
     e.preventDefault();
     if (!editingGarment) return;
@@ -333,7 +444,9 @@ const AdminDashboardPage = () => {
         name: editingGarment.name,
         category: editingGarment.category,
         pricing: editingGarment.pricing,
-        isActive: editingGarment.isActive
+        isActive: editingGarment.isActive,
+        imageUrl: editingGarment.imageUrl,
+        cloudinaryPublicId: editingGarment.cloudinaryPublicId
       });
       if (res.success && res.data) {
         setGarments((prev) =>
@@ -345,6 +458,71 @@ const AdminDashboardPage = () => {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update garment rates.');
+    }
+  };
+
+  // =========================================================================
+  // TAB 4: PLATFORM SETTINGS & DYNAMIC SLOTS ACTIONS
+  // =========================================================================
+  const handleSavePlatformSettings = async (e) => {
+    e.preventDefault();
+    try {
+      setSavingSettings(true);
+      const res = await configService.updateSettings(platformSettings);
+      if (res.success) {
+        setPlatformSettings(res.config);
+        toast.success('Platform configuration saved successfully!');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update platform settings.');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleCreateSlot = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await configService.createSlot(newSlotForm);
+      if (res.success && res.slot) {
+        setAdminSlots((prev) => [...prev, res.slot]);
+        setNewSlotModal(false);
+        setNewSlotForm({
+          label: '',
+          startHour: 8,
+          endHour: 10,
+          maxCapacity: 15,
+          sortOrder: adminSlots.length + 1,
+          isActive: true
+        });
+        toast.success(`Created slot: ${res.slot.label}`);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to create time slot.');
+    }
+  };
+
+  const handleUpdateSlotCapacity = async (slotId, maxCapacity) => {
+    try {
+      const res = await configService.updateSlot(slotId, { maxCapacity: Number(maxCapacity) });
+      if (res.success && res.slot) {
+        setAdminSlots((prev) => prev.map((s) => (s._id === slotId ? res.slot : s)));
+        toast.success('Slot capacity updated!');
+      }
+    } catch (err) {
+      toast.error('Failed to update slot capacity.');
+    }
+  };
+
+  const handleToggleSlotActive = async (slot) => {
+    try {
+      const res = await configService.updateSlot(slot._id, { isActive: !slot.isActive });
+      if (res.success && res.slot) {
+        setAdminSlots((prev) => prev.map((s) => (s._id === slot._id ? res.slot : s)));
+        toast.success(`Slot ${slot.label} ${!slot.isActive ? 'activated' : 'deactivated'}!`);
+      }
+    } catch (err) {
+      toast.error('Failed to update slot status.');
     }
   };
 
@@ -421,42 +599,54 @@ const AdminDashboardPage = () => {
           </p>
         </div>
 
-        {/* 3 Operational Tabs */}
-        <div className="flex items-center p-1.5 bg-slate-100 rounded-2xl border border-slate-200 text-xs font-bold self-start md:self-auto">
+        {/* 4 Operational Tabs */}
+        <div className="flex flex-wrap items-center p-1.5 bg-slate-100 rounded-2xl border border-slate-200 text-xs font-bold gap-1 self-start md:self-auto">
           <button
             onClick={() => setActiveTab('orders')}
-            className={`px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'orders'
                 ? 'bg-white text-primary-600 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Truck className="w-3.5 h-3.5" />
-            <span>Live Orders &amp; Dispatch</span>
+            <span>Live Orders</span>
           </button>
 
           <button
             onClick={() => setActiveTab('ratecard')}
-            className={`px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'ratecard'
                 ? 'bg-white text-primary-600 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>Garment Rate Card (CMS)</span>
+            <span>Garment Rate Card</span>
           </button>
 
           <button
             onClick={() => setActiveTab('coupons')}
-            className={`px-4 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
               activeTab === 'coupons'
                 ? 'bg-white text-primary-600 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Tag className="w-3.5 h-3.5" />
-            <span>Promo Coupons CMS</span>
+            <span>Coupons</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'settings'
+                ? 'bg-white text-primary-600 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Platform Settings &amp; Slots</span>
           </button>
         </div>
       </div>
@@ -824,7 +1014,18 @@ const AdminDashboardPage = () => {
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {filteredGarments.map((g) => (
                       <tr key={g._id} className="hover:bg-slate-50/60">
-                        <td className="py-3.5 px-5 font-bold text-slate-900">{g.name}</td>
+                        <td className="py-3.5 px-5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden border border-slate-200">
+                              {g.imageUrl ? (
+                                <img src={g.imageUrl} alt={g.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <Layers className="w-4 h-4 text-slate-400" />
+                              )}
+                            </div>
+                            <span className="font-bold text-slate-900">{g.name}</span>
+                          </div>
+                        </td>
                         <td className="py-3.5 px-5">
                           <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-semibold">
                             {g.category}
@@ -963,6 +1164,444 @@ const AdminDashboardPage = () => {
       )}
 
       {/* ===================================================================== */}
+      {/* TAB 4: PLATFORM SETTINGS & SLOTS CMS */}
+      {/* ===================================================================== */}
+      {activeTab === 'settings' && (
+        <div className="space-y-8">
+          {/* Section 1: Business Profile & Pricing Rules */}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-primary-600" />
+                  <span>Platform Pricing Rules &amp; Business Metadata</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Real-time MongoDB settings that instantly dictate checkout totals, GST invoices, and delivery fees.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={fetchPlatformSettings}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Reload</span>
+              </button>
+            </div>
+
+            {loadingSettings ? (
+              <div className="p-12 text-center">
+                <Loader2 className="w-8 h-8 text-primary-600 animate-spin mx-auto mb-2" />
+                <p className="text-xs text-slate-500">Loading platform configuration...</p>
+              </div>
+            ) : (
+              <form onSubmit={handleSavePlatformSettings} className="space-y-6 text-xs">
+                {/* Pricing Rules Grid */}
+                <div className="space-y-3">
+                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
+                    1. Live Pricing &amp; Order Rules
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                      <label className="font-bold text-slate-700 block text-[11px]">
+                        Free Delivery Threshold (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={platformSettings.freeDeliveryThreshold}
+                        onChange={(e) => setPlatformSettings({ ...platformSettings, freeDeliveryThreshold: Number(e.target.value) })}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold bg-white text-slate-900"
+                      />
+                      <span className="text-[10px] text-slate-400 block">Orders at or above this amount get free delivery</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                      <label className="font-bold text-slate-700 block text-[11px]">
+                        Standard Delivery Fee (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={platformSettings.deliveryFee}
+                        onChange={(e) => setPlatformSettings({ ...platformSettings, deliveryFee: Number(e.target.value) })}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold bg-white text-slate-900"
+                      />
+                      <span className="text-[10px] text-slate-400 block">Applied when subtotal &lt; free threshold</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                      <label className="font-bold text-slate-700 block text-[11px]">
+                        Express 24h Surcharge (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={platformSettings.expressSurcharge}
+                        onChange={(e) => setPlatformSettings({ ...platformSettings, expressSurcharge: Number(e.target.value) })}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold bg-white text-slate-900"
+                      />
+                      <span className="text-[10px] text-slate-400 block">Fast 24-hour turnaround fee</span>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                      <label className="font-bold text-slate-700 block text-[11px]">
+                        GST Percentage (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        required
+                        value={platformSettings.gstPercentage}
+                        onChange={(e) => setPlatformSettings({ ...platformSettings, gstPercentage: Number(e.target.value) })}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold bg-white text-slate-900"
+                      />
+                      <span className="text-[10px] text-slate-400 block">Split 50/50 as CGST and SGST on invoice</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Business Billing Metadata Grid */}
+                <div className="space-y-3 pt-2">
+                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
+                    2. Legal Entity &amp; GST Invoice Information
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1 sm:col-span-2">
+                      <label className="font-bold text-slate-700 block text-[11px]">
+                        Registered Business Name
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={platformSettings.businessName}
+                        onChange={(e) => setPlatformSettings({ ...platformSettings, businessName: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold bg-white text-slate-900"
+                      />
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                      <label className="font-bold text-slate-700 block text-[11px]">
+                        GSTIN Number
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={platformSettings.gstin}
+                        onChange={(e) => setPlatformSettings({ ...platformSettings, gstin: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-bold bg-white text-slate-900"
+                      />
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                      <label className="font-bold text-slate-700 block text-[11px]">
+                        SAC Code
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={platformSettings.sacCode}
+                        onChange={(e) => setPlatformSettings({ ...platformSettings, sacCode: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-bold bg-white text-slate-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Detergent & Packaging Options Section */}
+                <div className="space-y-4 pt-2">
+                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
+                    3. Dynamic Detergent &amp; Packaging Options
+                  </h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Detergents */}
+                    <div className="p-4 rounded-2xl border border-slate-200 space-y-3 bg-slate-50/50">
+                      <span className="font-bold text-slate-800 block text-xs">Detergent Choices:</span>
+                      <div className="space-y-2">
+                        {platformSettings.detergentOptions?.map((det, dIdx) => (
+                          <div key={dIdx} className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between text-xs">
+                            <div>
+                              <span className="font-bold text-slate-900">{det.name}</span>
+                              <span className="text-[10px] text-slate-400 block font-mono">Code: {det.code} {det.extraPricePerOrder > 0 && `(+₹${det.extraPricePerOrder})`}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPlatformSettings((prev) => {
+                                  const updated = [...(prev.detergentOptions || [])];
+                                  updated[dIdx] = { ...updated[dIdx], isActive: !updated[dIdx].isActive };
+                                  return { ...prev, detergentOptions: updated };
+                                });
+                              }}
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer transition-colors ${
+                                det.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {det.isActive ? 'ACTIVE' : 'INACTIVE'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Packaging */}
+                    <div className="p-4 rounded-2xl border border-slate-200 space-y-3 bg-slate-50/50">
+                      <span className="font-bold text-slate-800 block text-xs">Packaging Choices:</span>
+                      <div className="space-y-2">
+                        {platformSettings.packagingOptions?.map((pkg, pIdx) => (
+                          <div key={pIdx} className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between text-xs">
+                            <div>
+                              <span className="font-bold text-slate-900">{pkg.name}</span>
+                              <span className="text-[10px] text-slate-400 block font-mono">Code: {pkg.code} {pkg.extraPricePerOrder > 0 && `(+₹${pkg.extraPricePerOrder})`}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPlatformSettings((prev) => {
+                                  const updated = [...(prev.packagingOptions || [])];
+                                  updated[pIdx] = { ...updated[pIdx], isActive: !updated[pIdx].isActive };
+                                  return { ...prev, packagingOptions: updated };
+                                });
+                              }}
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer transition-colors ${
+                                pkg.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                              }`}
+                            >
+                              {pkg.isActive ? 'ACTIVE' : 'INACTIVE'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={savingSettings}
+                    className="px-6 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                  >
+                    {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                    <span>Save Platform Configuration to MongoDB</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
+          {/* Section 2: Dynamic Time Slots Manager */}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-primary-600" />
+                  <span>Dynamic Logistics Time Slots &amp; Capacity Control</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Manage operational slots in MongoDB. Customer booking and rider dispatch automatically sync with these capacities.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={fetchAdminSlots}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Refresh Slots</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewSlotModal(true)}
+                  className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm shadow-primary-600/30 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Time Slot</span>
+                </button>
+              </div>
+            </div>
+
+            {loadingSlots ? (
+              <div className="p-12 text-center">
+                <Loader2 className="w-8 h-8 text-primary-600 animate-spin mx-auto mb-2" />
+                <p className="text-xs text-slate-500">Loading dynamic time slots from MongoDB...</p>
+              </div>
+            ) : adminSlots.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 text-xs">
+                No time slots found. Click "Add Time Slot" to create one.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider">
+                      <th className="py-3 px-4">Slot Label</th>
+                      <th className="py-3 px-4">Operating Hours (24h)</th>
+                      <th className="py-3 px-4 text-center">Max Capacity (Orders)</th>
+                      <th className="py-3 px-4 text-center">Sort Order</th>
+                      <th className="py-3 px-4 text-center">Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {adminSlots.map((slot) => (
+                      <tr key={slot._id} className="hover:bg-slate-50/60">
+                        <td className="py-3 px-4 font-bold text-slate-900">{slot.label}</td>
+                        <td className="py-3 px-4 text-slate-600 font-mono">
+                          {String(slot.startHour).padStart(2, '0')}:00 — {String(slot.endHour).padStart(2, '0')}:00
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <input
+                            type="number"
+                            min="1"
+                            defaultValue={slot.maxCapacity}
+                            onBlur={(e) => {
+                              if (Number(e.target.value) !== slot.maxCapacity) {
+                                handleUpdateSlotCapacity(slot._id, e.target.value);
+                              }
+                            }}
+                            className="w-16 px-2 py-1 text-center font-bold rounded-lg border border-slate-300 bg-white"
+                          />
+                        </td>
+                        <td className="py-3 px-4 text-center font-mono text-slate-600">{slot.sortOrder}</td>
+                        <td className="py-3 px-4 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSlotActive(slot)}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer transition-colors ${
+                              slot.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                            }`}
+                          >
+                            {slot.isActive ? 'ACTIVE' : 'INACTIVE'}
+                          </button>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <span className="text-[11px] text-slate-400">Auto-saved on blur</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* MODAL: ADD TIME SLOT (CMS) */}
+      {/* ===================================================================== */}
+      {newSlotModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Create Dynamic Time Slot</h3>
+                <p className="text-xs text-slate-500">Add a new pickup &amp; delivery window</p>
+              </div>
+              <button
+                onClick={() => setNewSlotModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSlot} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Slot Label *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 04:00 PM - 06:00 PM"
+                  value={newSlotForm.label}
+                  onChange={(e) => setNewSlotForm({ ...newSlotForm, label: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Start Hour (24h) *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="23"
+                    required
+                    value={newSlotForm.startHour}
+                    onChange={(e) => setNewSlotForm({ ...newSlotForm, startHour: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">End Hour (24h) *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="23"
+                    required
+                    value={newSlotForm.endHour}
+                    onChange={(e) => setNewSlotForm({ ...newSlotForm, endHour: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Max Capacity *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={newSlotForm.maxCapacity}
+                    onChange={(e) => setNewSlotForm({ ...newSlotForm, maxCapacity: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Sort Order</label>
+                  <input
+                    type="number"
+                    value={newSlotForm.sortOrder}
+                    onChange={(e) => setNewSlotForm({ ...newSlotForm, sortOrder: Number(e.target.value) })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setNewSlotModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold"
+                >
+                  Create Slot
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
       {/* MODAL: EDIT GARMENT RATES (CMS) */}
       {/* ===================================================================== */}
       {editGarmentModal && editingGarment && (
@@ -1004,6 +1643,44 @@ const AdminDashboardPage = () => {
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Garment Image Upload (Cloudinary) */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Garment Photo (Live Cloudinary Media)
+                </label>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden border border-slate-200">
+                    {editingGarment.imageUrl ? (
+                      <img src={editingGarment.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <Upload className="w-4 h-4 text-slate-400" />
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="px-3 py-1.5 rounded-xl bg-primary-50 text-primary-700 hover:bg-primary-100 font-bold text-xs cursor-pointer inline-flex items-center gap-1.5 border border-primary-200 transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{uploadingGarmentImage ? 'Uploading...' : 'Choose Image File'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={uploadingGarmentImage}
+                        onChange={(e) => handleUploadGarmentImage(e.target.files?.[0], true)}
+                        className="hidden"
+                      />
+                    </label>
+                    {editingGarment.imageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingGarment({ ...editingGarment, imageUrl: '', cloudinaryPublicId: '' })}
+                        className="block text-[10px] text-rose-600 hover:underline cursor-pointer"
+                      >
+                        Remove Image
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1146,6 +1823,44 @@ const AdminDashboardPage = () => {
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Garment Image Upload (Cloudinary) */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Garment Photo (Live Cloudinary Media)
+                </label>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden border border-slate-200">
+                    {newGarmentForm.imageUrl ? (
+                      <img src={newGarmentForm.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <Upload className="w-4 h-4 text-slate-400" />
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="px-3 py-1.5 rounded-xl bg-primary-50 text-primary-700 hover:bg-primary-100 font-bold text-xs cursor-pointer inline-flex items-center gap-1.5 border border-primary-200 transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{uploadingGarmentImage ? 'Uploading...' : 'Choose Image File'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={uploadingGarmentImage}
+                        onChange={(e) => handleUploadGarmentImage(e.target.files?.[0], false)}
+                        className="hidden"
+                      />
+                    </label>
+                    {newGarmentForm.imageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setNewGarmentForm({ ...newGarmentForm, imageUrl: '', cloudinaryPublicId: '' })}
+                        className="block text-[10px] text-rose-600 hover:underline cursor-pointer"
+                      >
+                        Remove Image
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1450,6 +2165,35 @@ const AdminDashboardPage = () => {
               {inspectOrder.logistics?.inspectionNotes && (
                 <div className="p-2 rounded-xl bg-amber-50 text-amber-900 text-[11px] border border-amber-200">
                   <strong>Pickup Inspection:</strong> {inspectOrder.logistics.inspectionNotes}
+                </div>
+              )}
+
+              {/* Doorstep Stain Inspection Photos */}
+              {inspectOrder.logistics?.inspectionPhotos?.length > 0 && (
+                <div className="space-y-1.5 pt-2 border-t border-slate-200">
+                  <span className="font-bold text-slate-800 block text-[11px]">
+                    Doorstep Stain &amp; Fabric Inspection Photos ({inspectOrder.logistics.inspectionPhotos.length}):
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {inspectOrder.logistics.inspectionPhotos.map((photo, pIdx) => (
+                      <a
+                        key={pIdx}
+                        href={photo.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block aspect-square rounded-xl overflow-hidden border border-slate-200 group relative hover:opacity-90 transition-opacity bg-slate-100 shadow-xs"
+                      >
+                        <img
+                          src={photo.url}
+                          alt={`Inspection Photo ${pIdx + 1}`}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        />
+                        <span className="absolute bottom-1 right-1 bg-slate-900/70 text-[9px] text-white px-1.5 py-0.5 rounded font-mono">
+                          View
+                        </span>
+                      </a>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

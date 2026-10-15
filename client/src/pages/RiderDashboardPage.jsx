@@ -43,6 +43,8 @@ const RiderDashboardPage = () => {
   const [bagTagId, setBagTagId] = useState('');
   const [inspectionNotes, setInspectionNotes] = useState('');
   const [verifiedGarmentCount, setVerifiedGarmentCount] = useState('');
+  const [stainPhotos, setStainPhotos] = useState([]);
+  const [uploadingStainPhoto, setUploadingStainPhoto] = useState(false);
 
   // Form states for delivery modal
   const [deliveryOtp, setDeliveryOtp] = useState('');
@@ -103,6 +105,40 @@ const RiderDashboardPage = () => {
     setBagTagId(`BAG-${order.orderNumber.replace('IDB-', '').slice(-6)}`);
     setInspectionNotes('');
     setVerifiedGarmentCount(totalCount.toString());
+    setStainPhotos([]);
+  };
+
+  // Upload stain/inspection photo to Cloudinary
+  const handleStainPhotoUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    setUploadingStainPhoto(true);
+    try {
+      for (const file of files) {
+        const reader = new FileReader();
+        const base64Promise = new Promise((resolve, reject) => {
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+        });
+        reader.readAsDataURL(file);
+        const base64 = await base64Promise;
+        const uploadRes = await configService.uploadImage(base64, 'indodhobi/inspections');
+        if (uploadRes.success && uploadRes.imageUrl) {
+          setStainPhotos((prev) => [...prev, { url: uploadRes.imageUrl, publicId: uploadRes.publicId || '' }]);
+        }
+      }
+      toast.success('Inspection photo(s) uploaded successfully!');
+    } catch (err) {
+      toast.error('Failed to upload inspection photo. Please try again.');
+    } finally {
+      setUploadingStainPhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveStainPhoto = (index) => {
+    setStainPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Submit Pickup Verification
@@ -123,7 +159,8 @@ const RiderDashboardPage = () => {
         otp: pickupOtp.trim(),
         bagTagId: bagTagId.trim(),
         inspectionNotes: inspectionNotes.trim(),
-        verifiedGarmentCount: Number(verifiedGarmentCount) || 0
+        verifiedGarmentCount: Number(verifiedGarmentCount) || 0,
+        inspectionPhotos: stainPhotos
       });
 
       if (res.success) {
@@ -596,6 +633,56 @@ const RiderDashboardPage = () => {
                   placeholder="e.g. Missing cuff button on blue shirt; faint grease spot on jeans."
                   className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-slate-800 focus:ring-2 focus:ring-teal-500"
                 />
+              </div>
+
+              {/* Stain & Inspection Photos (Cloudinary Media Pipeline) */}
+              <div className="space-y-2 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <Camera className="w-4 h-4 text-primary-600" />
+                    <span>Doorstep Stain Photos (Cloudinary)</span>
+                  </label>
+                  <label className="px-2.5 py-1 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-bold text-[11px] cursor-pointer inline-flex items-center gap-1 transition-colors">
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>{uploadingStainPhoto ? 'Uploading...' : '+ Add Photo'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      disabled={uploadingStainPhoto}
+                      onChange={handleStainPhotoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Photograph stains, torn hems, or tears before sealing in the bag.
+                </p>
+
+                {uploadingStainPhoto && (
+                  <div className="flex items-center gap-2 p-2 rounded-xl bg-white border border-slate-200 text-slate-600">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                    <span className="text-[11px]">Uploading photo to Cloudinary CDN...</span>
+                  </div>
+                )}
+
+                {stainPhotos.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 pt-1">
+                    {stainPhotos.map((photo, pIdx) => (
+                      <div key={pIdx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 group bg-white shadow-xs">
+                        <img src={photo.url} alt={`Stain ${pIdx + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveStainPhoto(pIdx)}
+                          className="absolute top-1 right-1 p-1 rounded-md bg-rose-600 text-white shadow-xs hover:bg-rose-700 transition-colors cursor-pointer"
+                          title="Remove photo"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
