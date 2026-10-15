@@ -37,9 +37,20 @@ import {
   Settings,
   Camera,
   Trash2,
-  Building2
+  Building2,
+  Menu,
+  ChevronRight,
+  Radio,
+  ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+import AdminOverviewTab from './admin/AdminOverviewTab';
+import AdminRidersTab from './admin/AdminRidersTab';
+import AdminUsersTab from './admin/AdminUsersTab';
+import AdminCategoriesTab from './admin/AdminCategoriesTab';
+import AdminPaymentsTab from './admin/AdminPaymentsTab';
+import AdminNotificationsTab from './admin/AdminNotificationsTab';
 
 const STATUS_OPTIONS = [
   'BOOKED',
@@ -56,8 +67,11 @@ const STATUS_OPTIONS = [
 const GARMENT_CATEGORIES = ['Men', 'Women', 'Household', 'Winter & Heavy'];
 
 const AdminDashboardPage = () => {
-  // Navigation Tabs: 'orders' | 'ratecard' | 'coupons'
-  const [activeTab, setActiveTab] = useState('orders');
+  // Navigation Tabs: 'overview' | 'orders' | 'riders' | 'users' | 'products' | 'payments' | 'coupons' | 'config'
+  const [activeTab, setActiveTab] = useState('overview');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [productSubTab, setProductSubTab] = useState('ratecard');
+  const [configSubTab, setConfigSubTab] = useState('settings');
 
   // =========================================================================
   // TAB 1: ORDERS & LOGISTICS STATE
@@ -270,13 +284,17 @@ const AdminDashboardPage = () => {
   }, [selectedStatusFilter, selectedPaymentFilter]);
 
   useEffect(() => {
-    if (activeTab === 'ratecard') {
+    if (activeTab === 'ratecard' || activeTab === 'products') {
       fetchGarments();
     } else if (activeTab === 'coupons') {
       fetchCoupons();
-    } else if (activeTab === 'settings') {
+    } else if (activeTab === 'settings' || activeTab === 'config') {
       fetchPlatformSettings();
       fetchAdminSlots();
+    } else if (activeTab === 'overview' || activeTab === 'orders') {
+      fetchAllOrders();
+      fetchRiders();
+      fetchAnalytics();
     }
   }, [activeTab]);
 
@@ -580,81 +598,225 @@ const AdminDashboardPage = () => {
     return matchesCat && matchesQuery;
   });
 
+  const navItems = [
+    { id: 'overview', label: 'Command Overview', icon: BarChart3 },
+    { 
+      id: 'orders', 
+      label: 'Orders & Queue', 
+      icon: Truck, 
+      badge: orders.filter((o) => !['DELIVERED', 'CANCELLED'].includes(o.orderStatus)).length 
+    },
+    { 
+      id: 'riders', 
+      label: 'Rider Fleet', 
+      icon: Bike, 
+      badge: riders.length 
+    },
+    { id: 'users', label: 'Users Directory', icon: Users },
+    { id: 'products', label: 'Products & Categories', icon: Layers },
+    { id: 'payments', label: 'Payments Ledger', icon: IndianRupee },
+    { id: 'coupons', label: 'Coupons & Promos', icon: Tag },
+    { id: 'config', label: 'Platform & Alerts', icon: Sliders },
+  ];
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
       
-      {/* Header & Tabs */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              Dhobi Operations Hub
-            </h1>
-            <span className="px-2.5 py-0.5 rounded-full bg-primary-100 text-primary-800 text-xs font-bold uppercase">
-              Admin CMS &amp; Dispatch
-            </span>
+      {/* Top Bar with Title, Real DB Badge & Mobile Toggle */}
+      <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="lg:hidden p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 cursor-pointer"
+            title="Open Navigation Menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                Dhobi Operations Command Center
+              </h1>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Real DB Atlas Connected
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
+              Centralized administrative dispatch, fleet monitoring, dynamic catalog, payments ledger, and platform controls.
+            </p>
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Manage live doorstep queues, live rates rate-card CMS, commercial promo coupons &amp; revenue analytics.
-          </p>
         </div>
 
-        {/* 4 Operational Tabs */}
-        <div className="flex flex-wrap items-center p-1.5 bg-slate-100 rounded-2xl border border-slate-200 text-xs font-bold gap-1 self-start md:self-auto">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setActiveTab('orders')}
-            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'orders'
-                ? 'bg-white text-primary-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
+            type="button"
+            onClick={() => {
+              fetchAllOrders();
+              fetchRiders();
+              fetchAnalytics();
+              if (activeTab === 'products' || activeTab === 'ratecard') fetchGarments();
+              if (activeTab === 'coupons') fetchCoupons();
+              if (activeTab === 'config' || activeTab === 'settings') {
+                fetchPlatformSettings();
+                fetchAdminSlots();
+              }
+              toast.success('Live data synchronized with MongoDB');
+            }}
+            className="p-2 text-slate-600 hover:text-primary-600 hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors cursor-pointer"
+            title="Synchronize All Live Data"
           >
-            <Truck className="w-3.5 h-3.5" />
-            <span>Live Orders</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('ratecard')}
-            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'ratecard'
-                ? 'bg-white text-primary-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Garment Rate Card</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('coupons')}
-            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'coupons'
-                ? 'bg-white text-primary-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Tag className="w-3.5 h-3.5" />
-            <span>Coupons</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'settings'
-                ? 'bg-white text-primary-600 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>Platform Settings &amp; Slots</span>
+            <RefreshCw className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* ===================================================================== */}
-      {/* TAB 1: LIVE ORDERS & REVENUE ANALYTICS */}
-      {/* ===================================================================== */}
-      {activeTab === 'orders' && (
+      {/* Main 2-Column Command Center Layout */}
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* Left Navigation Sidebar on Desktop */}
+        <aside className="hidden lg:block w-64 shrink-0 bg-white rounded-3xl border border-slate-200/80 p-4 space-y-4 shadow-xs sticky top-24">
+          <div className="px-2 py-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              Command Modules
+            </p>
+          </div>
+
+          <nav className="space-y-1">
+            {navItems.map((item) => {
+              const isActiveItem = activeTab === item.id || 
+                (item.id === 'products' && activeTab === 'ratecard') ||
+                (item.id === 'config' && activeTab === 'settings');
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-between gap-2.5 cursor-pointer ${
+                    isActiveItem
+                      ? 'bg-primary-600 text-white shadow-sm shadow-primary-600/30 font-extrabold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <item.icon className={`w-4 h-4 ${isActiveItem ? 'text-white' : 'text-slate-400'}`} />
+                    <span>{item.label}</span>
+                  </div>
+
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                      isActiveItem ? 'bg-white text-primary-700' : 'bg-slate-100 text-slate-700'
+                    }`}>
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="pt-3 border-t border-slate-100 px-2">
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/60 space-y-1 text-center">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Access Level</span>
+              <span className="text-xs font-black text-slate-800 block">Super Administrator</span>
+              <span className="text-[10px] text-emerald-600 font-semibold block">Full Read/Write Authorized</span>
+            </div>
+          </div>
+        </aside>
+
+        {/* Mobile Sidebar Slide-Over Drawer */}
+        {sidebarOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden bg-slate-900/60 backdrop-blur-xs flex">
+            <div className="w-72 bg-white h-full p-5 space-y-4 shadow-2xl flex flex-col justify-between animate-in slide-in-from-left duration-200">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-primary-600 text-white flex items-center justify-center font-bold">
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-sm">IndoDhobi Admin</h3>
+                      <p className="text-[10px] text-slate-400">Control Center</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <nav className="space-y-1">
+                  {navItems.map((item) => {
+                    const isActiveItem = activeTab === item.id || 
+                      (item.id === 'products' && activeTab === 'ratecard') ||
+                      (item.id === 'config' && activeTab === 'settings');
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(item.id);
+                          setSidebarOpen(false);
+                        }}
+                        className={`w-full px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-between gap-2.5 cursor-pointer ${
+                          isActiveItem
+                            ? 'bg-primary-600 text-white font-extrabold'
+                            : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <item.icon className={`w-4 h-4 ${isActiveItem ? 'text-white' : 'text-slate-400'}`} />
+                          <span>{item.label}</span>
+                        </div>
+
+                        {item.badge !== undefined && item.badge > 0 && (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                            isActiveItem ? 'bg-white text-primary-700' : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            {item.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </nav>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 text-center">
+                <span className="text-[11px] text-slate-400 font-medium">Logged in as Ops Admin</span>
+              </div>
+            </div>
+            <div className="flex-1" onClick={() => setSidebarOpen(false)} />
+          </div>
+        )}
+
+        {/* Right Content Area */}
+        <div className="flex-1 min-w-0 w-full space-y-6">
+          {/* ================================================================= */}
+          {/* TAB 0: DASHBOARD OVERVIEW */}
+          {/* ================================================================= */}
+          {activeTab === 'overview' && (
+            <AdminOverviewTab
+              analytics={analytics}
+              orders={orders}
+              riders={riders}
+              onNavigateTab={(tab) => {
+                setActiveTab(tab);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            />
+          )}
+
+          {/* ================================================================= */}
+          {/* TAB 1: LIVE ORDERS & REVENUE ANALYTICS */}
+          {/* ================================================================= */}
+          {activeTab === 'orders' && (
         <div className="space-y-6">
           {/* REVENUE & OPERATIONAL ANALYTICS CARDS */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
@@ -947,10 +1109,54 @@ const AdminDashboardPage = () => {
       )}
 
       {/* ===================================================================== */}
-      {/* TAB 2: GARMENT RATE CARD CMS */}
+      {/* TAB 2: RIDERS FLEET (REQUIREMENT #6) */}
       {/* ===================================================================== */}
-      {activeTab === 'ratecard' && (
+      {activeTab === 'riders' && (
+        <AdminRidersTab />
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 3: USERS & ADDRESSES DIRECTORY (REQUIREMENT #7) */}
+      {/* ===================================================================== */}
+      {activeTab === 'users' && (
+        <AdminUsersTab />
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 4: PRODUCTS & DYNAMIC CATEGORIES (REQUIREMENT #7) */}
+      {/* ===================================================================== */}
+      {(activeTab === 'products' || activeTab === 'ratecard') && (
         <div className="space-y-6">
+          {/* Subtab Switcher */}
+          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setProductSubTab('ratecard')}
+              className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                productSubTab === 'ratecard'
+                  ? 'bg-white text-primary-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Garment Rate Card (CMS)
+            </button>
+            <button
+              type="button"
+              onClick={() => setProductSubTab('categories')}
+              className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                productSubTab === 'categories'
+                  ? 'bg-white text-primary-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Dynamic Categories (CMS)
+            </button>
+          </div>
+
+          {productSubTab === 'categories' ? (
+            <AdminCategoriesTab />
+          ) : (
+            <div className="space-y-6">
           <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3 w-full md:w-auto">
               <div className="relative w-full sm:w-64">
@@ -1065,13 +1271,20 @@ const AdminDashboardPage = () => {
                   </tbody>
                 </table>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* ===================================================================== */}
-      {/* TAB 3: PROMO COUPONS CMS */}
+      {/* TAB 5: PAYMENTS & TRANSACTIONS LEDGER (REQUIREMENT #7) */}
+      {/* ===================================================================== */}
+      {activeTab === 'payments' && (
+        <AdminPaymentsTab />
+      )}
+
+      {/* ===================================================================== */}
+      {/* TAB 6: PROMO COUPONS CMS */}
       {/* ===================================================================== */}
       {activeTab === 'coupons' && (
         <div className="space-y-6">
@@ -1164,10 +1377,40 @@ const AdminDashboardPage = () => {
       )}
 
       {/* ===================================================================== */}
-      {/* TAB 4: PLATFORM SETTINGS & SLOTS CMS */}
+      {/* TAB 7: PLATFORM SETTINGS & BROADCASTS (REQUIREMENT #7) */}
       {/* ===================================================================== */}
-      {activeTab === 'settings' && (
-        <div className="space-y-8">
+      {(activeTab === 'config' || activeTab === 'settings') && (
+        <div className="space-y-6">
+          {/* Subtab Switcher */}
+          <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setConfigSubTab('settings')}
+              className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                configSubTab === 'settings'
+                  ? 'bg-white text-primary-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Platform Fees & Logistics Slots
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfigSubTab('broadcast')}
+              className={`px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                configSubTab === 'broadcast'
+                  ? 'bg-white text-primary-600 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Broadcast Announcements & Alerts
+            </button>
+          </div>
+
+          {configSubTab === 'broadcast' ? (
+            <AdminNotificationsTab />
+          ) : (
+            <div className="space-y-8">
           {/* Section 1: Business Profile & Pricing Rules */}
           <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
@@ -1492,10 +1735,14 @@ const AdminDashboardPage = () => {
                   </tbody>
                 </table>
               </div>
-            )}
           </div>
+            </div>
+          )}
         </div>
       )}
+
+        </div>
+      </div>
 
       {/* ===================================================================== */}
       {/* MODAL: ADD TIME SLOT (CMS) */}
