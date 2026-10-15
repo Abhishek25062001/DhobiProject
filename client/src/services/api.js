@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+const apiOrigin = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
 const API = axios.create({
-  baseURL: '/api',
+  // Dev calls go through the Vite proxy so the browser stays same-origin.
+  // Production has no proxy, so it calls VITE_API_URL directly.
+  baseURL: import.meta.env.DEV || !apiOrigin ? '/api' : `${apiOrigin}/api`,
   headers: {
     'Content-Type': 'application/json',
   },
