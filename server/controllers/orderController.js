@@ -508,6 +508,17 @@ export const verifyPayment = async (req, res) => {
     order.payment.onlineSubMethod = onlineSubMethod || order.payment.onlineSubMethod || 'UPI';
     order.payment.paidAt = new Date();
 
+    if (!order.statusHistory) {
+      order.statusHistory = [];
+    }
+    order.statusHistory.push({
+      status: order.orderStatus,
+      timestamp: new Date(),
+      updatedBy: req.user._id,
+      updaterRole: req.user.role || 'customer',
+      note: `Online payment verified & captured via ${onlineSubMethod || 'Razorpay'}. Transaction ID: ${paymentIdToVerify}`
+    });
+
     await order.save();
 
     return res.json({
@@ -520,6 +531,143 @@ export const verifyPayment = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message || 'Failed to process online payment verification.'
+    });
+  }
+};
+
+// @desc    Record client-side payment failure or checkout dismissal
+// @route   POST /api/orders/:id/payment-failed
+// @access  Private
+export const recordPaymentFailure = async (req, res) => {
+  try {
+    const { reason, errorCode, paymentId } = req.body;
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.'
+      });
+    }
+
+    if (order.customer.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to update payment status for this order.'
+      });
+    }
+
+    if (order.payment.status !== 'PAID') {
+      order.payment.status = 'FAILED';
+      if (paymentId) order.payment.razorpayPaymentId = paymentId;
+
+      if (!order.statusHistory) {
+        order.statusHistory = [];
+      }
+      order.statusHistory.push({
+        status: order.orderStatus,
+        timestamp: new Date(),
+        updatedBy: req.user._id,
+        updaterRole: req.user.role || 'customer',
+        note: `Payment failed/dismissed: ${reason || 'Checkout closed by user'} (Code: ${errorCode || 'USER_DISMISSED'})`
+      });
+
+      await order.save();
+    }
+
+    return res.json({
+      success: true,
+      message: 'Payment failure recorded.',
+      order
+    });
+  } catch (error) {
+    console.error('[Record Payment Failure Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to record payment failure.'
+    });
+  }
+};
+
+// @desc    Razorpay Server Webhook Handler
+// @route   POST /api/orders/webhook/razorpay
+// @access  Public
+export const handleRazorpayWebhook = async (req, res) => {
+  try {
+    const webhookSignature = req.headers['x-razorpay-signature'];
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
+
+    if (!webhookSignature || !webhookSecret) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing webhook signature or secret.'
+      });
+    }
+
+    const crypto = await import('crypto');
+    const bodyPayload = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    const expectedSignature = crypto.default
+      .createHmac('sha256', webhookSecret)
+      .update(bodyPayload)
+      .digest('hex');
+
+    if (expectedSignature !== webhookSignature) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid webhook cryptographic signature.'
+      });
+    }
+
+    const event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    const { event: eventName, payload } = event;
+
+    if (eventName === 'payment.captured' || eventName === 'order.paid') {
+      const paymentEntity = payload?.payment?.entity;
+      const rzpOrderId = paymentEntity?.order_id;
+      const paymentId = paymentEntity?.id;
+
+      if (rzpOrderId) {
+        const order = await Order.findOne({ 'payment.razorpayOrderId': rzpOrderId });
+        if (order && order.payment.status !== 'PAID') {
+          order.payment.status = 'PAID';
+          order.payment.transactionId = paymentId;
+          order.payment.razorpayPaymentId = paymentId;
+          order.payment.paidAt = new Date();
+          if (!order.statusHistory) order.statusHistory = [];
+          order.statusHistory.push({
+            status: order.orderStatus,
+            timestamp: new Date(),
+            updaterRole: 'system',
+            note: `Payment captured via Razorpay webhook. Transaction ID: ${paymentId}`
+          });
+          await order.save();
+        }
+      }
+    } else if (eventName === 'payment.failed') {
+      const paymentEntity = payload?.payment?.entity;
+      const rzpOrderId = paymentEntity?.order_id;
+      if (rzpOrderId) {
+        const order = await Order.findOne({ 'payment.razorpayOrderId': rzpOrderId });
+        if (order && order.payment.status !== 'PAID') {
+          order.payment.status = 'FAILED';
+          if (!order.statusHistory) order.statusHistory = [];
+          order.statusHistory.push({
+            status: order.orderStatus,
+            timestamp: new Date(),
+            updaterRole: 'system',
+            note: `Payment failed via Razorpay webhook: ${paymentEntity?.error_description || 'Declined'}`
+          });
+          await order.save();
+        }
+      }
+    }
+
+    return res.status(200).json({ status: 'ok' });
+  } catch (error) {
+    console.error('[Razorpay Webhook Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Webhook processing failed.'
     });
   }
 };
@@ -647,6 +795,33 @@ export const getMyOrders = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to retrieve your orders.'
+    });
+  }
+};
+
+// @desc    Get logged-in user's active orders (non-delivered, non-cancelled)
+// @route   GET /api/orders/my-active
+// @access  Private
+export const getMyActiveOrders = async (req, res) => {
+  try {
+    const activeOrders = await Order.find({
+      customer: req.user._id,
+      orderStatus: { $nin: ['DELIVERED', 'CANCELLED'] }
+    })
+      .populate('items.garment', 'name category iconName imageUrl')
+      .populate('logistics.assignedRider', 'name phone email')
+      .sort({ updatedAt: -1 });
+
+    return res.json({
+      success: true,
+      count: activeOrders.length,
+      activeOrders
+    });
+  } catch (error) {
+    console.error('[Get My Active Orders Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve active orders.'
     });
   }
 };

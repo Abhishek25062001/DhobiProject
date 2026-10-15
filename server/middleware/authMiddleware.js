@@ -33,6 +33,13 @@ export const protect = async (req, res, next) => {
       });
     }
 
+    if (req.user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account has been deactivated. Please contact support.'
+      });
+    }
+
     next();
   } catch (error) {
     return res.status(401).json({
@@ -53,3 +60,7 @@ export const authorize = (...roles) => {
     next();
   };
 };
+
+export const authorizeRoles = authorize;
+
+export default { protect, authorize, authorizeRoles };

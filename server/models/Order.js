@@ -121,7 +121,7 @@ const orderSchema = new mongoose.Schema({
     },
     onlineSubMethod: {
       type: String,
-      enum: ['UPI', 'CARD', 'NET_BANKING', 'RAZORPAY_CHECKOUT', null],
+      enum: ['UPI', 'CARD', 'NET_BANKING', 'RAZORPAY_CHECKOUT', 'NONE', '', null],
       default: null
     },
     status: {
@@ -155,11 +155,17 @@ const orderSchema = new mongoose.Schema({
   orderStatus: {
     type: String,
     enum: [
+      'ORDER_PLACED',
       'BOOKED',
+      'CONFIRMED',
+      'PICKUP_SCHEDULED',
       'PICKUP_ASSIGNED',
+      'OUT_FOR_PICKUP',
       'PICKED_UP',
+      'IN_WASH',
       'IN_WASHING',
       'IN_IRONING',
+      'READY',
       'QUALITY_CHECK',
       'OUT_FOR_DELIVERY',
       'DELIVERED',
@@ -240,6 +246,19 @@ const orderSchema = new mongoose.Schema({
   ]
 }, {
   timestamps: true
+});
+
+// Pre-validate hook to guarantee clean COD payments
+orderSchema.pre('validate', function (next) {
+  if (this.payment) {
+    if (this.payment.method === 'COD') {
+      this.payment.onlineSubMethod = null;
+      if (!this.payment.status || this.payment.status === '') {
+        this.payment.status = 'PENDING';
+      }
+    }
+  }
+  next();
 });
 
 // Production Compound Indexes

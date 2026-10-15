@@ -36,9 +36,32 @@ const addressSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  contactPhone: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   isDefault: {
     type: Boolean,
     default: false
+  }
+}, { _id: true });
+
+const alternatePhoneSchema = new mongoose.Schema({
+  number: {
+    type: String,
+    required: true,
+    trim: true,
+    set: normalizePhone
+  },
+  label: {
+    type: String,
+    default: 'Alternate',
+    trim: true
+  },
+  addedAt: {
+    type: Date,
+    default: Date.now
   }
 }, { _id: true });
 
@@ -65,7 +88,39 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Please provide your mobile number'],
     trim: true,
+    immutable: true,
     set: normalizePhone
+  },
+  alternatePhones: [alternatePhoneSchema],
+  profileImage: {
+    url: {
+      type: String,
+      default: ''
+    },
+    publicId: {
+      type: String,
+      default: ''
+    }
+  },
+  preferences: {
+    defaultDetergent: {
+      type: String,
+      default: 'Standard',
+      trim: true
+    },
+    defaultPackaging: {
+      type: String,
+      default: 'Folded',
+      trim: true
+    }
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  isProfileComplete: {
+    type: Boolean,
+    default: true
   },
 
   password: {

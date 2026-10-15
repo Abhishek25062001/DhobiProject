@@ -15,31 +15,18 @@ import {
 } from 'lucide-react';
 
 const Navbar = () => {
-  const { user, isAuthenticated, isAdmin, isRider, logout, login } = useAuth();
+  const { user, isAuthenticated, isAdmin, isRider, logout } = useAuth();
   const { itemCount } = useOrderBooking();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [quickLoginLoading, setQuickLoginLoading] = useState(false);
-
-  const handleQuickDemo = async (type) => {
-    setQuickLoginLoading(true);
-    if (type === 'customer') {
-      await login('customer@indodhobi.com', 'password123');
-    } else if (type === 'rider') {
-      await login('rider@indodhobi.com', 'rider123');
-    } else {
-      await login('admin@indodhobi.com', 'admin123');
-    }
-    setQuickLoginLoading(false);
-    setMobileMenuOpen(false);
-  };
 
   const navLinks = [
     { name: 'Home', path: '/' },
     { name: 'Book Laundry', path: '/book', highlight: true },
     { name: 'Pricing & Services', path: '/pricing' },
     { name: 'My Orders', path: '/my-orders', authRequired: true },
+    { name: 'My Profile', path: '/profile', authRequired: true },
   ];
 
   if (isRider || isAdmin) {
@@ -119,47 +106,24 @@ const Navbar = () => {
 
           {/* Right Action Buttons */}
           <div className="hidden lg:flex items-center gap-3">
-            {/* Quick Demo Selector for instant evaluator convenience */}
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs">
-              <span className="text-slate-500 font-semibold px-2">Demo:</span>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('customer')}
-                disabled={quickLoginLoading}
-                className="px-2.5 py-1 rounded-lg font-medium text-slate-700 bg-white hover:bg-slate-50 hover:text-primary-700 shadow-xs border border-slate-200 transition-all"
-                title="Login as Rohan Sharma (Customer)"
-              >
-                Customer
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('rider')}
-                disabled={quickLoginLoading}
-                className="px-2.5 py-1 rounded-lg font-medium text-slate-700 bg-white hover:bg-slate-50 hover:text-teal-700 shadow-xs border border-slate-200 transition-all"
-                title="Login as Ramesh Kumar (Rider)"
-              >
-                Rider
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('admin')}
-                disabled={quickLoginLoading}
-                className="px-2.5 py-1 rounded-lg font-medium text-slate-700 bg-white hover:bg-slate-50 hover:text-primary-700 shadow-xs border border-slate-200 transition-all"
-                title="Login as Admin (Dhobi Ops Hub)"
-              >
-                Admin
-              </button>
-            </div>
-
             {isAuthenticated ? (
               <div className="flex items-center gap-3">
                 <Link
-                  to={user?.role === 'rider' ? '/rider' : user?.role === 'admin' ? '/admin' : '/my-orders'}
+                  to="/profile"
                   className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900 text-sm font-medium transition-colors"
+                  title="View your profile & account"
                 >
-                  <div className="w-7 h-7 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs">
-                    {user?.name?.charAt(0) || 'U'}
-                  </div>
+                  {user?.profileImage?.url ? (
+                    <img
+                      src={user.profileImage.url}
+                      alt={user?.name || 'User'}
+                      className="w-7 h-7 rounded-lg object-cover border border-slate-200"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs">
+                      {user?.name?.charAt(0) || 'U'}
+                    </div>
+                  )}
                   <span className="max-w-[100px] truncate">{user?.name?.split(' ')[0]}</span>
                   {user?.role === 'admin' && (
                     <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
@@ -226,30 +190,6 @@ const Navbar = () => {
       {/* Mobile Dropdown Menu */}
       {mobileMenuOpen && (
         <div className="lg:hidden border-b border-slate-200 bg-white px-4 pt-3 pb-6 space-y-3">
-          <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200/60 mb-2">
-            <span className="text-xs font-semibold text-slate-600">Quick Demo Access:</span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleQuickDemo('customer')}
-                className="px-2 py-1 text-xs font-medium bg-white rounded-lg border border-slate-300 text-slate-700"
-              >
-                Customer
-              </button>
-              <button
-                onClick={() => handleQuickDemo('rider')}
-                className="px-2 py-1 text-xs font-medium bg-white rounded-lg border border-slate-300 text-slate-700 hover:text-teal-700"
-              >
-                Rider
-              </button>
-              <button
-                onClick={() => handleQuickDemo('admin')}
-                className="px-2 py-1 text-xs font-medium bg-white rounded-lg border border-slate-300 text-slate-700"
-              >
-                Admin
-              </button>
-            </div>
-          </div>
-
           <div className="space-y-1">
             {navLinks.map((link) => {
               if (link.authRequired && !isAuthenticated) return null;
@@ -274,10 +214,27 @@ const Navbar = () => {
           <div className="pt-3 border-t border-slate-100">
             {isAuthenticated ? (
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-slate-900 text-sm">{user?.name}</p>
-                  <p className="text-xs text-slate-500">{user?.email}</p>
-                </div>
+                <Link
+                  to="/profile"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
+                >
+                  {user?.profileImage?.url ? (
+                    <img
+                      src={user.profileImage.url}
+                      alt={user?.name || 'User'}
+                      className="w-9 h-9 rounded-xl object-cover border border-slate-200"
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-xl bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-sm">
+                      {user?.name?.charAt(0) || 'U'}
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-semibold text-slate-900 text-sm">{user?.name}</p>
+                    <p className="text-xs text-slate-500">{user?.email || user?.phone}</p>
+                  </div>
+                </Link>
                 <button
                   onClick={() => {
                     logout();

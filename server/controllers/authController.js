@@ -1,14 +1,32 @@
-import User from '../models/User.js';
+import User, { normalizePhone } from '../models/User.js';
+import Order from '../models/Order.js';
 import jwt from 'jsonwebtoken';
 import { verifyFirebaseIdToken } from '../utils/firebaseVerify.js';
+import { uploadImageToCloudinary } from '../utils/cloudinary.js';
 
-const generateToken = (id) => {
+const generateToken = (id, role = 'customer') => {
   return jwt.sign(
-    { id },
+    { id, role },
     process.env.JWT_SECRET || 'indodhobi_super_secret_jwt_key_2026',
     { expiresIn: '30d' }
   );
 };
+
+export const formatUser = (user) => ({
+  _id: user._id,
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  phone: user.phone,
+  role: user.role,
+  isActive: user.isActive !== false,
+  isPhoneVerified: Boolean(user.isPhoneVerified),
+  isProfileComplete: user.isProfileComplete !== false,
+  profileImage: user.profileImage || { url: '', publicId: '' },
+  alternatePhones: user.alternatePhones || [],
+  preferences: user.preferences || { defaultDetergent: 'Standard', defaultPackaging: 'Folded' },
+  addresses: user.addresses || []
+});
 
 // @desc    Register a new customer/user
 // @route   POST /api/auth/register
@@ -32,7 +50,8 @@ export const register = async (req, res) => {
       });
     }
 
-    const phoneExists = await User.findOne({ phone });
+    const cleanPhone = normalizePhone(phone);
+    const phoneExists = await User.findOne({ phone: cleanPhone });
     if (phoneExists) {
       return res.status(400).json({
         success: false,
@@ -43,25 +62,19 @@ export const register = async (req, res) => {
     const user = await User.create({
       name,
       email: email.toLowerCase(),
-      phone,
+      phone: cleanPhone,
       password,
-      role: role && ['customer', 'rider', 'admin'].includes(role) ? role : 'customer'
+      role: role && ['customer', 'rider', 'admin'].includes(role) ? role : 'customer',
+      isPhoneVerified: false,
+      isProfileComplete: true
     });
 
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, user.role);
 
     return res.status(201).json({
       success: true,
       token,
-      user: {
-        _id: user._id,
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        addresses: user.addresses
-      }
+      user: formatUser(user)
     });
   } catch (error) {
     console.error('[Register Error]:', error);
@@ -72,7 +85,7 @@ export const register = async (req, res) => {
   }
 };
 
-// @desc    Login user & get token
+// @desc    Login user & get token (automatic role-based response)
 // @route   POST /api/auth/login
 // @access  Public
 export const login = async (req, res) => {
@@ -95,20 +108,19 @@ export const login = async (req, res) => {
       });
     }
 
-    const token = generateToken(user._id);
+    if (user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account has been deactivated. Please contact support.'
+      });
+    }
+
+    const token = generateToken(user._id, user.role);
 
     return res.json({
       success: true,
       token,
-      user: {
-        _id: user._id,
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        addresses: user.addresses
-      }
+      user: formatUser(user)
     });
   } catch (error) {
     console.error('[Login Error]:', error);
@@ -119,22 +131,18 @@ export const login = async (req, res) => {
   }
 };
 
-// @desc    Get current user profile
+// @desc    Get current user profile (minimal auth check)
 // @route   GET /api/auth/me
 // @access  Private
 export const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
     return res.json({
       success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        addresses: user.addresses
-      }
+      user: formatUser(user)
     });
   } catch (error) {
     return res.status(500).json({
@@ -144,7 +152,63 @@ export const getMe = async (req, res) => {
   }
 };
 
-// @desc    Update user profile & address book
+// @desc    Get full user profile with order stats & recent history
+// @route   GET /api/auth/profile
+// @access  Private
+export const getProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    // Aggregate user order stats
+    const [totalOrders, activeOrders, completedOrders, spentAgg, recentOrders] = await Promise.all([
+      Order.countDocuments({ customer: user._id }),
+      Order.countDocuments({
+        customer: user._id,
+        orderStatus: { $in: ['BOOKED', 'PICKUP_ASSIGNED', 'PICKED_UP', 'IN_WASHING', 'IN_IRONING', 'OUT_FOR_DELIVERY'] }
+      }),
+      Order.countDocuments({ customer: user._id, orderStatus: 'DELIVERED' }),
+      Order.aggregate([
+        {
+          $match: {
+            customer: user._id,
+            $or: [{ 'payment.status': 'PAID' }, { orderStatus: 'DELIVERED' }]
+          }
+        },
+        { $group: { _id: null, total: { $sum: '$pricingBreakdown.grandTotal' } } }
+      ]),
+      Order.find({ customer: user._id })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate('items.garment', 'name category iconName')
+        .select('orderNumber orderStatus pricingBreakdown pickupSchedule deliverySchedule createdAt payment items logistics')
+    ]);
+
+    const totalSpent = spentAgg[0]?.total || 0;
+
+    return res.json({
+      success: true,
+      user: formatUser(user),
+      stats: {
+        totalOrders,
+        activeOrders,
+        completedOrders,
+        totalSpent
+      },
+      recentOrders
+    });
+  } catch (error) {
+    console.error('[Get Full Profile Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to retrieve user profile.'
+    });
+  }
+};
+
+// @desc    Update user profile & preferences (phone is immutable)
 // @route   PUT /api/auth/profile
 // @access  Private
 export const updateProfile = async (req, res) => {
@@ -158,8 +222,18 @@ export const updateProfile = async (req, res) => {
       });
     }
 
-    if (req.body.name) user.name = req.body.name;
-    if (req.body.phone) user.phone = req.body.phone;
+    // Explicitly block/reject any attempt to change primary phone number
+    if (req.body.phone && normalizePhone(req.body.phone) !== user.phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Primary phone number is linked to your authentication identity and cannot be changed.'
+      });
+    }
+
+    if (req.body.name && req.body.name.trim()) {
+      user.name = req.body.name.trim();
+    }
+
     if (req.body.email !== undefined) {
       const emailToSet = req.body.email ? req.body.email.trim().toLowerCase() : undefined;
       if (emailToSet && emailToSet !== user.email) {
@@ -174,12 +248,24 @@ export const updateProfile = async (req, res) => {
       user.email = emailToSet;
     }
 
+    // Update preferences if provided
+    if (req.body.preferences) {
+      if (!user.preferences) {
+        user.preferences = { defaultDetergent: 'Standard', defaultPackaging: 'Folded' };
+      }
+      if (req.body.preferences.defaultDetergent) {
+        user.preferences.defaultDetergent = req.body.preferences.defaultDetergent.trim();
+      }
+      if (req.body.preferences.defaultPackaging) {
+        user.preferences.defaultPackaging = req.body.preferences.defaultPackaging.trim();
+      }
+    }
+
     // If new address is supplied
     if (req.body.newAddress) {
-      const { label, flatAndBuilding, streetAndLandmark, city, pincode, isDefault } = req.body.newAddress;
-      
+      const { label, flatAndBuilding, streetAndLandmark, city, pincode, contactPhone, isDefault } = req.body.newAddress;
       if (isDefault) {
-        user.addresses.forEach(addr => { addr.isDefault = false; });
+        user.addresses.forEach((addr) => { addr.isDefault = false; });
       }
 
       user.addresses.push({
@@ -188,6 +274,7 @@ export const updateProfile = async (req, res) => {
         streetAndLandmark,
         city: city || 'New Delhi',
         pincode,
+        contactPhone: contactPhone ? normalizePhone(contactPhone) : '',
         isDefault: Boolean(isDefault) || user.addresses.length === 0
       });
     }
@@ -202,20 +289,162 @@ export const updateProfile = async (req, res) => {
     return res.json({
       success: true,
       message: 'Profile updated successfully',
-      user: {
-        id: user._id,
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        addresses: user.addresses
-      }
+      user: formatUser(user)
     });
   } catch (error) {
+    console.error('[Update Profile Error]:', error);
     return res.status(500).json({
       success: false,
       message: error.message || 'Failed to update profile.'
+    });
+  }
+};
+
+// @desc    Upload user profile avatar to Cloudinary
+// @route   POST /api/auth/profile/avatar
+// @access  Private
+export const uploadAvatar = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const imagePayload = req.body.imageBase64 || req.body.image || req.body.file;
+    if (!imagePayload) {
+      return res.status(400).json({
+        success: false,
+        message: 'Image data (Base64 data URI or URL) is required.'
+      });
+    }
+
+    const uploadRes = await uploadImageToCloudinary(imagePayload, 'indodhobi/avatars');
+    user.profileImage = {
+      url: uploadRes.imageUrl,
+      publicId: uploadRes.publicId
+    };
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: 'Profile photo updated successfully.',
+      profileImage: user.profileImage,
+      user: formatUser(user)
+    });
+  } catch (error) {
+    console.error('[Upload Avatar Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to upload profile photo.'
+    });
+  }
+};
+
+// @desc    Add an alternate phone number to user profile
+// @route   POST /api/auth/profile/phones
+// @access  Private
+export const addAlternatePhone = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const rawNumber = req.body.number || req.body.phone;
+    if (!rawNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number is required.'
+      });
+    }
+
+    const cleanNumber = normalizePhone(rawNumber);
+    if (cleanNumber.length !== 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid 10-digit mobile number.'
+      });
+    }
+
+    if (cleanNumber === user.phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot add your primary phone number as an alternate phone.'
+      });
+    }
+
+    if (!user.alternatePhones) {
+      user.alternatePhones = [];
+    }
+
+    if (user.alternatePhones.some((p) => p.number === cleanNumber)) {
+      return res.status(400).json({
+        success: false,
+        message: 'This alternate phone number is already added.'
+      });
+    }
+
+    const label = (req.body.label && req.body.label.trim()) || 'Alternate';
+    user.alternatePhones.push({
+      number: cleanNumber,
+      label,
+      addedAt: new Date()
+    });
+
+    await user.save();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Alternate phone number added successfully.',
+      alternatePhones: user.alternatePhones,
+      user: formatUser(user)
+    });
+  } catch (error) {
+    console.error('[Add Alternate Phone Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to add alternate phone number.'
+    });
+  }
+};
+
+// @desc    Delete an alternate phone number from user profile
+// @route   DELETE /api/auth/profile/phones/:phoneId
+// @access  Private
+export const deleteAlternatePhone = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const { phoneId } = req.params;
+    const initialLength = (user.alternatePhones || []).length;
+    user.alternatePhones = (user.alternatePhones || []).filter(
+      (p) => p._id.toString() !== phoneId.toString()
+    );
+
+    if (user.alternatePhones.length === initialLength) {
+      return res.status(404).json({
+        success: false,
+        message: 'Alternate phone number not found.'
+      });
+    }
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: 'Alternate phone number deleted successfully.',
+      alternatePhones: user.alternatePhones,
+      user: formatUser(user)
+    });
+  } catch (error) {
+    console.error('[Delete Alternate Phone Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to delete alternate phone number.'
     });
   }
 };
@@ -230,7 +459,7 @@ export const addAddress = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
-    const { label, flatAndBuilding, streetAndLandmark, city, pincode, isDefault } = req.body;
+    const { label, flatAndBuilding, streetAndLandmark, city, pincode, contactPhone, isDefault } = req.body;
 
     if (!flatAndBuilding || !streetAndLandmark || !pincode) {
       return res.status(400).json({
@@ -253,6 +482,7 @@ export const addAddress = async (req, res) => {
       streetAndLandmark,
       city: city || 'New Delhi',
       pincode,
+      contactPhone: contactPhone ? normalizePhone(contactPhone) : '',
       isDefault: shouldBeDefault
     });
 
@@ -262,20 +492,66 @@ export const addAddress = async (req, res) => {
       success: true,
       message: 'Address added successfully.',
       addresses: user.addresses,
-      user: {
-        id: user._id,
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        addresses: user.addresses
-      }
+      user: formatUser(user)
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
       message: error.message || 'Failed to add address.'
+    });
+  }
+};
+
+// @desc    Edit an existing address in customer address book
+// @route   PUT /api/auth/addresses/:addressId
+// @access  Private
+export const updateAddress = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const { addressId } = req.params;
+    const address = user.addresses.id(addressId);
+    if (!address) {
+      return res.status(404).json({
+        success: false,
+        message: 'Address not found in address book.'
+      });
+    }
+
+    const { label, flatAndBuilding, streetAndLandmark, city, pincode, contactPhone, isDefault } = req.body;
+
+    if (flatAndBuilding !== undefined) address.flatAndBuilding = flatAndBuilding;
+    if (streetAndLandmark !== undefined) address.streetAndLandmark = streetAndLandmark;
+    if (city !== undefined) address.city = city;
+    if (pincode !== undefined) address.pincode = pincode;
+    if (contactPhone !== undefined) address.contactPhone = contactPhone ? normalizePhone(contactPhone) : '';
+    if (label && ['Home', 'Work', 'Other'].includes(label)) address.label = label;
+
+    if (isDefault) {
+      user.addresses.forEach((addr) => {
+        if (addr._id.toString() !== addressId.toString()) {
+          addr.isDefault = false;
+        }
+      });
+      address.isDefault = true;
+    }
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: 'Address updated successfully.',
+      addresses: user.addresses,
+      user: formatUser(user)
+    });
+  } catch (error) {
+    console.error('[Update Address Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to update address.'
     });
   }
 };
@@ -312,15 +588,7 @@ export const deleteAddress = async (req, res) => {
       success: true,
       message: 'Address deleted successfully.',
       addresses: user.addresses,
-      user: {
-        id: user._id,
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        addresses: user.addresses
-      }
+      user: formatUser(user)
     });
   } catch (error) {
     return res.status(500).json({
@@ -352,8 +620,8 @@ export const customerFirebaseLogin = async (req, res) => {
       });
     }
 
-    // Use verified phone number, or fallback to request phone if in simulation mode
-    const verifiedPhone = verification.phone || (phone ? phone.replace(/\D/g, '').slice(-10) : null);
+    // Normalized 10-digit phone number
+    const verifiedPhone = verification.phone || (phone ? normalizePhone(phone) : null);
     if (!verifiedPhone) {
       return res.status(400).json({
         success: false,
@@ -371,60 +639,135 @@ export const customerFirebaseLogin = async (req, res) => {
       ]
     });
 
-    let isNewUser = false;
+    if (user && user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account has been deactivated. Please contact support.'
+      });
+    }
 
+    // Handle new vs returning user
     if (!user) {
-      // Auto-create new customer account
-      isNewUser = true;
+      // First-time customer: create record
+      const providedName = (name && name.trim()) || '';
+      const isComplete = Boolean(providedName && providedName !== 'IndoDhobi Customer');
+
       user = await User.create({
-        name: (name && name.trim()) || 'IndoDhobi Customer',
+        name: isComplete ? providedName : 'IndoDhobi Customer',
         phone: verifiedPhone,
         role: 'customer',
         firebaseUid,
-        isPhoneVerified: true
+        isPhoneVerified: true,
+        isProfileComplete: isComplete
       });
-    } else {
-      // Update firebaseUid & phone verification status if needed
-      let changed = false;
-      if (firebaseUid && user.firebaseUid !== firebaseUid) {
-        user.firebaseUid = firebaseUid;
-        changed = true;
-      }
-      if (!user.isPhoneVerified) {
-        user.isPhoneVerified = true;
-        changed = true;
-      }
-      if (name && name.trim() && (user.name === 'IndoDhobi Customer' || !user.name)) {
-        user.name = name.trim();
-        changed = true;
-      }
-      if (changed) {
-        await user.save();
-      }
+
+      const token = generateToken(user._id, user.role);
+
+      return res.json({
+        success: true,
+        isNewUser: true,
+        requiresName: !isComplete,
+        tempToken: token,
+        token,
+        phone: verifiedPhone,
+        user: formatUser(user)
+      });
     }
 
-    const token = generateToken(user._id);
+    // Returning user
+    let changed = false;
+    if (firebaseUid && user.firebaseUid !== firebaseUid) {
+      user.firebaseUid = firebaseUid;
+      changed = true;
+    }
+    if (!user.isPhoneVerified) {
+      user.isPhoneVerified = true;
+      changed = true;
+    }
+
+    // If name was explicitly passed in body, apply it
+    if (name && name.trim() && (user.name === 'IndoDhobi Customer' || !user.name || !user.isProfileComplete)) {
+      user.name = name.trim();
+      user.isProfileComplete = true;
+      changed = true;
+    }
+
+    if (changed) {
+      await user.save();
+    }
+
+    const hasValidName = Boolean(user.name && user.name.trim() !== '' && user.name !== 'IndoDhobi Customer');
+    const isReturningComplete = hasValidName && user.isProfileComplete !== false;
+
+    const token = generateToken(user._id, user.role);
 
     return res.json({
       success: true,
+      isNewUser: !isReturningComplete,
+      requiresName: !isReturningComplete,
+      tempToken: token,
       token,
-      isNewUser,
-      user: {
-        _id: user._id,
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        isPhoneVerified: user.isPhoneVerified,
-        addresses: user.addresses
-      }
+      phone: verifiedPhone,
+      user: formatUser(user)
     });
   } catch (error) {
     console.error('[Customer Firebase Login Error]:', error);
     return res.status(500).json({
       success: false,
       message: error.message || 'Server error during customer phone verification.'
+    });
+  }
+};
+
+// @desc    Complete profile onboarding (Step 3: Name & Email)
+// @route   POST /api/auth/complete-onboarding
+// @access  Private
+export const completeOnboarding = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const { name, email } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide your full name to complete onboarding.'
+      });
+    }
+
+    user.name = name.trim();
+    user.isProfileComplete = true;
+
+    if (email && email.trim()) {
+      const emailToSet = email.trim().toLowerCase();
+      const existingUser = await User.findOne({ email: emailToSet, _id: { $ne: user._id } });
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: 'A user with this email address already exists.'
+        });
+      }
+      user.email = emailToSet;
+    }
+
+    await user.save();
+
+    const token = generateToken(user._id, user.role);
+
+    return res.json({
+      success: true,
+      message: 'Profile completed successfully! Welcome to IndoDhobi.',
+      token,
+      user: formatUser(user)
+    });
+  } catch (error) {
+    console.error('[Complete Onboarding Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to complete profile onboarding.'
     });
   }
 };
@@ -452,6 +795,13 @@ export const staffLogin = async (req, res) => {
       });
     }
 
+    if (user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account has been deactivated. Please contact support.'
+      });
+    }
+
     // Reject customers attempting to login via staff portal
     if (user.role === 'customer') {
       return res.status(403).json({
@@ -475,20 +825,12 @@ export const staffLogin = async (req, res) => {
       });
     }
 
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, user.role);
 
     return res.json({
       success: true,
       token,
-      user: {
-        _id: user._id,
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        addresses: user.addresses
-      }
+      user: formatUser(user)
     });
   } catch (error) {
     console.error('[Staff Login Error]:', error);
@@ -497,4 +839,21 @@ export const staffLogin = async (req, res) => {
       message: error.message || 'Server error during staff login.'
     });
   }
+};
+
+export default {
+  register,
+  login,
+  getMe,
+  getProfile,
+  updateProfile,
+  uploadAvatar,
+  addAlternatePhone,
+  deleteAlternatePhone,
+  addAddress,
+  updateAddress,
+  deleteAddress,
+  customerFirebaseLogin,
+  completeOnboarding,
+  staffLogin
 };

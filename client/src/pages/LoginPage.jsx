@@ -8,12 +8,12 @@ import {
   Phone,
   ArrowRight,
   Loader2,
-  Sparkles,
   User,
-  ShieldCheck,
   CheckCircle2,
   RotateCcw,
-  KeyRound
+  KeyRound,
+  ShieldCheck,
+  Sparkles
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { setupRecaptcha, sendPhoneOtp } from '../config/firebase';
@@ -21,33 +21,44 @@ import { setupRecaptcha, sendPhoneOtp } from '../config/firebase';
 const LoginPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, loginAsStaff, customerLoginWithFirebase } = useAuth();
+  const { login, customerLoginWithFirebase, completeOnboarding } = useAuth();
 
-  // Active Tab: 'customer' (Mobile OTP) | 'staff' (Email/Password)
-  const [activeTab, setActiveTab] = useState('customer');
+  // Mode: 'otp' (Mobile OTP) | 'password' (Email + Password)
+  const [authMode, setAuthMode] = useState('otp');
 
-  // Customer Phone OTP State
+  // OTP Steps: 1 = Enter Phone, 2 = Enter 6-digit OTP, 3 = First-time User (Enter Name)
+  const [otpStep, setOtpStep] = useState(1);
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
-  const [customerName, setCustomerName] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [emailOptional, setEmailOptional] = useState('');
   const [confirmationResult, setConfirmationResult] = useState(null);
   const [countdown, setCountdown] = useState(30);
   const [canResend, setCanResend] = useState(false);
 
-  // Staff State
-  const [staffEmail, setStaffEmail] = useState('');
-  const [staffPassword, setStaffPassword] = useState('');
+  // Email + Password state
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
-  // Global loading
+  // Loading state
   const [loading, setLoading] = useState(false);
 
   const from = location.state?.from?.pathname || '/';
 
+  const routeByRole = (role) => {
+    if (role === 'admin') {
+      navigate('/admin', { replace: true });
+    } else if (role === 'rider') {
+      navigate('/rider', { replace: true });
+    } else {
+      navigate(from === '/' ? '/book' : from, { replace: true });
+    }
+  };
+
   // Timer for OTP resend countdown
   useEffect(() => {
     let timer;
-    if (otpSent && countdown > 0) {
+    if (otpStep === 2 && countdown > 0) {
       timer = setInterval(() => {
         setCountdown((prev) => prev - 1);
       }, 1000);
@@ -55,9 +66,9 @@ const LoginPage = () => {
       setCanResend(true);
     }
     return () => clearInterval(timer);
-  }, [otpSent, countdown]);
+  }, [otpStep, countdown]);
 
-  // Handle Send OTP
+  // Step 1: Send OTP
   const handleSendOtp = async (e) => {
     e.preventDefault();
     const cleanDigits = phone.replace(/\D/g, '').slice(-10);
@@ -72,13 +83,14 @@ const LoginPage = () => {
       const appVerifier = setupRecaptcha('recaptcha-container');
       const confirmation = await sendPhoneOtp(cleanDigits, appVerifier);
       setConfirmationResult(confirmation);
-      setOtpSent(true);
+      setOtpStep(2);
       setCountdown(30);
       setCanResend(false);
+
       if (confirmation?.isDevFallback) {
-        toast('Dev Mode active: Enter OTP 123456 to verify.', { icon: '🧪', duration: 6000 });
+        toast('Dev Mode: Enter OTP 123456 to verify.', { icon: '🧪', duration: 5000 });
       } else {
-        toast.success(`OTP sent successfully to +91 ${cleanDigits}`);
+        toast.success(`OTP sent to +91 ${cleanDigits}`);
       }
     } catch (error) {
       console.error('[Firebase OTP Error]:', error);
@@ -88,7 +100,7 @@ const LoginPage = () => {
     }
   };
 
-  // Handle Resend OTP
+  // Resend OTP
   const handleResendOtp = async () => {
     if (!canResend) return;
     const cleanDigits = phone.replace(/\D/g, '').slice(-10);
@@ -99,11 +111,7 @@ const LoginPage = () => {
       setConfirmationResult(confirmation);
       setCountdown(30);
       setCanResend(false);
-      if (confirmation?.isDevFallback) {
-        toast('Dev Mode: Enter OTP 123456.', { icon: '🧪' });
-      } else {
-        toast.success(`New OTP sent to +91 ${cleanDigits}`);
-      }
+      toast.success(`New OTP sent to +91 ${cleanDigits}`);
     } catch (error) {
       toast.error(error.message || 'Failed to resend OTP.');
     } finally {
@@ -111,7 +119,7 @@ const LoginPage = () => {
     }
   };
 
-  // Handle OTP Verification & Customer Login
+  // Step 2: Verify OTP
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     const cleanOtp = otp.trim();
@@ -123,7 +131,7 @@ const LoginPage = () => {
 
     if (!confirmationResult) {
       toast.error('Session expired. Please request a new OTP.');
-      setOtpSent(false);
+      setOtpStep(1);
       return;
     }
 
@@ -133,76 +141,78 @@ const LoginPage = () => {
       const idToken = await userCredential.user.getIdToken();
       const cleanDigits = phone.replace(/\D/g, '').slice(-10);
 
+      // Backend returns { isNewUser, requiresName, token, user }
       const res = await customerLoginWithFirebase({
         idToken,
-        name: customerName,
         phone: cleanDigits
       });
 
       if (res.success) {
-        navigate(from === '/' ? '/booking' : from, { replace: true });
+        if (res.requiresName) {
+          // First-time user needs name
+          setOtpStep(3);
+        } else {
+          // Returning user: redirect immediately!
+          routeByRole(res.user?.role);
+        }
       }
     } catch (error) {
       console.error('[OTP Verification Error]:', error);
-      toast.error(error.message || 'Invalid verification code. Please check and try again.');
+      toast.error(error.message || 'Invalid verification code. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle Staff Email/Password Login
-  const handleStaffSubmit = async (e) => {
+  // Step 3: Complete Onboarding for First-time user
+  const handleCompleteOnboarding = async (e) => {
     e.preventDefault();
-    if (!staffEmail || !staffPassword) {
+    if (!fullName || !fullName.trim()) {
+      toast.error('Please enter your full name to complete registration.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await completeOnboarding({
+        name: fullName.trim(),
+        email: emailOptional.trim() || undefined
+      });
+
+      if (res.success) {
+        routeByRole(res.user?.role || 'customer');
+      }
+    } catch (error) {
+      toast.error(error.message || 'Failed to complete profile.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Email + Password Login
+  const handlePasswordLogin = async (e) => {
+    e.preventDefault();
+    if (!email || !password) {
       toast.error('Please enter both email and password.');
       return;
     }
 
     setLoading(true);
-    const res = await loginAsStaff(staffEmail, staffPassword);
-    setLoading(false);
-
-    if (res.success) {
-      if (res.user.role === 'admin') {
-        navigate('/admin');
-      } else if (res.user.role === 'rider') {
-        navigate('/rider');
-      } else {
-        navigate(from, { replace: true });
-      }
-    }
-  };
-
-  // Quick 1-Click Demo Switcher
-  const handleQuickDemo = async (roleType, userEmail, userPassword, demoPhone = '9876543210') => {
-    setLoading(true);
-    if (roleType === 'customer') {
-      setActiveTab('customer');
-      // Execute demo login
-      const res = await login(userEmail, userPassword);
-      setLoading(false);
+    try {
+      const res = await login(email.trim(), password);
       if (res.success) {
-        navigate(from === '/' ? '/booking' : from, { replace: true });
+        routeByRole(res.user?.role);
       }
-    } else {
-      setActiveTab('staff');
-      setStaffEmail(userEmail);
-      setStaffPassword(userPassword);
-      const res = await loginAsStaff(userEmail, userPassword);
+    } finally {
       setLoading(false);
-      if (res.success) {
-        if (roleType === 'admin') navigate('/admin');
-        else if (roleType === 'rider') navigate('/rider');
-        else navigate(from, { replace: true });
-      }
     }
   };
 
   return (
-    <div className="max-w-md mx-auto my-10 px-4 sm:px-6">
+    <div className="max-w-md mx-auto my-12 px-4 sm:px-6">
       <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-xl shadow-slate-100 space-y-6">
         
-        {/* Invisible reCAPTCHA container */}
+        {/* Invisible reCAPTCHA container for Firebase Phone Auth */}
         <div id="recaptcha-container"></div>
 
         {/* Brand Header */}
@@ -218,60 +228,33 @@ const LoginPage = () => {
           </p>
         </div>
 
-        {/* Dual Mode Tab Selector */}
-        <div className="flex p-1 bg-slate-100 rounded-2xl">
-          <button
-            type="button"
-            onClick={() => setActiveTab('customer')}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              activeTab === 'customer'
-                ? 'bg-white text-primary-700 shadow-xs'
-                : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <Phone className="w-3.5 h-3.5" />
-            <span>Customer (Phone OTP)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('staff')}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              activeTab === 'staff'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
-            <span>Staff (Admin & Rider)</span>
-          </button>
-        </div>
-
-        {/* Customer Tab: Phone OTP Login */}
-        {activeTab === 'customer' && (
+        {/* ───────────── OTP MODE ───────────── */}
+        {authMode === 'otp' && (
           <div className="space-y-4 text-xs">
-            {!otpSent ? (
+            {/* Step 1: Phone input */}
+            {otpStep === 1 && (
               <form onSubmit={handleSendOtp} className="space-y-4">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1.5">
                     Mobile Phone Number
                   </label>
-                  <div className="relative flex rounded-xl border border-slate-300 overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500">
+                  <div className="relative flex rounded-xl border border-slate-300 overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500 transition-all">
                     <span className="inline-flex items-center px-3.5 bg-slate-100 text-slate-700 font-bold text-xs border-r border-slate-200">
                       🇮🇳 +91
                     </span>
                     <input
                       type="tel"
                       required
+                      autoFocus
                       maxLength="10"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                       placeholder="9876543210"
-                      className="w-full px-3.5 py-2.5 font-mono text-sm tracking-wide focus:outline-hidden text-slate-800"
+                      className="w-full px-3.5 py-3 font-mono text-sm tracking-wide focus:outline-hidden text-slate-800"
                     />
                   </div>
                   <p className="text-[11px] text-slate-400 mt-1.5">
-                    We will send a 6-digit SMS verification code to verify your number.
+                    We'll send a 6-digit SMS verification code to your phone.
                   </p>
                 </div>
 
@@ -284,13 +267,16 @@ const LoginPage = () => {
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <>
-                      <span>Send Verification Code</span>
+                      <span>Continue with Mobile OTP</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
               </form>
-            ) : (
+            )}
+
+            {/* Step 2: 6-digit OTP code */}
+            {otpStep === 2 && (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
                 <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl flex items-center justify-between">
                   <div className="text-xs">
@@ -300,7 +286,7 @@ const LoginPage = () => {
                   <button
                     type="button"
                     onClick={() => {
-                      setOtpSent(false);
+                      setOtpStep(1);
                       setOtp('');
                     }}
                     className="text-xs text-primary-600 hover:underline font-semibold cursor-pointer"
@@ -311,7 +297,7 @@ const LoginPage = () => {
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1.5">
-                    Enter 6-Digit SMS Code
+                    Enter 6-Digit SMS Verification Code
                   </label>
                   <div className="relative">
                     <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -322,12 +308,12 @@ const LoginPage = () => {
                       autoFocus
                       value={otp}
                       onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                      placeholder="123456"
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-mono text-center tracking-widest text-lg font-bold"
+                      placeholder="••••••"
+                      className="w-full pl-9 pr-3.5 py-3 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-mono text-center tracking-widest text-xl font-bold text-slate-900"
                     />
                   </div>
                   {(confirmationResult?.isDevFallback || confirmationResult?.isSimulated) && (
-                    <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-center justify-between">
+                    <div className="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-center justify-between">
                       <span>🧪 Dev Mode: Code is <strong className="font-mono bg-amber-100 px-1 py-0.5 rounded">123456</strong></span>
                       <button
                         type="button"
@@ -340,22 +326,6 @@ const LoginPage = () => {
                   )}
                 </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Your Name <span className="text-slate-400 font-normal">(Optional for new customers)</span>
-                  </label>
-                  <div className="relative">
-                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="e.g. Rohan Sharma"
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium"
-                    />
-                  </div>
-                </div>
-
                 <button
                   type="submit"
                   disabled={loading || otp.length !== 6}
@@ -366,7 +336,7 @@ const LoginPage = () => {
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>Verify & Sign In</span>
+                      <span>Verify & Continue</span>
                     </>
                   )}
                 </button>
@@ -390,42 +360,101 @@ const LoginPage = () => {
                 </div>
               </form>
             )}
+
+            {/* Step 3: Enter Name ONLY if first-time user */}
+            {otpStep === 3 && (
+              <form onSubmit={handleCompleteOnboarding} className="space-y-4">
+                <div className="p-3 bg-primary-50 border border-primary-200 rounded-xl space-y-1">
+                  <div className="flex items-center gap-1.5 text-primary-800 font-bold text-xs">
+                    <Sparkles className="w-3.5 h-3.5 text-primary-600" />
+                    <span>Welcome to IndoDhobi!</span>
+                  </div>
+                  <p className="text-[11px] text-primary-700">
+                    Your phone number <strong className="font-mono">+91 {phone}</strong> is verified. Please provide your full name to finish setting up your account.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Full Name</label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="e.g. Priya Nair"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Email Address <span className="text-slate-400 font-normal">(Optional for receipts)</span>
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      value={emailOptional}
+                      onChange={(e) => setEmailOptional(e.target.value)}
+                      placeholder="priya@example.com"
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium text-slate-800"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || !fullName.trim()}
+                  className="w-full py-3.5 px-4 rounded-xl font-bold text-white bg-primary-600 hover:bg-primary-700 shadow-md shadow-primary-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
+                >
+                  {loading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <span>Complete Registration</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
           </div>
         )}
 
-        {/* Staff Tab: Email & Password */}
-        {activeTab === 'staff' && (
-          <form onSubmit={handleStaffSubmit} className="space-y-4 text-xs">
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[11px] leading-relaxed">
-              <strong>Staff Only:</strong> Reserved strictly for IndoDhobi Administrators and Field Logistics Riders.
-            </div>
-
+        {/* ───────────── PASSWORD MODE ───────────── */}
+        {authMode === 'password' && (
+          <form onSubmit={handlePasswordLogin} className="space-y-4 text-xs">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Staff Email Address</label>
+              <label className="block font-semibold text-slate-700 mb-1">Email Address</label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
                   required
-                  value={staffEmail}
-                  onChange={(e) => setStaffEmail(e.target.value)}
-                  placeholder="admin@indodhobi.com"
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium"
+                  autoFocus
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium text-slate-800"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Staff Password</label>
+              <label className="block font-semibold text-slate-700 mb-1">Password</label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="password"
                   required
-                  value={staffPassword}
-                  onChange={(e) => setStaffPassword(e.target.value)}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium"
+                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium text-slate-800"
                 />
               </div>
             </div>
@@ -440,54 +469,43 @@ const LoginPage = () => {
               ) : (
                 <>
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Authenticate Staff Session</span>
+                  <span>Sign In</span>
                 </>
               )}
             </button>
           </form>
         )}
 
-        {/* Quick 1-Click Demo Buttons */}
-        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
-          <span className="font-bold text-slate-600 block text-[11px] uppercase tracking-wider">
-            ⚡ Quick 1-Click Demo Access
-          </span>
-          <div className="grid grid-cols-3 gap-1.5">
+        {/* Mode Switcher Link */}
+        <div className="pt-2 text-center text-xs border-t border-slate-100">
+          {authMode === 'otp' ? (
             <button
               type="button"
-              disabled={loading}
-              onClick={() => handleQuickDemo('customer', 'customer@indodhobi.com', 'password123', '9876543210')}
-              className="py-2 px-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-primary-600 hover:border-primary-400 font-semibold shadow-2xs text-left transition-all"
+              onClick={() => {
+                setAuthMode('password');
+                setOtpStep(1);
+              }}
+              className="text-slate-600 hover:text-primary-600 font-semibold transition-colors cursor-pointer"
             >
-              <div className="font-bold text-[11px] truncate">Customer</div>
-              <span className="text-[10px] text-slate-400 block truncate">Rohan</span>
+              Staff or prefer password? <span className="underline">Sign in with Email & Password</span>
             </button>
-
+          ) : (
             <button
               type="button"
-              disabled={loading}
-              onClick={() => handleQuickDemo('rider', 'rider@indodhobi.com', 'rider123', '9876543211')}
-              className="py-2 px-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-teal-600 hover:border-teal-400 font-semibold shadow-2xs text-left transition-all"
+              onClick={() => {
+                setAuthMode('otp');
+                setOtpStep(1);
+              }}
+              className="text-slate-600 hover:text-primary-600 font-semibold transition-colors cursor-pointer"
             >
-              <div className="font-bold text-[11px] truncate">Rider</div>
-              <span className="text-[10px] text-slate-400 block truncate">Ramesh</span>
+              Customer? <span className="underline">Sign in with Mobile Number (OTP)</span>
             </button>
-
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => handleQuickDemo('admin', 'admin@indodhobi.com', 'admin123')}
-              className="py-2 px-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-primary-600 hover:border-primary-400 font-semibold shadow-2xs text-left transition-all"
-            >
-              <div className="font-bold text-[11px] truncate">Admin</div>
-              <span className="text-[10px] text-slate-400 block truncate">Pooja</span>
-            </button>
-          </div>
+          )}
         </div>
 
-        {/* Footer Link */}
-        <div className="pt-2 text-center text-xs text-slate-500">
-          <span>New to IndoDhobi? Enter your mobile number above for instant access!</span>
+        {/* Register Link */}
+        <div className="text-center text-[11px] text-slate-400">
+          New to IndoDhobi? Sign in with your mobile number to get started instantly.
         </div>
 
       </div>

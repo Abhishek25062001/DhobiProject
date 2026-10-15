@@ -3,7 +3,9 @@ import mongoose from 'mongoose';
 let memoryServer = null;
 
 export const connectDB = async () => {
-  // Only use mongodb-memory-server when running automated tests (NODE_ENV === 'test')
+  // ─────────────────────────────────────────────────────────────────────────
+  // TEST MODE: isolated in-memory MongoDB — ONLY when NODE_ENV === 'test'
+  // ─────────────────────────────────────────────────────────────────────────
   if (process.env.NODE_ENV === 'test') {
     if (!memoryServer) {
       const { MongoMemoryServer } = await import('mongodb-memory-server');
@@ -15,52 +17,43 @@ export const connectDB = async () => {
     return conn;
   }
 
-  // Strict connection to real MongoDB in production/development
-  const primaryUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/indodhobi';
+  // ─────────────────────────────────────────────────────────────────────────
+  // PRODUCTION / DEVELOPMENT: STRICT real MongoDB — NO silent fallbacks
+  // ─────────────────────────────────────────────────────────────────────────
+  const primaryUri = process.env.MONGO_URI;
 
-  // Check if Atlas password placeholder is present
+  if (!primaryUri) {
+    console.error('\n❌ [Database] MONGO_URI is not set in /server/.env');
+    console.error('   Add: MONGO_URI=mongodb+srv://... or MONGO_URI=mongodb://127.0.0.1:27017/indodhobi');
+    process.exit(1);
+  }
+
   if (primaryUri.includes('<db_password>')) {
-    console.warn('\n⚠️  [Database Notice] MONGO_URI in .env contains "<db_password>".');
-    console.warn('👉 Please update /server/.env with your actual MongoDB Atlas password.');
-
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('🔄 [Database] Starting In-Memory MongoDB for local development so your server stays online...\n');
-      if (!memoryServer) {
-        const { MongoMemoryServer } = await import('mongodb-memory-server');
-        memoryServer = await MongoMemoryServer.create();
-      }
-      const inMemoryUri = memoryServer.getUri();
-      const conn = await mongoose.connect(inMemoryUri);
-      console.log(`[Database] In-Memory MongoDB connected: ${inMemoryUri}`);
-      return conn;
-    }
+    console.error('\n❌ [Database] MONGO_URI still contains the "<db_password>" placeholder.');
+    console.error('   Replace it with your real MongoDB Atlas password in /server/.env');
+    process.exit(1);
   }
 
   try {
     const conn = await mongoose.connect(primaryUri, {
       maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000,
     });
-    console.log(`[Database] Production MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`);
+
+    const host = conn.connection.host;
+    const dbName = conn.connection.name;
+
+    console.log('\n======================================================');
+    console.log(`✅ [REAL DB CONNECTED] Host: ${host} | DB Name: ${dbName}`);
+    console.log('======================================================\n');
+
     return conn;
   } catch (err) {
     const maskedUri = primaryUri.replace(/:([^@]+)@/, ':***@');
-    console.error(`[Database] Strict MongoDB connection to ${maskedUri} failed: ${err.message}`);
-
-    // If in development mode and connection fails, fallback gracefully to in-memory DB so dev server doesn't crash
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn('🔄 [Database] Falling back to In-Memory MongoDB for local development...\n');
-      if (!memoryServer) {
-        const { MongoMemoryServer } = await import('mongodb-memory-server');
-        memoryServer = await MongoMemoryServer.create();
-      }
-      const inMemoryUri = memoryServer.getUri();
-      const conn = await mongoose.connect(inMemoryUri);
-      console.log(`[Database] In-Memory MongoDB connected: ${inMemoryUri}`);
-      return conn;
-    }
-
-    throw err;
+    console.error(`\n❌ [Database] Connection to "${maskedUri}" FAILED.`);
+    console.error(`   Reason: ${err.message}`);
+    console.error('   Fix your MONGO_URI in /server/.env and restart the server.\n');
+    process.exit(1);
   }
 };
 

@@ -56,13 +56,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// Enhanced Health check endpoint
+// Enhanced Health check endpoint — exposes real DB host for audit verification
 app.get('/api/health', (req, res) => {
+  const conn = mongoose.connection;
   res.json({
     status: 'ok',
     service: 'IndoDhobi API',
     uptime: process.uptime(),
-    dbState: mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
+    dbState: conn.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
+    dbHost: conn.host || null,
+    dbName: conn.name || null,
     timestamp: new Date().toISOString(),
     razorpayConfigured: Boolean(
       process.env.RAZORPAY_KEY_ID &&
@@ -119,6 +122,11 @@ export const startServer = async () => {
         console.log(`===================================================`);
         console.log(`🧺 IndoDhobi Backend Server running on port ${port}`);
         console.log(`🔗 API Base: http://localhost:${port}/api`);
+        console.log(`🔗 Health:   http://localhost:${port}/api/health`);
+        if (port !== Number(process.env.PORT || 5000)) {
+          console.warn(`⚠️  NOTE: Server shifted to port ${port} because port ${process.env.PORT || 5000} was occupied.`);
+          console.warn(`   Update client/vite.config.js proxy target to http://localhost:${port} to match.`);
+        }
         console.log(`🔐 Demo Customer: customer@indodhobi.com | password123`);
         console.log(`👑 Demo Admin:    admin@indodhobi.com    | admin123`);
         console.log(`===================================================`);

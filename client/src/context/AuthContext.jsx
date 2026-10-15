@@ -79,17 +79,49 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await authService.customerFirebaseLogin({ idToken, name, phone });
       if (res.success) {
-        setToken(res.token);
-        setUser(res.user);
-        localStorage.setItem('indodhobi_token', res.token);
-        localStorage.setItem('indodhobi_user', JSON.stringify(res.user));
-        const firstName = res.user.name ? res.user.name.split(' ')[0] : 'Customer';
-        toast.success(res.isNewUser ? `Welcome to IndoDhobi, ${firstName}!` : `Welcome back, ${firstName}!`);
-        return { success: true, user: res.user, isNewUser: res.isNewUser };
+        if (res.token) {
+          setToken(res.token);
+          localStorage.setItem('indodhobi_token', res.token);
+        }
+        if (res.user) {
+          setUser(res.user);
+          localStorage.setItem('indodhobi_user', JSON.stringify(res.user));
+        }
+        if (!res.requiresName) {
+          const firstName = res.user?.name && res.user.name !== 'IndoDhobi Customer'
+            ? res.user.name.split(' ')[0]
+            : 'there';
+          toast.success(`Welcome back, ${firstName}!`);
+        }
+        return res;
       }
       return { success: false, message: res.message };
     } catch (error) {
       const msg = error.response?.data?.message || 'Phone verification failed.';
+      toast.error(msg);
+      return { success: false, message: msg };
+    }
+  };
+
+  const completeOnboarding = async ({ name, email }) => {
+    try {
+      const res = await authService.completeOnboarding({ name, email });
+      if (res.success) {
+        if (res.token) {
+          setToken(res.token);
+          localStorage.setItem('indodhobi_token', res.token);
+        }
+        if (res.user) {
+          setUser(res.user);
+          localStorage.setItem('indodhobi_user', JSON.stringify(res.user));
+        }
+        const firstName = res.user?.name ? res.user.name.split(' ')[0] : 'there';
+        toast.success(`Welcome to IndoDhobi, ${firstName}!`);
+        return res;
+      }
+      return { success: false, message: res.message };
+    } catch (error) {
+      const msg = error.response?.data?.message || 'Failed to complete registration.';
       toast.error(msg);
       return { success: false, message: msg };
     }
@@ -127,6 +159,54 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('indodhobi_user', JSON.stringify(updatedData));
   };
 
+  const uploadAvatar = async (imageBase64) => {
+    try {
+      const res = await authService.uploadAvatar(imageBase64);
+      if (res.success && res.user) {
+        updateUser(res.user);
+        toast.success('Profile photo updated!');
+        return res;
+      }
+      return { success: false, message: res.message };
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to upload photo.';
+      toast.error(msg);
+      return { success: false, message: msg };
+    }
+  };
+
+  const addAlternatePhone = async (phoneData) => {
+    try {
+      const res = await authService.addAlternatePhone(phoneData);
+      if (res.success && res.user) {
+        updateUser(res.user);
+        toast.success('Alternate phone number added!');
+        return res;
+      }
+      return { success: false, message: res.message };
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to add phone number.';
+      toast.error(msg);
+      return { success: false, message: msg };
+    }
+  };
+
+  const deleteAlternatePhone = async (phoneId) => {
+    try {
+      const res = await authService.deleteAlternatePhone(phoneId);
+      if (res.success && res.user) {
+        updateUser(res.user);
+        toast.success('Alternate phone removed.');
+        return res;
+      }
+      return { success: false, message: res.message };
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to delete phone number.';
+      toast.error(msg);
+      return { success: false, message: msg };
+    }
+  };
+
   const addAddress = async (addressData) => {
     try {
       const res = await authService.addAddress(addressData);
@@ -139,6 +219,23 @@ export const AuthProvider = ({ children }) => {
       return { success: false, message: res.message };
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to save address.';
+      toast.error(msg);
+      return { success: false, message: msg };
+    }
+  };
+
+  const updateAddress = async (addressId, addressData) => {
+    try {
+      const res = await authService.updateAddress(addressId, addressData);
+      if (res.success && res.addresses) {
+        const updatedUser = { ...user, addresses: res.addresses };
+        updateUser(updatedUser);
+        toast.success('Address updated successfully!');
+        return { success: true, addresses: res.addresses };
+      }
+      return { success: false, message: res.message };
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to update address.';
       toast.error(msg);
       return { success: false, message: msg };
     }
@@ -170,10 +267,15 @@ export const AuthProvider = ({ children }) => {
         login,
         loginAsStaff,
         customerLoginWithFirebase,
+        completeOnboarding,
         register,
         logout,
         updateUser,
+        uploadAvatar,
+        addAlternatePhone,
+        deleteAlternatePhone,
         addAddress,
+        updateAddress,
         deleteAddress,
         isAuthenticated: Boolean(token && user),
         isAdmin: user?.role === 'admin',
@@ -183,7 +285,6 @@ export const AuthProvider = ({ children }) => {
       {children}
     </AuthContext.Provider>
   );
-
 };
 
 export const useAuth = () => {
@@ -193,3 +294,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
+export default AuthContext;

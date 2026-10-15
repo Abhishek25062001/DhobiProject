@@ -53,12 +53,36 @@ export const authService = {
     const res = await API.get('/auth/me');
     return res.data;
   },
+  getProfile: async () => {
+    const res = await API.get('/auth/profile');
+    return res.data;
+  },
+  completeOnboarding: async ({ name, email }) => {
+    const res = await API.post('/auth/complete-onboarding', { name, email });
+    return res.data;
+  },
   updateProfile: async (profileData) => {
     const res = await API.put('/auth/profile', profileData);
     return res.data;
   },
+  uploadAvatar: async (imageBase64) => {
+    const res = await API.post('/auth/profile/avatar', { imageBase64 });
+    return res.data;
+  },
+  addAlternatePhone: async (phoneData) => {
+    const res = await API.post('/auth/profile/phones', phoneData);
+    return res.data;
+  },
+  deleteAlternatePhone: async (phoneId) => {
+    const res = await API.delete(`/auth/profile/phones/${phoneId}`);
+    return res.data;
+  },
   addAddress: async (addressData) => {
     const res = await API.post('/auth/addresses', addressData);
+    return res.data;
+  },
+  updateAddress: async (addressId, addressData) => {
+    const res = await API.put(`/auth/addresses/${addressId}`, addressData);
     return res.data;
   },
   deleteAddress: async (addressId) => {

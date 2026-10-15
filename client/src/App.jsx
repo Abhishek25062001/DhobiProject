@@ -16,6 +16,7 @@ import RiderDashboardPage from './pages/RiderDashboardPage';
 import OrderSuccessPage from './pages/OrderSuccessPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ProfilePage from './pages/ProfilePage';
 
 function App() {
   return (
@@ -66,6 +67,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <MyOrdersPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/profile"
+                  element={
+                    <ProtectedRoute>
+                      <ProfilePage />
                     </ProtectedRoute>
                   }
                 />

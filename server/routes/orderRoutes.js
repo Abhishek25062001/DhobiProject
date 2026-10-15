@@ -21,7 +21,10 @@ import {
   getAllCoupons,
   toggleCoupon,
   getOrderAnalytics,
-  cancelOrder
+  cancelOrder,
+  getMyActiveOrders,
+  recordPaymentFailure,
+  handleRazorpayWebhook
 } from '../controllers/orderController.js';
 import { protect, authorize } from '../middleware/authMiddleware.js';
 
@@ -39,6 +42,8 @@ router.post('/coupons', protect, authorize('admin'), createCoupon);
 router.get('/analytics', protect, authorize('admin'), getOrderAnalytics);
 router.post('/', protect, createOrder);
 router.get('/my-orders', protect, getMyOrders);
+router.get('/my-active', protect, getMyActiveOrders);
+router.post('/webhook/razorpay', handleRazorpayWebhook);
 router.get('/all', protect, authorize('admin', 'rider'), getAllOrders);
 router.get('/riders', protect, authorize('admin'), getRiders);
 router.get('/rider-tasks', protect, authorize('rider', 'admin'), getRiderTasks);
@@ -48,6 +53,7 @@ router.post('/verify-payment', protect, verifyPayment);
 router.post('/:id/cancel', protect, cancelOrder);
 router.post('/:id/pay-online', protect, payOnlineOrder);
 router.post('/:id/retry-payment', protect, retryPayment);
+router.post('/:id/payment-failed', protect, recordPaymentFailure);
 router.post('/:id/switch-to-cod', protect, switchToCod);
 router.patch('/:id/assign-rider', protect, authorize('admin'), assignRider);
 router.post('/:id/verify-pickup', protect, authorize('rider', 'admin'), verifyPickup);
