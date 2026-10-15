@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { orderService } from '../services/api';
 import PaymentModal from '../components/PaymentModal';
 import GstInvoiceModal from '../components/GstInvoiceModal';
@@ -50,6 +50,18 @@ const getStepIndex = (status) => {
 };
 
 const MyOrdersPage = () => {
+  const { user, isAdmin, isRider } = useAuth();
+  const navigate = useNavigate();
+
+  // Redirect staff / logistics users to their dedicated operations portals
+  useEffect(() => {
+    if (isAdmin) {
+      navigate('/admin', { replace: true });
+    } else if (isRider) {
+      navigate('/rider', { replace: true });
+    }
+  }, [isAdmin, isRider, navigate]);
+
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedOrderId, setExpandedOrderId] = useState(null);
@@ -113,7 +125,6 @@ const MyOrdersPage = () => {
     setExpandedOrderId(expandedOrderId === id ? null : id);
   };
 
-  const { user } = useAuth();
   const [actionLoadingId, setActionLoadingId] = useState(null);
 
   const handleRetryOnlinePayment = async (order) => {
@@ -268,13 +279,27 @@ const MyOrdersPage = () => {
                           {order.orderStatus.replace(/_/g, ' ')}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Placed on {new Date(order.createdAt).toLocaleDateString('en-IN', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric'
-                        })} • {order.items?.length || 0} Garments
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                        <p className="text-xs text-slate-500">
+                          Placed on {new Date(order.createdAt).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric'
+                          })} • {order.items?.length || 0} Garments
+                        </p>
+                        {['BOOKED', 'ORDER_PLACED', 'CONFIRMED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'OUT_FOR_PICKUP'].includes(order.orderStatus) && (order.verificationCodes?.pickupOtp || order.pickupOtp) && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-amber-100 border border-amber-300 text-amber-950 font-mono font-black text-xs shadow-xs">
+                            <KeyRound className="w-3.5 h-3.5 text-amber-700" />
+                            <span>Pickup OTP: {order.verificationCodes?.pickupOtp || order.pickupOtp}</span>
+                          </span>
+                        )}
+                        {['OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(order.orderStatus) && (order.verificationCodes?.deliveryOtp || order.deliveryOtp) && (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-teal-100 border border-teal-300 text-teal-950 font-mono font-black text-xs shadow-xs">
+                            <ShieldCheck className="w-3.5 h-3.5 text-teal-700" />
+                            <span>Delivery OTP: {order.verificationCodes?.deliveryOtp || order.deliveryOtp}</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -448,18 +473,43 @@ const MyOrdersPage = () => {
                             </div>
                           </div>
 
-                          {/* Rider Info if assigned */}
-                          {order.logistics?.assignedRider && (
-                            <div className="flex items-start gap-2.5 pt-2 border-t border-slate-100">
-                              <Bike className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                              <div>
-                                <span className="font-bold text-slate-800">Assigned Logistics Rider:</span>
-                                <p className="text-slate-600">
-                                  {order.logistics.assignedRider.name} • <a href={`tel:${order.logistics.assignedRider.phone}`} className="text-teal-700 font-bold hover:underline">{order.logistics.assignedRider.phone}</a>
-                                </p>
-                              </div>
-                            </div>
-                          )}
+                          {/* Decoupled Two-Leg Fleet & Rider Details */}
+                          {(() => {
+                            const isDeliveryLeg = ['READY', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(order.orderStatus);
+                            const activeRider = isDeliveryLeg
+                              ? (order.logistics?.deliveryRider || order.logistics?.assignedRider)
+                              : (order.logistics?.pickupRider || order.logistics?.assignedRider);
+
+                            return (
+                              <>
+                                {activeRider && (
+                                  <div className="flex items-start gap-2.5 pt-2 border-t border-slate-100">
+                                    <Bike className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                                    <div>
+                                      <span className="font-bold text-slate-800">
+                                        {isDeliveryLeg ? 'Assigned Delivery Rider:' : 'Assigned Pickup Rider:'}
+                                      </span>
+                                      <p className="text-slate-600">
+                                        {activeRider.name} •{' '}
+                                        <a href={`tel:${activeRider.phone}`} className="text-teal-700 font-bold hover:underline">
+                                          {activeRider.phone || 'Contact via IndoDhobi'}
+                                        </a>
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {order.payment?.method === 'COD' && order.payment?.status !== 'PAID' && (
+                                  <div className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-[11px] flex items-center gap-2">
+                                    <QrCode className="w-4 h-4 text-amber-700 shrink-0" />
+                                    <p className="leading-relaxed">
+                                      <strong>Doorstep Payment Options:</strong> Pay our rider via exact Cash or scan our Official Company Dynamic UPI QR (GPay / PhonePe / Paytm / BHIM) upon delivery.
+                                    </p>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
 
                           {/* Bag Tag ID if present */}
                           {order.logistics?.bagTagId && (

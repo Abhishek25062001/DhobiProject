@@ -61,7 +61,16 @@ const getGarmentIcon = (iconName) => {
 
 const BookingPage = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated, addAddress } = useAuth();
+  const { user, isAuthenticated, isAdmin, isRider, addAddress } = useAuth();
+
+  // Redirect staff / logistics users to their dedicated operations portals
+  useEffect(() => {
+    if (isAdmin) {
+      navigate('/admin', { replace: true });
+    } else if (isRider) {
+      navigate('/rider', { replace: true });
+    }
+  }, [isAdmin, isRider, navigate]);
   const {
     cartItems,
     addItem,

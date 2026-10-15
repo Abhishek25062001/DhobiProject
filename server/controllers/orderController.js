@@ -780,7 +780,8 @@ export const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({ customer: req.user._id })
       .populate('items.garment', 'name category iconName')
-      .populate('logistics.assignedRider', 'name phone email')
+      .populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails')
+      .populate('payment.collectedBy payment.reconciledBy', 'name phone email')
       .sort({ createdAt: -1 });
 
     // Auto-backfill OTPs if any legacy order is missing them
@@ -827,7 +828,8 @@ export const getMyActiveOrders = async (req, res) => {
       orderStatus: { $nin: ['DELIVERED', 'CANCELLED'] }
     })
       .populate('items.garment', 'name category iconName imageUrl')
-      .populate('logistics.assignedRider', 'name phone email')
+      .populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails')
+      .populate('payment.collectedBy payment.reconciledBy', 'name phone email')
       .sort({ updatedAt: -1 });
 
     // Auto-backfill OTPs if any active order is missing them
@@ -872,7 +874,8 @@ export const getOrderById = async (req, res) => {
     const order = await Order.findById(req.params.id)
       .populate('customer', 'name email phone')
       .populate('items.garment', 'name category iconName')
-      .populate('logistics.assignedRider', 'name phone email');
+      .populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails')
+      .populate('payment.collectedBy payment.reconciledBy', 'name phone email');
 
     if (!order) {
       return res.status(404).json({
@@ -961,7 +964,8 @@ export const getAllOrders = async (req, res) => {
 
     const orders = await Order.find(filter)
       .populate('customer', 'name email phone')
-      .populate('logistics.assignedRider', 'name phone email')
+      .populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails')
+      .populate('payment.collectedBy payment.reconciledBy', 'name phone email')
       .sort({ createdAt: -1 });
 
     return res.json({
@@ -1067,24 +1071,18 @@ export const getRiders = async (req, res) => {
   }
 };
 
-// @desc    Assign rider to an order
+// @desc    Assign rider to an order (Decoupled Two-Leg: PICKUP vs DELIVERY vs BOTH)
 // @route   PATCH /api/orders/:id/assign-rider
 // @access  Private (Admin only)
 export const assignRider = async (req, res) => {
   try {
     const riderId = req.body.riderId || req.body._id || req.body.id;
+    const requestedLeg = (req.body.leg || '').toUpperCase();
+
     if (!riderId) {
       return res.status(400).json({
         success: false,
         message: 'Rider ID is required.'
-      });
-    }
-
-    const rider = await User.findOne({ _id: riderId, role: 'rider' });
-    if (!rider) {
-      return res.status(404).json({
-        success: false,
-        message: 'Rider not found or user is not a registered rider.'
       });
     }
 
@@ -1096,9 +1094,92 @@ export const assignRider = async (req, res) => {
       });
     }
 
-    order.logistics.assignedRider = rider._id;
-    if (order.orderStatus === 'BOOKED') {
-      order.orderStatus = 'PICKUP_ASSIGNED';
+    // Determine target leg if not explicitly specified
+    let targetLeg = requestedLeg;
+    if (!targetLeg || !['PICKUP', 'DELIVERY', 'BOTH'].includes(targetLeg)) {
+      const isDeliveryPhase = [
+        'PICKED_UP',
+        'IN_WASH',
+        'IN_WASHING',
+        'IN_IRONING',
+        'QUALITY_CHECK',
+        'READY',
+        'OUT_FOR_DELIVERY'
+      ].includes(order.orderStatus);
+
+      targetLeg = isDeliveryPhase ? 'DELIVERY' : 'PICKUP';
+    }
+
+    let riderName = 'Rider';
+    let rider = null;
+
+    if (riderId === 'UNASSIGN' || riderId === 'NONE') {
+      if (targetLeg === 'PICKUP' || targetLeg === 'BOTH') {
+        order.logistics.pickupRider = null;
+        order.logistics.pickupAssignedAt = null;
+        if (order.pickupSchedule) order.pickupSchedule.assignedRider = null;
+        if (order.orderStatus === 'PICKUP_ASSIGNED') order.orderStatus = 'BOOKED';
+      }
+      if (targetLeg === 'DELIVERY' || targetLeg === 'BOTH') {
+        order.logistics.deliveryRider = null;
+        order.logistics.deliveryAssignedAt = null;
+        if (order.deliverySchedule) order.deliverySchedule.assignedRider = null;
+        if (order.orderStatus === 'OUT_FOR_DELIVERY') order.orderStatus = 'READY';
+      }
+      riderName = 'Unassigned';
+    } else {
+      rider = await User.findOne({ _id: riderId, role: 'rider' });
+      if (!rider) {
+        return res.status(404).json({
+          success: false,
+          message: 'Rider not found or user is not a registered rider.'
+        });
+      }
+      riderName = rider.name;
+      const now = new Date();
+
+      if (targetLeg === 'PICKUP') {
+        order.logistics.pickupRider = rider._id;
+        order.logistics.pickupAssignedAt = now;
+        order.logistics.assignedRider = rider._id;
+        if (order.pickupSchedule) {
+          order.pickupSchedule.assignedRider = rider._id;
+          order.pickupSchedule.assignedAt = now;
+        }
+        if (['BOOKED', 'ORDER_PLACED', 'CONFIRMED'].includes(order.orderStatus)) {
+          order.orderStatus = 'PICKUP_ASSIGNED';
+        }
+      } else if (targetLeg === 'DELIVERY') {
+        order.logistics.deliveryRider = rider._id;
+        order.logistics.deliveryAssignedAt = now;
+        order.logistics.assignedRider = rider._id;
+        if (order.deliverySchedule) {
+          order.deliverySchedule.assignedRider = rider._id;
+          order.deliverySchedule.assignedAt = now;
+        }
+        if (['READY', 'QUALITY_CHECK'].includes(order.orderStatus)) {
+          order.orderStatus = 'OUT_FOR_DELIVERY';
+        }
+      } else if (targetLeg === 'BOTH') {
+        order.logistics.pickupRider = rider._id;
+        order.logistics.pickupAssignedAt = now;
+        order.logistics.deliveryRider = rider._id;
+        order.logistics.deliveryAssignedAt = now;
+        order.logistics.assignedRider = rider._id;
+        if (order.pickupSchedule) {
+          order.pickupSchedule.assignedRider = rider._id;
+          order.pickupSchedule.assignedAt = now;
+        }
+        if (order.deliverySchedule) {
+          order.deliverySchedule.assignedRider = rider._id;
+          order.deliverySchedule.assignedAt = now;
+        }
+        if (['BOOKED', 'ORDER_PLACED', 'CONFIRMED'].includes(order.orderStatus)) {
+          order.orderStatus = 'PICKUP_ASSIGNED';
+        } else if (['READY', 'QUALITY_CHECK'].includes(order.orderStatus)) {
+          order.orderStatus = 'OUT_FOR_DELIVERY';
+        }
+      }
     }
 
     if (!order.statusHistory) {
@@ -1110,26 +1191,29 @@ export const assignRider = async (req, res) => {
       timestamp: new Date(),
       updatedBy: req.user._id,
       updaterRole: req.user.role,
-      note: `Rider assigned: ${rider.name}`
+      note: `${targetLeg === 'BOTH' ? 'Pickup & Delivery Rider' : targetLeg === 'DELIVERY' ? 'Delivery Rider' : 'Pickup Rider'} assigned: ${riderName}`
     });
 
     await order.save();
-    await order.populate('logistics.assignedRider', 'name phone email');
+    await order.populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails');
     await order.populate('customer', 'name email phone');
 
     // Automatically notify customer of assigned rider
-    Notification.createNotification({
-      recipient: order.customer._id || order.customer,
-      title: 'Rider Assigned to Your Order',
-      message: `Rider ${rider.name} (${rider.phone || 'Contact via app'}) has been assigned to your Order #${order.orderNumber}.`,
-      type: 'RIDER_ASSIGNED',
-      orderId: order._id,
-      orderNumber: order.orderNumber
-    });
+    if (rider) {
+      const legLabel = targetLeg === 'DELIVERY' ? 'Doorstep Delivery' : 'Doorstep Pickup';
+      Notification.createNotification({
+        recipient: order.customer._id || order.customer,
+        title: `Rider Assigned for ${legLabel}`,
+        message: `Rider ${rider.name} (${rider.phone || 'Contact via app'}) has been assigned for ${legLabel.toLowerCase()} of your Order #${order.orderNumber}.`,
+        type: 'RIDER_ASSIGNED',
+        orderId: order._id,
+        orderNumber: order.orderNumber
+      });
+    }
 
     return res.json({
       success: true,
-      message: `Order assigned to rider ${rider.name} successfully.`,
+      message: `Order assigned to rider ${riderName} for ${targetLeg} successfully.`,
       order
     });
   } catch (error) {
@@ -1141,6 +1225,72 @@ export const assignRider = async (req, res) => {
   }
 };
 
+// @desc    Rider self-claims or accepts assigned task
+// @route   POST /api/orders/:id/accept-task
+// @access  Private (Rider & Admin)
+export const acceptRiderTask = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.'
+      });
+    }
+
+    const riderId = req.user._id;
+    const now = new Date();
+    const isDeliveryStage = ['READY', 'QUALITY_CHECK', 'OUT_FOR_DELIVERY'].includes(order.orderStatus);
+
+    if (isDeliveryStage) {
+      order.logistics.deliveryRider = riderId;
+      order.logistics.deliveryAssignedAt = now;
+      order.logistics.assignedRider = riderId;
+      if (order.deliverySchedule) {
+        order.deliverySchedule.assignedRider = riderId;
+        order.deliverySchedule.assignedAt = now;
+      }
+      order.orderStatus = 'OUT_FOR_DELIVERY';
+    } else {
+      order.logistics.pickupRider = riderId;
+      order.logistics.pickupAssignedAt = now;
+      order.logistics.assignedRider = riderId;
+      if (order.pickupSchedule) {
+        order.pickupSchedule.assignedRider = riderId;
+        order.pickupSchedule.assignedAt = now;
+      }
+      if (['BOOKED', 'ORDER_PLACED', 'CONFIRMED'].includes(order.orderStatus)) {
+        order.orderStatus = 'PICKUP_ASSIGNED';
+      }
+    }
+
+    if (!order.statusHistory) order.statusHistory = [];
+    order.statusHistory.push({
+      status: order.orderStatus,
+      timestamp: now,
+      updatedBy: req.user._id,
+      updaterRole: req.user.role,
+      note: `Task accepted by Rider ${req.user.name} (${isDeliveryStage ? 'Delivery Leg' : 'Pickup Leg'})`
+    });
+
+    await order.save();
+    await order.populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails');
+    await order.populate('customer', 'name email phone');
+
+    return res.json({
+      success: true,
+      message: `Task accepted successfully for ${isDeliveryStage ? 'Delivery' : 'Pickup'}!`,
+      order
+    });
+  } catch (error) {
+    console.error('[Accept Task Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to accept task.'
+    });
+  }
+};
+
 // @desc    Get tasks assigned to rider (or active logistics orders for admin)
 // @route   GET /api/orders/rider-tasks
 // @access  Private (Rider & Admin)
@@ -1148,9 +1298,17 @@ export const getRiderTasks = async (req, res) => {
   try {
     const filter = {};
     if (req.user.role === 'rider') {
-      filter['logistics.assignedRider'] = req.user._id;
+      filter.$or = [
+        { 'logistics.assignedRider': req.user._id },
+        { 'logistics.pickupRider': req.user._id },
+        { 'logistics.deliveryRider': req.user._id }
+      ];
     } else if (req.query.riderId) {
-      filter['logistics.assignedRider'] = req.query.riderId;
+      filter.$or = [
+        { 'logistics.assignedRider': req.query.riderId },
+        { 'logistics.pickupRider': req.query.riderId },
+        { 'logistics.deliveryRider': req.query.riderId }
+      ];
     }
 
     if (!req.query.status) {
@@ -1163,22 +1321,78 @@ export const getRiderTasks = async (req, res) => {
     const tasks = await Order.find(filter)
       .select('-verificationCodes.pickupOtp -verificationCodes.deliveryOtp')
       .populate('customer', 'name email phone')
-      .populate('logistics.assignedRider', 'name phone email')
+      .populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails')
+      .populate('payment.collectedBy payment.reconciledBy', 'name phone email')
       .sort({ 'pickupSchedule.date': 1, 'deliverySchedule.date': 1, createdAt: -1 });
 
-    // Explicit sanitize to guarantee zero OTP leakage
+    const riderTargetId = req.user.role === 'rider' ? String(req.user._id) : (req.query.riderId ? String(req.query.riderId) : null);
+
+    // Compute cashInHand, pendingHandoversCount, companyQrPaymentsCount for the rider
+    let cashInHand = 0;
+    let pendingHandoversCount = 0;
+    let companyQrPaymentsCount = 0;
+
+    if (riderTargetId) {
+      // Find all delivered COD orders collected by this rider that are PENDING_CASH_HANDOVER
+      const pendingCashOrders = await Order.find({
+        'payment.collectedBy': riderTargetId,
+        'payment.reconciliationStatus': 'PENDING_CASH_HANDOVER'
+      }).select('pricingBreakdown payment');
+
+      pendingCashOrders.forEach((o) => {
+        cashInHand += (o.payment?.amountCollected || o.payment?.codAmount || o.pricingBreakdown?.grandTotal || 0);
+        pendingHandoversCount += 1;
+      });
+
+      const qrOrders = await Order.countDocuments({
+        'payment.collectedBy': riderTargetId,
+        'payment.codCollectionMethod': { $in: ['COMPANY_QR', 'UPI_QR'] }
+      });
+      companyQrPaymentsCount = qrOrders;
+    }
+
+    // Explicit sanitize to guarantee zero OTP leakage & tag each order with currentRiderLeg
     const sanitizedTasks = tasks.map((t) => {
       const obj = t.toObject();
       if (obj.verificationCodes) {
         delete obj.verificationCodes.pickupOtp;
         delete obj.verificationCodes.deliveryOtp;
       }
+
+      // Determine currentRiderLeg for this rider
+      const status = obj.orderStatus;
+      const isDelivered = status === 'DELIVERED';
+      const isCancelled = status === 'CANCELLED';
+
+      if (isDelivered || isCancelled) {
+        obj.currentRiderLeg = 'COMPLETED';
+      } else {
+        const isDeliveryStage = ['READY', 'QUALITY_CHECK', 'OUT_FOR_DELIVERY'].includes(status);
+        const isRiderDelivery = riderTargetId && (
+          String(obj.logistics?.deliveryRider?._id || obj.logistics?.deliveryRider || '') === riderTargetId
+        );
+        const isRiderPickup = riderTargetId && (
+          String(obj.logistics?.pickupRider?._id || obj.logistics?.pickupRider || '') === riderTargetId
+        );
+
+        if (isRiderDelivery && !isRiderPickup) {
+          obj.currentRiderLeg = 'DELIVERY';
+        } else if (isRiderPickup && !isRiderDelivery) {
+          obj.currentRiderLeg = isDeliveryStage ? 'COMPLETED' : 'PICKUP';
+        } else {
+          obj.currentRiderLeg = isDeliveryStage ? 'DELIVERY' : 'PICKUP';
+        }
+      }
+
       return obj;
     });
 
     return res.json({
       success: true,
       count: sanitizedTasks.length,
+      cashInHand,
+      pendingHandoversCount,
+      companyQrPaymentsCount,
       tasks: sanitizedTasks
     });
   } catch (error) {
@@ -1231,9 +1445,10 @@ export const verifyPickup = async (req, res) => {
 
     const actualOtp = String(order.verificationCodes?.pickupOtp || order.pickupOtp || '').trim();
     if (!submittedOtp || submittedOtp !== actualOtp) {
+      console.warn(`[Verify Pickup]: OTP mismatch for order ${order.orderNumber}. Submitted: "${submittedOtp}", Actual: "${actualOtp}"`);
       return res.status(400).json({
         success: false,
-        message: 'Invalid pickup verification OTP. Please request the 4-digit OTP from the customer.'
+        message: `Invalid pickup verification OTP. Please request the 4-digit OTP shown for order ${order.orderNumber} on customer's screen.`
       });
     }
 
@@ -1245,6 +1460,12 @@ export const verifyPickup = async (req, res) => {
     order.logistics.inspectionNotes = inspectionNotes ? String(inspectionNotes).trim() : '';
     order.logistics.verifiedGarmentCount = countNumber;
     order.logistics.pickedUpAt = new Date();
+    order.logistics.pickedUpBy = req.user._id;
+
+    if (!order.logistics.pickupRider && req.user.role === 'rider') {
+      order.logistics.pickupRider = req.user._id;
+      order.logistics.pickupAssignedAt = new Date();
+    }
 
     // Process inspection photos (Cloudinary Base64 or URL payloads)
     if (inspectionPhotos && Array.isArray(inspectionPhotos) && inspectionPhotos.length > 0) {
@@ -1315,7 +1536,7 @@ export const verifyPickup = async (req, res) => {
 
     await order.save();
     await order.populate('customer', 'name email phone');
-    await order.populate('logistics.assignedRider', 'name phone email');
+    await order.populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails');
 
     return res.json({
       success: true,
@@ -1331,7 +1552,7 @@ export const verifyPickup = async (req, res) => {
   }
 };
 
-// @desc    Verify doorstep delivery with customer OTP & automatic COD settlement
+// @desc    Verify doorstep delivery with customer OTP, dynamic QR / cash collection & COD reconciliation
 // @route   POST /api/orders/:id/verify-delivery
 // @access  Private (Rider & Admin)
 export const verifyDelivery = async (req, res) => {
@@ -1349,29 +1570,64 @@ export const verifyDelivery = async (req, res) => {
 
     const actualOtp = String(order.verificationCodes?.deliveryOtp || order.deliveryOtp || '').trim();
     if (!submittedOtp || submittedOtp !== actualOtp) {
+      console.warn(`[Verify Delivery]: OTP mismatch for order ${order.orderNumber}. Submitted: "${submittedOtp}", Actual: "${actualOtp}"`);
       return res.status(400).json({
         success: false,
-        message: 'Invalid delivery verification OTP. Please request the 4-digit OTP from the customer.'
+        message: `Invalid delivery verification OTP. Please request the 4-digit OTP shown for order ${order.orderNumber} on customer's screen.`
       });
     }
 
     // If order is COD and payment is not PAID, enforce payment collection method
     if (order.payment?.method === 'COD' && order.payment?.status !== 'PAID') {
-      if (!codCollectionMethod || !['CASH', 'UPI_QR'].includes(codCollectionMethod)) {
+      const allowedMethods = ['CASH', 'COMPANY_QR', 'UPI_QR'];
+      const rawMethod = typeof codCollectionMethod === 'string' ? codCollectionMethod.trim() : (req.body.paymentMethod || '');
+
+      if (!rawMethod || !allowedMethods.includes(rawMethod)) {
         return res.status(400).json({
           success: false,
-          message: 'COD collection method (CASH or UPI_QR) is required for unpaid orders.'
+          message: 'Valid COD collection method (CASH, COMPANY_QR, or UPI_QR) is required for unpaid orders.'
         });
       }
 
+      const chosenMethod = rawMethod;
+      const totalDue = order.payment.codAmount || order.pricingBreakdown?.grandTotal || 0;
+      const now = new Date();
       order.payment.status = 'PAID';
-      order.payment.onlineSubMethod = codCollectionMethod === 'UPI_QR' ? 'UPI' : null;
-      order.payment.transactionId = `COD_${codCollectionMethod}_${Date.now()}`;
-      order.payment.paidAt = new Date();
+      order.payment.paidAt = now;
+      order.payment.amountCollected = totalDue;
+      order.payment.collectedBy = req.user._id;
+      order.payment.collectedAt = now;
+
+      if (chosenMethod === 'CASH') {
+        order.payment.codCollectionMethod = 'CASH';
+        order.payment.onlineSubMethod = null;
+        order.payment.reconciliationStatus = 'PENDING_CASH_HANDOVER';
+        order.payment.transactionId = `COD_CASH_${Date.now()}`;
+      } else if (chosenMethod === 'UPI_QR') {
+        const utr = String(req.body.transactionReferenceId || req.body.utrNumber || req.body.utr || '').trim();
+        order.payment.codCollectionMethod = 'UPI_QR';
+        order.payment.onlineSubMethod = 'UPI';
+        order.payment.transactionReferenceId = utr;
+        order.payment.reconciliationStatus = 'PENDING_UTR_VERIFICATION';
+        order.payment.transactionId = utr ? `UPI_UTR_${utr}` : `COD_UPI_QR_${Date.now()}`;
+      } else if (chosenMethod === 'COMPANY_QR') {
+        const utr = String(req.body.transactionReferenceId || req.body.utrNumber || req.body.utr || '').trim();
+        order.payment.codCollectionMethod = 'COMPANY_QR';
+        order.payment.onlineSubMethod = 'COMPANY_QR';
+        order.payment.transactionReferenceId = utr;
+        order.payment.reconciliationStatus = 'PENDING_UTR_VERIFICATION';
+        order.payment.transactionId = utr ? `UPI_UTR_${utr}` : `COD_QR_${Date.now()}`;
+      }
     }
 
     order.orderStatus = 'DELIVERED';
     order.logistics.deliveredAt = new Date();
+    order.logistics.deliveredBy = req.user._id;
+
+    if (!order.logistics.deliveryRider && req.user.role === 'rider') {
+      order.logistics.deliveryRider = req.user._id;
+      order.logistics.deliveryAssignedAt = new Date();
+    }
 
     if (!order.statusHistory) {
       order.statusHistory = [];
@@ -1382,12 +1638,13 @@ export const verifyDelivery = async (req, res) => {
       timestamp: new Date(),
       updatedBy: req.user._id,
       updaterRole: req.user.role,
-      note: `Order delivered to customer. Payment status: ${order.payment.status}`
+      note: `Order delivered to customer. Payment status: ${order.payment.status}${order.payment.codCollectionMethod !== 'NONE' ? ` via ${order.payment.codCollectionMethod}` : ''}`
     });
 
     await order.save();
     await order.populate('customer', 'name email phone');
-    await order.populate('logistics.assignedRider', 'name phone email');
+    await order.populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails');
+    await order.populate('payment.collectedBy payment.reconciledBy', 'name phone email');
 
     return res.json({
       success: true,
@@ -1400,6 +1657,58 @@ export const verifyDelivery = async (req, res) => {
       success: false,
       message: error.message || 'Failed to verify delivery.'
     });
+  }
+};
+
+// @desc    Reconcile COD payment or approve UTR reference (Admin only)
+// @route   PATCH /api/orders/:id/reconcile-cod
+// @access  Private (Admin only)
+export const reconcileCodPayment = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    const { reconciliationStatus, notes, transactionReferenceId } = req.body;
+    const now = new Date();
+
+    order.payment.reconciliationStatus = reconciliationStatus || 'RECONCILED';
+    order.payment.reconciledBy = req.user._id;
+    order.payment.reconciledAt = now;
+
+    if (notes !== undefined) {
+      order.payment.reconciliationNotes = String(notes).trim();
+    }
+    if (transactionReferenceId) {
+      order.payment.transactionReferenceId = String(transactionReferenceId).trim();
+    }
+    if (order.payment.status !== 'PAID') {
+      order.payment.status = 'PAID';
+      order.payment.paidAt = order.payment.paidAt || now;
+    }
+
+    if (!order.statusHistory) order.statusHistory = [];
+    order.statusHistory.push({
+      status: order.orderStatus,
+      timestamp: now,
+      updatedBy: req.user._id,
+      updaterRole: 'admin',
+      note: `Admin reconciled payment. Status: ${order.payment.reconciliationStatus}. Notes: ${notes || 'None'}`
+    });
+
+    await order.save();
+    await order.populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails');
+    await order.populate('payment.collectedBy payment.reconciledBy', 'name phone email');
+
+    return res.json({
+      success: true,
+      message: `Payment reconciliation updated to ${order.payment.reconciliationStatus} for Order #${order.orderNumber}.`,
+      order
+    });
+  } catch (error) {
+    console.error('[Reconcile COD Error]:', error);
+    return res.status(500).json({ success: false, message: 'Failed to reconcile payment.' });
   }
 };
 

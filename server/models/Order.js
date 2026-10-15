@@ -80,6 +80,15 @@ const orderSchema = new mongoose.Schema({
       type: String,
       required: true,
       trim: true
+    },
+    assignedRider: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    assignedAt: {
+      type: Date,
+      default: null
     }
   },
   deliverySchedule: {
@@ -91,6 +100,15 @@ const orderSchema = new mongoose.Schema({
       type: String,
       required: true,
       trim: true
+    },
+    assignedRider: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    assignedAt: {
+      type: Date,
+      default: null
     }
   },
   pickupAddress: {
@@ -121,7 +139,7 @@ const orderSchema = new mongoose.Schema({
     },
     onlineSubMethod: {
       type: String,
-      enum: ['UPI', 'CARD', 'NET_BANKING', 'RAZORPAY_CHECKOUT', 'NONE', '', null],
+      enum: ['UPI', 'CARD', 'NET_BANKING', 'RAZORPAY_CHECKOUT', 'COMPANY_QR', 'NONE', '', null],
       default: null
     },
     status: {
@@ -129,6 +147,63 @@ const orderSchema = new mongoose.Schema({
       enum: ['PENDING', 'PAID', 'FAILED', 'REFUNDED'],
       default: 'PENDING',
       index: true
+    },
+
+    // Detailed COD & Doorstep Collection Tracking
+    codAmount: {
+      type: Number,
+      default: 0
+    },
+    codCollectionMethod: {
+      type: String,
+      enum: ['NONE', 'CASH', 'COMPANY_QR', 'UPI_QR'],
+      default: 'NONE'
+    },
+    amountCollected: {
+      type: Number,
+      default: 0
+    },
+    collectedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    collectedAt: {
+      type: Date,
+      default: null
+    },
+    transactionReferenceId: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+
+    // Admin Accounting & Reconciliation
+    reconciliationStatus: {
+      type: String,
+      enum: [
+        'NOT_APPLICABLE',
+        'UNCOLLECTED',
+        'PENDING_CASH_HANDOVER',
+        'PENDING_UTR_VERIFICATION',
+        'RECONCILED'
+      ],
+      default: 'NOT_APPLICABLE',
+      index: true
+    },
+    reconciledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    reconciledAt: {
+      type: Date,
+      default: null
+    },
+    reconciliationNotes: {
+      type: String,
+      trim: true,
+      default: ''
     },
 
     transactionId: {
@@ -185,7 +260,37 @@ const orderSchema = new mongoose.Schema({
     }
   },
   logistics: {
+    // 100% Backward Compatibility: Always synchronized with currently active leg rider
     assignedRider: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    // Decoupled Two-Leg Fleet Assignment
+    pickupRider: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    pickupAssignedAt: {
+      type: Date,
+      default: null
+    },
+    pickedUpBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    deliveryRider: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    deliveryAssignedAt: {
+      type: Date,
+      default: null
+    },
+    deliveredBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       default: null
@@ -260,7 +365,7 @@ orderSchema.virtual('deliveryOtp').get(function () {
   return this.verificationCodes?.deliveryOtp;
 });
 
-// Pre-validate hook to guarantee 4-digit OTPs and clean COD payments
+// Pre-validate hook to guarantee 4-digit OTPs, two-leg synchronization, and COD reconciliation
 orderSchema.pre('validate', function (next) {
   if (!this.verificationCodes) {
     this.verificationCodes = {};
@@ -272,16 +377,49 @@ orderSchema.pre('validate', function (next) {
     this.verificationCodes.deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
   }
 
+  // Payment COD & Reconciliation integrity
   if (this.payment) {
     if (this.payment.method === 'COD') {
-      if (!this.payment.onlineSubMethod || (this.payment.status !== 'PAID' && !['UPI', 'CARD'].includes(this.payment.onlineSubMethod))) {
-        this.payment.onlineSubMethod = null;
+      if (!this.payment.codAmount && this.pricingBreakdown?.grandTotal) {
+        this.payment.codAmount = this.pricingBreakdown.grandTotal;
+      }
+      if (this.payment.status === 'PENDING' && (!this.payment.reconciliationStatus || this.payment.reconciliationStatus === 'NOT_APPLICABLE')) {
+        this.payment.reconciliationStatus = 'UNCOLLECTED';
       }
       if (!this.payment.status || this.payment.status === '') {
         this.payment.status = 'PENDING';
       }
+    } else if (this.payment.method === 'ONLINE') {
+      if (!this.payment.reconciliationStatus || this.payment.reconciliationStatus === 'UNCOLLECTED') {
+        this.payment.reconciliationStatus = 'NOT_APPLICABLE';
+      }
     }
   }
+
+  // Decoupled Two-Leg Logistics Synchronization (100% Backward Compatible)
+  if (this.logistics) {
+    const isDeliveryLeg = ['READY', 'QUALITY_CHECK', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(this.orderStatus);
+    if (isDeliveryLeg) {
+      this.logistics.assignedRider = this.logistics.deliveryRider || this.logistics.pickupRider || this.logistics.assignedRider || null;
+    } else {
+      this.logistics.assignedRider = this.logistics.pickupRider || this.logistics.deliveryRider || this.logistics.assignedRider || null;
+    }
+
+    if (this.pickupSchedule) {
+      if (this.logistics.pickupRider) {
+        this.pickupSchedule.assignedRider = this.logistics.pickupRider;
+        if (!this.pickupSchedule.assignedAt) this.pickupSchedule.assignedAt = this.logistics.pickupAssignedAt || new Date();
+      }
+    }
+
+    if (this.deliverySchedule) {
+      if (this.logistics.deliveryRider) {
+        this.deliverySchedule.assignedRider = this.logistics.deliveryRider;
+        if (!this.deliverySchedule.assignedAt) this.deliverySchedule.assignedAt = this.logistics.deliveryAssignedAt || new Date();
+      }
+    }
+  }
+
   next();
 });
 
@@ -321,6 +459,8 @@ orderSchema.statics.backfillMissingOtps = async function () {
 orderSchema.index({ customer: 1, createdAt: -1 });
 orderSchema.index({ orderStatus: 1, 'pickupSchedule.date': 1 });
 orderSchema.index({ 'logistics.assignedRider': 1 });
+orderSchema.index({ 'logistics.pickupRider': 1 });
+orderSchema.index({ 'logistics.deliveryRider': 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 export default Order;

@@ -52,7 +52,8 @@ export const updateConfigSettings = async (req, res) => {
       'detergentOptions',
       'packagingOptions',
       'serviceTypes',
-      'ironingTiers'
+      'ironingTiers',
+      'companyPaymentConfig'
     ];
 
     allowedFields.forEach((field) => {

@@ -14,6 +14,7 @@ import {
   deleteAdminCategory,
   getAdminPayments,
   updateAdminPaymentStatus,
+  reconcileRiderCash,
   getAdminNotifications,
   sendAdminNotification
 } from '../controllers/adminController.js';
@@ -44,6 +45,7 @@ router.delete('/categories/:id', deleteAdminCategory);
 
 // 4. Payments Ledger
 router.get('/payments', getAdminPayments);
+router.post('/payments/reconcile-rider-cash', reconcileRiderCash);
 router.patch('/payments/:orderId', updateAdminPaymentStatus);
 
 // 5. System Notifications & Broadcast Announcements

@@ -8,6 +8,7 @@ import {
   User as UserIcon, 
   LogOut, 
   ShieldCheck, 
+  Bike,
   Menu, 
   X, 
   ChevronRight,
@@ -22,20 +23,37 @@ const Navbar = () => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const navLinks = [
-    { name: 'Home', path: '/' },
-    { name: 'Book Laundry', path: '/book', highlight: true },
-    { name: 'Pricing & Services', path: '/pricing' },
-    { name: 'My Orders', path: '/my-orders', authRequired: true },
-    { name: 'My Profile', path: '/profile', authRequired: true },
-  ];
+  // Logo destination based on user role
+  const logoDestination = isAdmin ? '/admin' : isRider ? '/rider' : '/';
 
-  if (isRider || isAdmin) {
-    navLinks.push({ name: 'Rider Portal', path: '/rider' });
-  }
+  // Strict role-segregated navigation links
+  let navLinks = [];
 
   if (isAdmin) {
-    navLinks.push({ name: 'Admin Hub', path: '/admin', adminOnly: true });
+    // Admin navigation: dedicated operations hub only
+    navLinks = [
+      { name: 'Admin Hub', path: '/admin', icon: ShieldCheck }
+    ];
+  } else if (isRider) {
+    // Rider navigation: dedicated doorstep logistics portal only
+    navLinks = [
+      { name: 'Rider Portal', path: '/rider', icon: Bike }
+    ];
+  } else if (isAuthenticated) {
+    // Customer navigation: retail booking & order tracking
+    navLinks = [
+      { name: 'Home', path: '/' },
+      { name: 'Book Laundry', path: '/book', highlight: true },
+      { name: 'Pricing & Services', path: '/pricing' },
+      { name: 'My Orders', path: '/my-orders' }
+    ];
+  } else {
+    // Guest navigation: public discovery & booking
+    navLinks = [
+      { name: 'Home', path: '/' },
+      { name: 'Book Laundry', path: '/book', highlight: true },
+      { name: 'Pricing & Services', path: '/pricing' }
+    ];
   }
 
   const isActive = (path) => location.pathname === path;
@@ -46,7 +64,7 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16 sm:h-20">
           
           {/* Logo & Brand */}
-          <Link to="/" className="flex items-center gap-3 group">
+          <Link to={logoDestination} className="flex items-center gap-3 group">
             <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-primary-700 via-primary-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-primary-500/20 group-hover:scale-105 transition-transform">
               <Shirt className="w-6 h-6 stroke-[2.2]" />
             </div>
@@ -68,8 +86,8 @@ const Navbar = () => {
           {/* Desktop Navigation Links */}
           <nav className="hidden md:flex items-center gap-1 lg:gap-2">
             {navLinks.map((link) => {
-              if (link.authRequired && !isAuthenticated) return null;
               const active = isActive(link.path);
+              const LinkIcon = link.icon;
 
               if (link.highlight) {
                 return (
@@ -93,13 +111,14 @@ const Navbar = () => {
                 <Link
                   key={link.path}
                   to={link.path}
-                  className={`px-3.5 py-2 rounded-xl text-sm font-medium transition-colors ${
+                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2 ${
                     active
-                      ? 'text-primary-700 bg-primary-50 font-semibold'
+                      ? 'text-primary-700 bg-primary-50 font-bold'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
-                  {link.name}
+                  {LinkIcon && <LinkIcon className="w-4 h-4" />}
+                  <span>{link.name}</span>
                 </Link>
               );
             })}
@@ -181,18 +200,20 @@ const Navbar = () => {
           {/* Mobile Menu Button */}
           <div className="flex items-center gap-2 lg:hidden">
             {isAuthenticated && <NotificationBell />}
-            <Link
-              to="/book"
-              className="p-2 text-primary-600 hover:bg-primary-50 rounded-xl relative"
-              aria-label="View booking cart"
-            >
-              <ShoppingBag className="w-5 h-5" />
-              {itemCount > 0 && (
-                <span className="absolute top-1 right-1 bg-amber-500 text-slate-900 font-bold text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
-                  {itemCount}
-                </span>
-              )}
-            </Link>
+            {!isAdmin && !isRider && (
+              <Link
+                to="/book"
+                className="p-2 text-primary-600 hover:bg-primary-50 rounded-xl relative"
+                aria-label="View booking cart"
+              >
+                <ShoppingBag className="w-5 h-5" />
+                {itemCount > 0 && (
+                  <span className="absolute top-1 right-1 bg-amber-500 text-slate-900 font-bold text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
+                    {itemCount}
+                  </span>
+                )}
+              </Link>
+            )}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl focus:outline-hidden"
@@ -209,7 +230,7 @@ const Navbar = () => {
         <div className="lg:hidden border-b border-slate-200 bg-white px-4 pt-3 pb-6 space-y-3">
           <div className="space-y-1">
             {navLinks.map((link) => {
-              if (link.authRequired && !isAuthenticated) return null;
+              const LinkIcon = link.icon;
               return (
                 <Link
                   key={link.path}
@@ -221,7 +242,10 @@ const Navbar = () => {
                       : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <span>{link.name}</span>
+                  <span className="flex items-center gap-2.5">
+                    {LinkIcon && <LinkIcon className="w-4 h-4 text-primary-600" />}
+                    <span>{link.name}</span>
+                  </span>
                   <ChevronRight className="w-4 h-4 text-slate-400" />
                 </Link>
               );

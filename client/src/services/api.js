@@ -177,8 +177,18 @@ export const orderService = {
     const res = await API.get('/orders/riders');
     return res.data;
   },
-  assignRider: async (orderId, riderId) => {
-    const res = await API.patch(`/orders/${orderId}/assign-rider`, { riderId });
+  assignRider: async (orderId, riderId, leg = undefined) => {
+    const payload = { riderId };
+    if (leg) payload.leg = leg;
+    const res = await API.patch(`/orders/${orderId}/assign-rider`, payload);
+    return res.data;
+  },
+  acceptTask: async (orderId) => {
+    const res = await API.post(`/orders/${orderId}/accept-task`);
+    return res.data;
+  },
+  reconcileCodPayment: async (orderId, data) => {
+    const res = await API.patch(`/orders/${orderId}/reconcile-cod`, data);
     return res.data;
   },
   getRiderTasks: async (filters = {}) => {
@@ -312,6 +322,10 @@ export const adminService = {
   },
   updatePaymentStatus: async (orderId, paymentData) => {
     const res = await API.patch(`/admin/payments/${orderId}`, paymentData);
+    return res.data;
+  },
+  reconcileRiderCash: async (riderId, notes = '') => {
+    const res = await API.post('/admin/payments/reconcile-rider-cash', { riderId, notes });
     return res.data;
   },
 

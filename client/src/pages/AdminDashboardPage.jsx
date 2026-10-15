@@ -306,11 +306,11 @@ const AdminDashboardPage = () => {
   // =========================================================================
   // ORDER ACTIONS
   // =========================================================================
-  const handleAssignRider = async (orderId, riderId) => {
+  const handleAssignRider = async (orderId, riderId, leg = undefined) => {
     if (!riderId) return;
     setUpdatingId(orderId);
     try {
-      const res = await orderService.assignRider(orderId, riderId);
+      const res = await orderService.assignRider(orderId, riderId, leg);
       if (res.success && res.order) {
         setOrders((prev) =>
           prev.map((o) => (o._id === orderId ? res.order : o))
@@ -2387,15 +2387,15 @@ const AdminDashboardPage = () => {
                 <span>Logistics &amp; Fleet State</span>
               </span>
               
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <span className="text-[10px] text-slate-500 block">Assigned Rider:</span>
+                  <span className="text-[10px] text-slate-500 block font-bold">1. Pickup Rider (Leg 1):</span>
                   <select
-                    value={inspectOrder.logistics?.assignedRider?._id || ''}
-                    onChange={(e) => handleAssignRider(inspectOrder._id, e.target.value)}
-                    className="mt-1 w-full px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white font-medium text-slate-800"
+                    value={inspectOrder.logistics?.pickupRider?._id || inspectOrder.pickupSchedule?.assignedRider?._id || ''}
+                    onChange={(e) => handleAssignRider(inspectOrder._id, e.target.value, 'PICKUP')}
+                    className="mt-1 w-full px-2.5 py-1.5 rounded-xl border border-amber-300 bg-amber-50/50 font-bold text-slate-800 text-xs"
                   >
-                    <option value="">No Rider Assigned</option>
+                    <option value="UNASSIGN">No Pickup Rider</option>
                     {riders.map((r) => (
                       <option key={r._id} value={r._id}>
                         {r.name}
@@ -2405,8 +2405,24 @@ const AdminDashboardPage = () => {
                 </div>
 
                 <div>
-                  <span className="text-[10px] text-slate-500 block">Bag Tag ID:</span>
-                  <div className="mt-1 font-mono font-bold text-slate-800 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200">
+                  <span className="text-[10px] text-slate-500 block font-bold">2. Delivery Rider (Leg 2):</span>
+                  <select
+                    value={inspectOrder.logistics?.deliveryRider?._id || inspectOrder.deliverySchedule?.assignedRider?._id || ''}
+                    onChange={(e) => handleAssignRider(inspectOrder._id, e.target.value, 'DELIVERY')}
+                    className="mt-1 w-full px-2.5 py-1.5 rounded-xl border border-teal-300 bg-teal-50/50 font-bold text-slate-800 text-xs"
+                  >
+                    <option value="UNASSIGN">No Delivery Rider</option>
+                    {riders.map((r) => (
+                      <option key={r._id} value={r._id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <span className="text-[10px] text-slate-500 block font-bold">Physical Bag Tag ID:</span>
+                  <div className="mt-1 font-mono font-bold text-slate-800 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs">
                     {inspectOrder.logistics?.bagTagId || 'Not assigned yet'}
                   </div>
                 </div>

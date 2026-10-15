@@ -118,7 +118,7 @@ const GstInvoiceModal = ({ order, isOpen = true, onClose, platformConfig }) => {
   const paymentStatus = order.payment?.status || 'PENDING';
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto print:p-0 print:bg-white print:fixed print:inset-0">
+    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto print:p-0 print:bg-white print:fixed print:inset-0">
       <div className="relative w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden my-auto print:shadow-none print:border-none print:max-w-none print:w-full print:max-h-none">
         
         {/* Action Header (Pinned/Sticky at top, hidden during print) */}

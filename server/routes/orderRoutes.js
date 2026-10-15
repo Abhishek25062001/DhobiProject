@@ -15,6 +15,8 @@ import {
   getRiderTasks,
   verifyPickup,
   verifyDelivery,
+  acceptRiderTask,
+  reconcileCodPayment,
   getActiveCoupons,
   validateCoupon,
   createCoupon,
@@ -56,8 +58,10 @@ router.post('/:id/retry-payment', protect, retryPayment);
 router.post('/:id/payment-failed', protect, recordPaymentFailure);
 router.post('/:id/switch-to-cod', protect, switchToCod);
 router.patch('/:id/assign-rider', protect, authorize('admin'), assignRider);
+router.post('/:id/accept-task', protect, authorize('rider', 'admin'), acceptRiderTask);
 router.post('/:id/verify-pickup', protect, authorize('rider', 'admin'), verifyPickup);
 router.post('/:id/verify-delivery', protect, authorize('rider', 'admin'), verifyDelivery);
+router.patch('/:id/reconcile-cod', protect, authorize('admin'), reconcileCodPayment);
 router.get('/:id', protect, getOrderById);
 router.patch('/:id/status', protect, authorize('admin', 'rider'), updateOrderStatus);
 

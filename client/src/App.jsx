@@ -27,16 +27,20 @@ function App() {
             {/* Global Toast Notifications */}
             <Toaster
               position="top-right"
+              containerStyle={{
+                zIndex: 100000,
+              }}
               toastOptions={{
                 duration: 4000,
                 style: {
+                  zIndex: 100000,
                   background: '#0f172a',
                   color: '#f8fafc',
                   fontSize: '13px',
                   fontWeight: 600,
                   borderRadius: '16px',
                   padding: '12px 18px',
-                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
                 },
                 success: {
                   iconTheme: {

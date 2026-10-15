@@ -596,12 +596,12 @@ export const deleteAdminCategory = async (req, res) => {
 // 4. PAYMENTS & TRANSACTIONS LEDGER (REQUIREMENT #7.3)
 // ============================================================================
 
-// @desc    Get complete financial ledger & transactions
+// @desc    Get complete financial ledger & transactions with COD reconciliation metrics
 // @route   GET /api/admin/payments
 // @access  Private (Admin only)
 export const getAdminPayments = async (req, res) => {
   try {
-    const { status, method, search } = req.query;
+    const { status, method, search, reconciliationStatus } = req.query;
     const filter = {};
 
     if (status && status !== 'ALL') {
@@ -610,12 +610,16 @@ export const getAdminPayments = async (req, res) => {
     if (method && method !== 'ALL') {
       filter['payment.method'] = method;
     }
+    if (reconciliationStatus && reconciliationStatus !== 'ALL') {
+      filter['payment.reconciliationStatus'] = reconciliationStatus;
+    }
 
     if (search && search.trim()) {
       const q = search.trim();
       filter.$or = [
         { orderNumber: { $regex: q, $options: 'i' } },
         { 'payment.transactionId': { $regex: q, $options: 'i' } },
+        { 'payment.transactionReferenceId': { $regex: q, $options: 'i' } },
         { 'payment.razorpayOrderId': { $regex: q, $options: 'i' } },
         { 'payment.razorpayPaymentId': { $regex: q, $options: 'i' } }
       ];
@@ -624,7 +628,9 @@ export const getAdminPayments = async (req, res) => {
     const [orders, metrics] = await Promise.all([
       Order.find(filter)
         .populate('customer', 'name email phone')
-        .select('orderNumber customer pricingBreakdown payment orderStatus createdAt')
+        .populate('logistics.pickupRider logistics.deliveryRider logistics.assignedRider', 'name phone email riderDetails')
+        .populate('payment.collectedBy payment.reconciledBy', 'name phone email')
+        .select('orderNumber customer pricingBreakdown payment orderStatus logistics createdAt')
         .sort({ createdAt: -1 }),
       Order.aggregate([
         {
@@ -651,6 +657,43 @@ export const getAdminPayments = async (req, res) => {
                 ]
               }
             },
+            totalPendingCashHandover: {
+              $sum: {
+                $cond: [
+                  { $eq: ['$payment.reconciliationStatus', 'PENDING_CASH_HANDOVER'] },
+                  { $ifNull: ['$payment.amountCollected', '$pricingBreakdown.grandTotal'] },
+                  0
+                ]
+              }
+            },
+            pendingCashHandoverCount: {
+              $sum: {
+                $cond: [{ $eq: ['$payment.reconciliationStatus', 'PENDING_CASH_HANDOVER'] }, 1, 0]
+              }
+            },
+            totalPendingUtrVerification: {
+              $sum: {
+                $cond: [
+                  { $eq: ['$payment.reconciliationStatus', 'PENDING_UTR_VERIFICATION'] },
+                  { $ifNull: ['$payment.amountCollected', '$pricingBreakdown.grandTotal'] },
+                  0
+                ]
+              }
+            },
+            pendingUtrVerificationCount: {
+              $sum: {
+                $cond: [{ $eq: ['$payment.reconciliationStatus', 'PENDING_UTR_VERIFICATION'] }, 1, 0]
+              }
+            },
+            totalReconciled: {
+              $sum: {
+                $cond: [
+                  { $eq: ['$payment.reconciliationStatus', 'RECONCILED'] },
+                  { $ifNull: ['$payment.amountCollected', '$pricingBreakdown.grandTotal'] },
+                  0
+                ]
+              }
+            },
             totalFailed: {
               $sum: {
                 $cond: [{ $eq: ['$payment.status', 'FAILED'] }, 1, 0]
@@ -670,20 +713,46 @@ export const getAdminPayments = async (req, res) => {
       totalGross: 0,
       totalPaidRevenue: 0,
       totalPendingCod: 0,
+      totalPendingCashHandover: 0,
+      pendingCashHandoverCount: 0,
+      totalPendingUtrVerification: 0,
+      pendingUtrVerificationCount: 0,
+      totalReconciled: 0,
       totalFailed: 0,
       totalRefunded: 0
     };
 
+    // Normalize each order to support both frontend access patterns seamlessly
+    const formattedOrders = orders.map((order) => {
+      const doc = order.toObject();
+      return {
+        ...doc,
+        paymentStatus: doc.payment?.status,
+        paymentMethod: doc.payment?.method,
+        paymentDetails: doc.payment,
+        reconciliationStatus: doc.payment?.reconciliationStatus || 'NOT_APPLICABLE',
+        pricingBreakdown: {
+          ...doc.pricingBreakdown,
+          finalPayable: doc.pricingBreakdown?.grandTotal || 0
+        }
+      };
+    });
+
     return res.json({
       success: true,
-      count: orders.length,
+      count: formattedOrders.length,
       summary,
       totalRevenue: summary.totalGross || 0,
       settledRevenue: summary.totalPaidRevenue || 0,
       pendingCodRevenue: summary.totalPendingCod || 0,
       failedRefundedRevenue: summary.totalRefunded || 0,
-      transactions: orders,
-      data: orders
+      pendingCashHandoverRevenue: summary.totalPendingCashHandover || 0,
+      pendingCashHandoverCount: summary.pendingCashHandoverCount || 0,
+      pendingUtrVerificationRevenue: summary.totalPendingUtrVerification || 0,
+      pendingUtrVerificationCount: summary.pendingUtrVerificationCount || 0,
+      totalReconciledRevenue: summary.totalReconciled || 0,
+      transactions: formattedOrders,
+      data: formattedOrders
     });
   } catch (error) {
     console.error('[Admin Get Payments Error]:', error);
@@ -694,7 +763,7 @@ export const getAdminPayments = async (req, res) => {
   }
 };
 
-// @desc    Reconcile payment status manually (COD collect, refund, retry capture)
+// @desc    Reconcile payment status manually (COD collect, refund, retry capture, or UTR approval)
 // @route   PATCH /api/admin/payments/:orderId
 // @access  Private (Admin only)
 export const updateAdminPaymentStatus = async (req, res) => {
@@ -704,43 +773,127 @@ export const updateAdminPaymentStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found.' });
     }
 
-    const { paymentStatus, transactionId, note } = req.body;
+    const { paymentStatus, transactionId, transactionReferenceId, reconciliationStatus, note } = req.body;
+    const now = new Date();
 
-    if (!paymentStatus || !['PAID', 'PENDING', 'FAILED', 'REFUNDED'].includes(paymentStatus)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid paymentStatus (PAID, PENDING, FAILED, REFUNDED) is required.'
-      });
+    if (paymentStatus) {
+      if (!['PAID', 'PENDING', 'FAILED', 'REFUNDED'].includes(paymentStatus)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Valid paymentStatus (PAID, PENDING, FAILED, REFUNDED) is required.'
+        });
+      }
+      order.payment.status = paymentStatus;
+      if (paymentStatus === 'PAID' && !order.payment.paidAt) {
+        order.payment.paidAt = now;
+      }
     }
 
-    order.payment.status = paymentStatus;
     if (transactionId) {
       order.payment.transactionId = transactionId;
     }
-    if (paymentStatus === 'PAID' && !order.payment.paidAt) {
-      order.payment.paidAt = new Date();
+
+    if (transactionReferenceId) {
+      order.payment.transactionReferenceId = String(transactionReferenceId).trim();
+    }
+
+    if (reconciliationStatus) {
+      order.payment.reconciliationStatus = reconciliationStatus;
+      order.payment.reconciledBy = req.user._id;
+      order.payment.reconciledAt = now;
+      if (reconciliationStatus === 'RECONCILED' && order.payment.status !== 'PAID') {
+        order.payment.status = 'PAID';
+        order.payment.paidAt = order.payment.paidAt || now;
+      }
     }
 
     if (!order.statusHistory) order.statusHistory = [];
     order.statusHistory.push({
       status: order.orderStatus,
-      timestamp: new Date(),
+      timestamp: now,
       updatedBy: req.user._id,
       updaterRole: 'admin',
-      note: note || `Admin reconciled payment status to ${paymentStatus}`
+      note: note || `Admin updated payment. Status: ${order.payment.status}, Reconciliation: ${order.payment.reconciliationStatus}`
     });
 
     await order.save();
+    await order.populate('customer', 'name email phone');
+    await order.populate('logistics.pickupRider logistics.deliveryRider logistics.assignedRider', 'name phone email riderDetails');
+    await order.populate('payment.collectedBy payment.reconciledBy', 'name phone email');
 
     return res.json({
       success: true,
-      message: `Payment status reconciled to ${paymentStatus} for Order #${order.orderNumber}.`,
+      message: `Payment reconciled for Order #${order.orderNumber}.`,
       order,
       data: order
     });
   } catch (error) {
     console.error('[Admin Reconcile Payment Error]:', error);
     return res.status(500).json({ success: false, message: 'Failed to reconcile payment.' });
+  }
+};
+
+// @desc    Bulk reconcile cash handover from a rider
+// @route   POST /api/admin/reconcile-rider-cash
+// @access  Private (Admin only)
+export const reconcileRiderCash = async (req, res) => {
+  try {
+    const { riderId, notes } = req.body;
+    if (!riderId) {
+      return res.status(400).json({ success: false, message: 'Rider ID is required.' });
+    }
+
+    const rider = await User.findById(riderId);
+    if (!rider) {
+      return res.status(404).json({ success: false, message: 'Rider not found.' });
+    }
+
+    const pendingOrders = await Order.find({
+      'payment.collectedBy': riderId,
+      'payment.reconciliationStatus': 'PENDING_CASH_HANDOVER'
+    });
+
+    if (pendingOrders.length === 0) {
+      return res.json({
+        success: true,
+        message: `No pending cash handover orders found for rider ${rider.name}.`,
+        reconciledCount: 0,
+        totalAmount: 0
+      });
+    }
+
+    let totalAmount = 0;
+    const now = new Date();
+
+    for (const ord of pendingOrders) {
+      const amt = ord.payment.amountCollected || ord.payment.codAmount || ord.pricingBreakdown?.grandTotal || 0;
+      totalAmount += amt;
+      ord.payment.reconciliationStatus = 'RECONCILED';
+      ord.payment.reconciledBy = req.user._id;
+      ord.payment.reconciledAt = now;
+      ord.payment.reconciliationNotes = notes ? String(notes).trim() : `Bulk shift cash handover confirmed by Admin (${req.user.name || 'Admin'}).`;
+
+      if (!ord.statusHistory) ord.statusHistory = [];
+      ord.statusHistory.push({
+        status: ord.orderStatus,
+        timestamp: now,
+        updatedBy: req.user._id,
+        updaterRole: 'admin',
+        note: `Cash handover reconciled: ₹${amt} collected by ${rider.name}`
+      });
+
+      await ord.save();
+    }
+
+    return res.json({
+      success: true,
+      message: `Successfully reconciled ₹${totalAmount} across ${pendingOrders.length} orders for rider ${rider.name}.`,
+      reconciledCount: pendingOrders.length,
+      totalAmount
+    });
+  } catch (error) {
+    console.error('[Admin Bulk Reconcile Cash Error]:', error);
+    return res.status(500).json({ success: false, message: 'Failed to reconcile rider cash handover.' });
   }
 };
 

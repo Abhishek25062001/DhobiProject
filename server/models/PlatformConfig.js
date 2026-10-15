@@ -190,6 +190,32 @@ const platformConfigSchema = new mongoose.Schema(
           isActive: true
         }
       ]
+    },
+    // Production Official Company Dynamic UPI QR & Payment Rules
+    companyPaymentConfig: {
+      merchantUpiId: {
+        type: String,
+        default: 'indodhobi.official@icici',
+        trim: true
+      },
+      merchantName: {
+        type: String,
+        default: 'IndoDhobi Laundry Pvt Ltd',
+        trim: true
+      },
+      officialQrImageUrl: {
+        type: String,
+        default: '',
+        trim: true
+      },
+      allowCashOnDelivery: {
+        type: Boolean,
+        default: true
+      },
+      allowCompanyQrOnDelivery: {
+        type: Boolean,
+        default: true
+      }
     }
   },
   {
@@ -201,6 +227,15 @@ platformConfigSchema.statics.getOrCreateActiveConfig = async function () {
   let config = await this.findOne();
   if (!config) {
     config = await this.create({});
+  } else if (!config.companyPaymentConfig || !config.companyPaymentConfig.merchantUpiId) {
+    config.companyPaymentConfig = {
+      merchantUpiId: 'indodhobi.official@icici',
+      merchantName: 'IndoDhobi Laundry Pvt Ltd',
+      officialQrImageUrl: config.companyPaymentConfig?.officialQrImageUrl || '',
+      allowCashOnDelivery: config.companyPaymentConfig?.allowCashOnDelivery !== false,
+      allowCompanyQrOnDelivery: config.companyPaymentConfig?.allowCompanyQrOnDelivery !== false
+    };
+    await config.save();
   }
   return config;
 };
