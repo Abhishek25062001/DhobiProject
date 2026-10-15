@@ -11,6 +11,8 @@ import authRoutes from './routes/authRoutes.js';
 import catalogRoutes from './routes/catalogRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import configRoutes from './routes/configRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 import { sanitizeInput, apiLimiter } from './middleware/securityMiddleware.js';
 import errorHandler from './middleware/errorMiddleware.js';
 
@@ -79,6 +81,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Production Static Asset Serving
 if (process.env.NODE_ENV === 'production') {

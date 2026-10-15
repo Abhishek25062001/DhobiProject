@@ -5,6 +5,7 @@ import Order from '../models/Order.js';
 import Coupon from '../models/Coupon.js';
 import TimeSlot from '../models/TimeSlot.js';
 import PlatformConfig from '../models/PlatformConfig.js';
+import Category from '../models/Category.js';
 import dotenv from 'dotenv';
 
 import { connectDB } from '../config/db.js';
@@ -465,6 +466,10 @@ export const seedData = async () => {
     // 5. Seed Default Platform Configuration
     await PlatformConfig.getOrCreateActiveConfig();
     console.log('[Seeder] Platform configuration verified/seeded');
+
+    // 5b. Seed Default Categories
+    await Category.ensureDefaultCategories();
+    console.log('[Seeder] Default garment categories verified/seeded');
 
     // 6. Seed Default Time Slots
     const defaultSlots = [

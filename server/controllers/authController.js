@@ -112,7 +112,7 @@ export const login = async (req, res) => {
     if (user.isActive === false) {
       return res.status(403).json({
         success: false,
-        message: 'Your account has been deactivated. Please contact support.'
+        message: 'Your account has been deactivated by the administrator.'
       });
     }
 
@@ -643,7 +643,7 @@ export const customerFirebaseLogin = async (req, res) => {
     if (user && user.isActive === false) {
       return res.status(403).json({
         success: false,
-        message: 'Your account has been deactivated. Please contact support.'
+        message: 'Your account has been deactivated by the administrator.'
       });
     }
 
@@ -799,7 +799,7 @@ export const staffLogin = async (req, res) => {
     if (user.isActive === false) {
       return res.status(403).json({
         success: false,
-        message: 'Your account has been deactivated. Please contact support.'
+        message: 'Your account has been deactivated by the administrator.'
       });
     }
 

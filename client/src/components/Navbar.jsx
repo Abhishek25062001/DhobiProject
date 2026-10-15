@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Shirt
 } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 
 const Navbar = () => {
   const { user, isAuthenticated, isAdmin, isRider, logout } = useAuth();
@@ -107,7 +108,8 @@ const Navbar = () => {
           {/* Right Action Buttons */}
           <div className="hidden lg:flex items-center gap-3">
             {isAuthenticated ? (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <NotificationBell />
                 <Link
                   to="/profile"
                   className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900 text-sm font-medium transition-colors"
@@ -164,6 +166,7 @@ const Navbar = () => {
 
           {/* Mobile Menu Button */}
           <div className="flex items-center gap-2 lg:hidden">
+            {isAuthenticated && <NotificationBell />}
             <Link
               to="/book"
               className="p-2 text-primary-600 hover:bg-primary-50 rounded-xl relative"

@@ -118,6 +118,10 @@ export const catalogService = {
     const res = await API.post('/catalog/garments', garmentData);
     return res.data;
   },
+  getCategories: async () => {
+    const res = await API.get('/catalog/categories');
+    return res.data;
+  },
 };
 
 export const orderService = {
@@ -242,6 +246,97 @@ export const configService = {
   },
   uploadImage: async (imagePayload, folder = 'indodhobi') => {
     const res = await API.post('/config/upload-image', { image: imagePayload, folder });
+    return res.data;
+  }
+};
+
+export const adminService = {
+  // 1. Rider Fleet Management
+  getRiders: async () => {
+    const res = await API.get('/admin/riders');
+    return res.data;
+  },
+  createRider: async (riderData) => {
+    const res = await API.post('/admin/riders', riderData);
+    return res.data;
+  },
+  updateRider: async (id, riderData) => {
+    const res = await API.put(`/admin/riders/${id}`, riderData);
+    return res.data;
+  },
+  toggleRiderStatus: async (id) => {
+    const res = await API.patch(`/admin/riders/${id}/status`);
+    return res.data;
+  },
+  deleteRider: async (id) => {
+    const res = await API.delete(`/admin/riders/${id}`);
+    return res.data;
+  },
+
+  // 2. Users & Addresses Directory
+  getUsers: async (params = {}) => {
+    const res = await API.get('/admin/users', { params });
+    return res.data;
+  },
+  updateUser: async (id, userData) => {
+    const res = await API.put(`/admin/users/${id}`, userData);
+    return res.data;
+  },
+  toggleUserStatus: async (id) => {
+    const res = await API.patch(`/admin/users/${id}/status`);
+    return res.data;
+  },
+
+  // 3. Dynamic Categories
+  getCategories: async () => {
+    const res = await API.get('/admin/categories');
+    return res.data;
+  },
+  createCategory: async (categoryData) => {
+    const res = await API.post('/admin/categories', categoryData);
+    return res.data;
+  },
+  updateCategory: async (id, categoryData) => {
+    const res = await API.put(`/admin/categories/${id}`, categoryData);
+    return res.data;
+  },
+  deleteCategory: async (id) => {
+    const res = await API.delete(`/admin/categories/${id}`);
+    return res.data;
+  },
+
+  // 4. Payments Ledger
+  getPayments: async (params = {}) => {
+    const res = await API.get('/admin/payments', { params });
+    return res.data;
+  },
+  updatePaymentStatus: async (orderId, paymentData) => {
+    const res = await API.patch(`/admin/payments/${orderId}`, paymentData);
+    return res.data;
+  },
+
+  // 5. System Notifications & Broadcast Announcements
+  getNotifications: async () => {
+    const res = await API.get('/admin/notifications');
+    return res.data;
+  },
+  sendNotification: async (notificationData) => {
+    const res = await API.post('/admin/notifications', notificationData);
+    return res.data;
+  }
+};
+
+export const notificationService = {
+  getMyNotifications: async () => {
+    const res = await API.get('/notifications');
+    return res.data;
+  },
+  markAsRead: async (id) => {
+    const res = await API.patch(`/notifications/${id}/read`);
+    return res.data;
+  },
+  markAllAsRead: async () => {
+    const res = await API.patch('/notifications/read-all');
     return res.data;
   }
 };

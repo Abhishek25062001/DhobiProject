@@ -1,4 +1,5 @@
 import Garment from '../models/Garment.js';
+import Category from '../models/Category.js';
 import { uploadImageToCloudinary } from '../utils/cloudinary.js';
 
 // @desc    Get all active garments with optional category filter
@@ -150,3 +151,25 @@ export const saveGarment = async (req, res) => {
   }
   return createGarment(req, res);
 };
+
+// @desc    Get all active categories
+// @route   GET /api/catalog/categories
+// @access  Public
+export const getCategories = async (req, res) => {
+  try {
+    await Category.ensureDefaultCategories();
+    const categories = await Category.find({ isActive: true }).sort({ sortOrder: 1, name: 1 });
+    return res.json({
+      success: true,
+      count: categories.length,
+      data: categories
+    });
+  } catch (error) {
+    console.error('[Get Categories Error]:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve categories'
+    });
+  }
+};
+
