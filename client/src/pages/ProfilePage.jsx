@@ -23,11 +23,13 @@ import {
   Loader2,
   Save,
   X,
-  CreditCard
+  CreditCard,
+  Receipt
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
+import GstInvoiceModal from '../components/GstInvoiceModal';
 
 const ProfilePage = () => {
   const {
@@ -53,6 +55,7 @@ const ProfilePage = () => {
     totalSpent: 0
   });
   const [recentOrders, setRecentOrders] = useState([]);
+  const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState(null);
 
   // Form State: Personal Info
   const [name, setName] = useState('');
@@ -812,13 +815,24 @@ const ProfilePage = () => {
                       <span className="text-base font-black text-slate-900">
                         ₹{order.pricingBreakdown?.grandTotal}
                       </span>
-                      <Link
-                        to="/my-orders"
-                        className="text-xs font-bold text-primary-600 hover:underline flex items-center gap-1"
-                      >
-                        <span>View Details</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedInvoiceOrder(order)}
+                          className="text-xs font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1 cursor-pointer bg-teal-50 px-2.5 py-1 rounded-lg border border-teal-200 hover:bg-teal-100 transition-colors"
+                          title="View & Download PDF Invoice"
+                        >
+                          <Receipt className="w-3 h-3" />
+                          <span>Receipt</span>
+                        </button>
+                        <Link
+                          to="/my-orders"
+                          className="text-xs font-bold text-primary-600 hover:underline flex items-center gap-0.5"
+                        >
+                          <span>Details</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 );
@@ -962,6 +976,13 @@ const ProfilePage = () => {
             </form>
           </div>
         </div>
+      {/* ──────────────── GST Invoice & PDF Download Modal ──────────────── */}
+      {selectedInvoiceOrder && (
+        <GstInvoiceModal
+          order={selectedInvoiceOrder}
+          isOpen={Boolean(selectedInvoiceOrder)}
+          onClose={() => setSelectedInvoiceOrder(null)}
+        />
       )}
 
     </div>
