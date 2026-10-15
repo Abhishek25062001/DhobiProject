@@ -59,7 +59,8 @@ export const getAdminRiders = async (req, res) => {
     return res.json({
       success: true,
       count: ridersWithStats.length,
-      riders: ridersWithStats
+      riders: ridersWithStats,
+      data: ridersWithStats
     });
   } catch (error) {
     console.error('[Admin Get Riders Error]:', error);
@@ -133,19 +134,22 @@ export const createRider = async (req, res) => {
       }
     });
 
+    const formattedRider = {
+      _id: rider._id,
+      name: rider.name,
+      email: rider.email,
+      phone: rider.phone,
+      role: rider.role,
+      isActive: rider.isActive,
+      riderDetails: rider.riderDetails
+    };
+
     return res.status(201).json({
       success: true,
       message: `Rider ${rider.name} created successfully.`,
       tempPassword: rawPassword,
-      rider: {
-        _id: rider._id,
-        name: rider.name,
-        email: rider.email,
-        phone: rider.phone,
-        role: rider.role,
-        isActive: rider.isActive,
-        riderDetails: rider.riderDetails
-      }
+      rider: formattedRider,
+      data: formattedRider
     });
   } catch (error) {
     console.error('[Admin Create Rider Error]:', error);
@@ -215,18 +219,21 @@ export const updateRider = async (req, res) => {
 
     await rider.save();
 
+    const formattedRider = {
+      _id: rider._id,
+      name: rider.name,
+      email: rider.email,
+      phone: rider.phone,
+      role: rider.role,
+      isActive: rider.isActive,
+      riderDetails: rider.riderDetails
+    };
+
     return res.json({
       success: true,
       message: 'Rider updated successfully.',
-      rider: {
-        _id: rider._id,
-        name: rider.name,
-        email: rider.email,
-        phone: rider.phone,
-        role: rider.role,
-        isActive: rider.isActive,
-        riderDetails: rider.riderDetails
-      }
+      rider: formattedRider,
+      data: formattedRider
     });
   } catch (error) {
     console.error('[Admin Update Rider Error]:', error);
@@ -397,7 +404,8 @@ export const getAdminUsers = async (req, res) => {
     return res.json({
       success: true,
       count: usersWithStats.length,
-      users: usersWithStats
+      users: usersWithStats,
+      data: usersWithStats
     });
   } catch (error) {
     console.error('[Admin Get Users Error]:', error);
@@ -439,7 +447,8 @@ export const updateAdminUser = async (req, res) => {
     return res.json({
       success: true,
       message: 'User updated successfully.',
-      user
+      user,
+      data: user
     });
   } catch (error) {
     console.error('[Admin Update User Error]:', error);
@@ -487,7 +496,8 @@ export const getAdminCategories = async (req, res) => {
     return res.json({
       success: true,
       count: categories.length,
-      categories
+      categories,
+      data: categories
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to retrieve categories.' });
@@ -520,7 +530,8 @@ export const createAdminCategory = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: 'Category created successfully.',
-      category
+      category,
+      data: category
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || 'Failed to create category.' });
@@ -552,7 +563,8 @@ export const updateAdminCategory = async (req, res) => {
     return res.json({
       success: true,
       message: 'Category updated successfully.',
-      category
+      category,
+      data: category
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message || 'Failed to update category.' });
@@ -666,7 +678,12 @@ export const getAdminPayments = async (req, res) => {
       success: true,
       count: orders.length,
       summary,
-      transactions: orders
+      totalRevenue: summary.totalGross || 0,
+      settledRevenue: summary.totalPaidRevenue || 0,
+      pendingCodRevenue: summary.totalPendingCod || 0,
+      failedRefundedRevenue: summary.totalRefunded || 0,
+      transactions: orders,
+      data: orders
     });
   } catch (error) {
     console.error('[Admin Get Payments Error]:', error);
@@ -718,7 +735,8 @@ export const updateAdminPaymentStatus = async (req, res) => {
     return res.json({
       success: true,
       message: `Payment status reconciled to ${paymentStatus} for Order #${order.orderNumber}.`,
-      order
+      order,
+      data: order
     });
   } catch (error) {
     console.error('[Admin Reconcile Payment Error]:', error);
@@ -744,7 +762,8 @@ export const getAdminNotifications = async (req, res) => {
     return res.json({
       success: true,
       count: notifications.length,
-      notifications
+      notifications,
+      data: notifications
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to retrieve notifications.' });
@@ -756,7 +775,7 @@ export const getAdminNotifications = async (req, res) => {
 // @access  Private (Admin only)
 export const sendAdminNotification = async (req, res) => {
   try {
-    const { title, message, type, recipientId, isBroadcast, orderId } = req.body;
+    const { title, message, type, recipientId, recipient, isBroadcast, orderId } = req.body;
 
     if (!title || !message) {
       return res.status(400).json({
@@ -765,7 +784,8 @@ export const sendAdminNotification = async (req, res) => {
       });
     }
 
-    const broadcast = Boolean(isBroadcast) || !recipientId;
+    const targetUser = recipientId || recipient || null;
+    const broadcast = Boolean(isBroadcast) || !targetUser;
     let orderNumber = '';
 
     if (orderId) {
@@ -774,7 +794,7 @@ export const sendAdminNotification = async (req, res) => {
     }
 
     const notification = await Notification.create({
-      recipient: broadcast ? null : recipientId,
+      recipient: broadcast ? null : targetUser,
       isBroadcast: broadcast,
       title: title.trim(),
       message: message.trim(),
@@ -787,7 +807,8 @@ export const sendAdminNotification = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: broadcast ? 'Broadcast announcement published to all customers.' : 'Notification sent to customer.',
-      notification
+      notification,
+      data: notification
     });
   } catch (error) {
     console.error('[Admin Send Notification Error]:', error);

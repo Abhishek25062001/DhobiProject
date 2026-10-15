@@ -1271,10 +1271,12 @@ const AdminDashboardPage = () => {
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
+    </div>
+  )}
 
       {/* ===================================================================== */}
       {/* TAB 5: PAYMENTS & TRANSACTIONS LEDGER (REQUIREMENT #7) */}
@@ -1735,11 +1737,12 @@ const AdminDashboardPage = () => {
                   </tbody>
                 </table>
               </div>
+            )}
           </div>
-            </div>
-          )}
         </div>
       )}
+    </div>
+  )}
 
         </div>
       </div>

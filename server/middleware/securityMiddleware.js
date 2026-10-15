@@ -27,28 +27,28 @@ export const sanitizeInput = (req, res, next) => {
   next();
 };
 
-// Rate limiter for authentication routes: 15 requests per 15 minutes
+// Rate limiter for authentication routes: 100 requests per 15 minutes
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 15,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     success: false,
     message: 'Too many authentication attempts from this IP. Please try again after 15 minutes.'
   },
-  skip: () => process.env.NODE_ENV === 'test'
+  skip: (req) => process.env.NODE_ENV === 'test' || req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1'
 });
 
-// General API rate limiter: 150 requests per 15 minutes
+// General API rate limiter: 1000 requests per 15 minutes
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 150,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     success: false,
     message: 'Too many requests created from this IP. Please slow down and try again later.'
   },
-  skip: () => process.env.NODE_ENV === 'test'
+  skip: (req) => process.env.NODE_ENV === 'test' || req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1'
 });
