@@ -466,6 +466,7 @@ const AdminPaymentsTab = () => {
       {/* GST Invoice Modal */}
       {invoiceOrder && (
         <GstInvoiceModal
+          isOpen={Boolean(invoiceOrder)}
           order={invoiceOrder}
           onClose={() => setInvoiceOrder(null)}
         />

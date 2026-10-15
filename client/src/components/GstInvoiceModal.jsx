@@ -6,7 +6,7 @@ import html2canvas from 'html2canvas';
 import toast from 'react-hot-toast';
 import { configService } from '../services/api';
 
-const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
+const GstInvoiceModal = ({ order, isOpen = true, onClose, platformConfig }) => {
   const [activeConfig, setActiveConfig] = useState(platformConfig || null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const receiptRef = useRef(null);
@@ -35,12 +35,27 @@ const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
       setGeneratingPdf(true);
       toast.loading('Generating high-resolution PDF...', { id: 'pdf-toast' });
 
-      const canvas = await html2canvas(receiptRef.current, {
+      const element = receiptRef.current;
+      // Temporarily expand scrollable container so the entire invoice renders into the PDF
+      const originalMaxHeight = element.style.maxHeight;
+      const originalOverflow = element.style.overflow;
+      const originalHeight = element.style.height;
+
+      element.style.maxHeight = 'none';
+      element.style.overflow = 'visible';
+      element.style.height = 'auto';
+
+      const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff'
       });
+
+      // Restore original container styles
+      element.style.maxHeight = originalMaxHeight;
+      element.style.overflow = originalOverflow;
+      element.style.height = originalHeight;
 
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({
@@ -103,16 +118,16 @@ const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
   const paymentStatus = order.payment?.status || 'PENDING';
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 print:p-0 print:bg-white print:fixed print:inset-0">
-      <div className="bg-white rounded-3xl max-w-3xl w-full border border-slate-200 shadow-2xl overflow-hidden print:shadow-none print:border-none print:max-w-none print:w-full">
+    <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto print:p-0 print:bg-white print:fixed print:inset-0">
+      <div className="relative w-full max-w-3xl max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden my-auto print:shadow-none print:border-none print:max-w-none print:w-full print:max-h-none">
         
-        {/* Action Header (Hidden during print) */}
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between print:hidden">
+        {/* Action Header (Pinned/Sticky at top, hidden during print) */}
+        <div className="shrink-0 sticky top-0 z-20 bg-white border-b border-slate-200 px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 print:hidden">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Tax Invoice Document
+              TAX INVOICE DOCUMENT
             </span>
-            <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-slate-200 font-bold text-slate-700">
+            <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-slate-100 font-bold text-slate-700 border border-slate-200">
               {invoiceNumber}
             </span>
           </div>
@@ -121,7 +136,7 @@ const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
             <button
               onClick={handleDownloadPdf}
               disabled={generatingPdf}
-              className="py-1.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
+              className="py-1.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-all shrink-0"
               title="Download high-resolution PDF file"
             >
               {generatingPdf ? (
@@ -133,14 +148,14 @@ const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
             </button>
             <button
               onClick={handlePrint}
-              className="py-1.5 px-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
+              className="py-1.5 px-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-all shrink-0"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Print</span>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-xl hover:bg-slate-200 text-slate-500 transition-colors cursor-pointer"
+              className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors cursor-pointer shrink-0"
               title="Close modal"
             >
               <X className="w-5 h-5" />
@@ -148,8 +163,8 @@ const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
           </div>
         </div>
 
-        {/* Printable Invoice Sheet */}
-        <div ref={receiptRef} className="p-8 print:p-6 space-y-6 text-slate-800 text-xs bg-white">
+        {/* Printable Invoice Sheet (Scrollable middle container) */}
+        <div ref={receiptRef} className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6 text-slate-800 text-xs bg-white print:p-6 print:overflow-visible">
           
           {/* Header & Seller Metadata */}
           <div className="flex justify-between items-start border-b border-slate-200 pb-6">

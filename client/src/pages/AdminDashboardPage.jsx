@@ -2519,6 +2519,7 @@ const AdminDashboardPage = () => {
       {/* ===================================================================== */}
       {invoiceOrder && (
         <GstInvoiceModal
+          isOpen={Boolean(invoiceOrder)}
           order={invoiceOrder}
           onClose={() => setInvoiceOrder(null)}
         />

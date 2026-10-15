@@ -124,8 +124,9 @@ const RiderDashboardPage = () => {
         reader.readAsDataURL(file);
         const base64 = await base64Promise;
         const uploadRes = await configService.uploadImage(base64, 'indodhobi/inspections');
-        if (uploadRes.success && uploadRes.imageUrl) {
-          setStainPhotos((prev) => [...prev, { url: uploadRes.imageUrl, publicId: uploadRes.publicId || '' }]);
+        const photoUrl = uploadRes.url || uploadRes.imageUrl;
+        if (uploadRes.success && photoUrl) {
+          setStainPhotos((prev) => [...prev, { url: photoUrl, imageUrl: photoUrl, publicId: uploadRes.publicId || '' }]);
         }
       }
       toast.success('Inspection photo(s) uploaded successfully!');
@@ -139,6 +140,25 @@ const RiderDashboardPage = () => {
 
   const handleRemoveStainPhoto = (index) => {
     setStainPhotos((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Accept Order for Pickup
+  const handleAcceptOrder = async (orderId) => {
+    setActionLoading(true);
+    try {
+      const res = await orderService.updateOrderStatus(orderId, {
+        orderStatus: 'PICKUP_ASSIGNED',
+        note: 'Order accepted for doorstep pickup by rider'
+      });
+      if (res.success) {
+        toast.success('Order accepted for pickup!');
+        fetchTasks();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to accept order.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   // Submit Pickup Verification
@@ -156,10 +176,11 @@ const RiderDashboardPage = () => {
     setActionLoading(true);
     try {
       const res = await orderService.verifyPickup(pickupModalOrder._id, {
-        otp: pickupOtp.trim(),
+        otp: String(pickupOtp).trim(),
+        pickupOtp: String(pickupOtp).trim(),
         bagTagId: bagTagId.trim(),
-        inspectionNotes: inspectionNotes.trim(),
         verifiedGarmentCount: Number(verifiedGarmentCount) || 0,
+        inspectionNotes: inspectionNotes.trim(),
         inspectionPhotos: stainPhotos
       });
 
@@ -194,7 +215,8 @@ const RiderDashboardPage = () => {
     setActionLoading(true);
     try {
       const res = await orderService.verifyDelivery(deliveryModalOrder._id, {
-        otp: deliveryOtp.trim(),
+        otp: String(deliveryOtp).trim(),
+        deliveryOtp: String(deliveryOtp).trim(),
         codCollectionMethod: deliveryModalOrder.payment?.method === 'COD' && deliveryModalOrder.payment?.status !== 'PAID'
           ? codCollectionMethod
           : undefined
