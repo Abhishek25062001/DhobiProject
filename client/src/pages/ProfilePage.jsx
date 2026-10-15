@@ -976,6 +976,8 @@ const ProfilePage = () => {
             </form>
           </div>
         </div>
+      )}
+
       {/* ──────────────── GST Invoice & PDF Download Modal ──────────────── */}
       {selectedInvoiceOrder && (
         <GstInvoiceModal
