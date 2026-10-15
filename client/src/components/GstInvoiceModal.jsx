@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Printer, X, CheckCircle2, ShieldCheck, Shirt, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Printer, Download, X, CheckCircle2, ShieldCheck, Shirt, AlertCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import toast from 'react-hot-toast';
 import { configService } from '../services/api';
 
 const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
   const [activeConfig, setActiveConfig] = useState(platformConfig || null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const receiptRef = useRef(null);
 
   useEffect(() => {
     if (!platformConfig) {
@@ -24,6 +29,53 @@ const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
     window.print();
   };
 
+  const handleDownloadPdf = async () => {
+    if (!receiptRef.current) return;
+    try {
+      setGeneratingPdf(true);
+      toast.loading('Generating high-resolution PDF...', { id: 'pdf-toast' });
+
+      const canvas = await html2canvas(receiptRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 297; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const fileName = `IndoDhobi-Receipt-${order.orderNumber}.pdf`;
+      pdf.save(fileName);
+      toast.success(`Downloaded ${fileName}`, { id: 'pdf-toast' });
+    } catch (err) {
+      console.error('[PDF Generation Error]:', err);
+      toast.error('Failed to generate PDF. You can use the Print button to save as PDF.', { id: 'pdf-toast' });
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   const pb = order.pricingBreakdown || {
     subtotal: 0,
     discountAmount: 0,
@@ -37,6 +89,7 @@ const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
   const businessName = activeConfig?.businessName || 'IndoDhobi Laundry & Dry Cleaning Pvt. Ltd.';
   const gstin = activeConfig?.gstin || '07AABCI1234F1Z5';
   const sacCode = activeConfig?.sacCode || '999712';
+  const supportPhone = activeConfig?.supportPhone || '+91 98765 43210';
   const gstPercentage = activeConfig?.gstPercentage !== undefined ? activeConfig.gstPercentage : 5;
   const halfGst = (gstPercentage / 2).toFixed(1).replace(/\.0$/, '');
 
@@ -66,11 +119,24 @@ const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
 
           <div className="flex items-center gap-2">
             <button
+              onClick={handleDownloadPdf}
+              disabled={generatingPdf}
+              className="py-1.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
+              title="Download high-resolution PDF file"
+            >
+              {generatingPdf ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
+              <span>Download PDF Receipt</span>
+            </button>
+            <button
               onClick={handlePrint}
               className="py-1.5 px-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer transition-all"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print / Save as PDF</span>
+              <span>Print</span>
             </button>
             <button
               onClick={onClose}
@@ -83,7 +149,7 @@ const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
         </div>
 
         {/* Printable Invoice Sheet */}
-        <div className="p-8 print:p-6 space-y-6 text-slate-800 text-xs">
+        <div ref={receiptRef} className="p-8 print:p-6 space-y-6 text-slate-800 text-xs bg-white">
           
           {/* Header & Seller Metadata */}
           <div className="flex justify-between items-start border-b border-slate-200 pb-6">
@@ -102,6 +168,7 @@ const GstInvoiceModal = ({ order, isOpen, onClose, platformConfig }) => {
               <div className="mt-2 space-y-0.5 text-[11px] font-mono text-slate-600">
                 <p><strong>GSTIN:</strong> {gstin}</p>
                 <p><strong>SAC Code:</strong> {sacCode} (Laundry &amp; Cleaning Services)</p>
+                <p><strong>Support:</strong> {supportPhone}</p>
               </div>
             </div>
 

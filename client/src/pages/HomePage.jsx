@@ -15,6 +15,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useOrderBooking } from '../context/OrderBookingContext';
+import ActiveOrderTracker from '../components/ActiveOrderTracker';
 
 const HomePage = () => {
   const { itemCount } = useOrderBooking();
@@ -113,6 +114,10 @@ const HomePage = () => {
       {/* HERO SECTION */}
       <section className="relative overflow-hidden pt-8 pb-16 lg:pt-16 lg:pb-24 bg-gradient-to-b from-primary-50/70 via-white to-slate-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          
+          {/* Dynamic Active Order Tracker (Requirement #2) */}
+          <ActiveOrderTracker />
+
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
             
             {/* Left Copy */}
