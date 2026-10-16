@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
@@ -8,18 +8,18 @@ import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import HomePage from './pages/HomePage';
-import BookingPage from './pages/BookingPage';
-import PricingPage from './pages/PricingPage';
-import MyOrdersPage from './pages/MyOrdersPage';
-import AdminDashboardPage from './pages/AdminDashboardPage';
-import RiderDashboardPage from './pages/RiderDashboardPage';
-import OrderSuccessPage from './pages/OrderSuccessPage';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import ProfilePage from './pages/ProfilePage';
-import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
-import TermsOfServicePage from './pages/TermsOfServicePage';
-import OperationalAreasPage from './pages/OperationalAreasPage';
+const BookingPage = lazy(() => import('./pages/BookingPage'));
+const PricingPage = lazy(() => import('./pages/PricingPage'));
+const MyOrdersPage = lazy(() => import('./pages/MyOrdersPage'));
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
+const RiderDashboardPage = lazy(() => import('./pages/RiderDashboardPage'));
+const OrderSuccessPage = lazy(() => import('./pages/OrderSuccessPage'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
+const TermsOfServicePage = lazy(() => import('./pages/TermsOfServicePage'));
+const OperationalAreasPage = lazy(() => import('./pages/OperationalAreasPage'));
 
 // Dedicated redirect component that ONLY executes when mounted on /partner
 const PartnerRedirect = () => {
@@ -85,6 +85,7 @@ function App() {
 
             {/* Main Application Routes */}
             <main className="grow">
+              <Suspense fallback={<div role="status" className="min-h-[60vh] flex items-center justify-center gap-3 text-sm text-slate-500"><span className="h-5 w-5 rounded-full border-2 border-primary-200 border-t-primary-600 motion-safe:animate-spin" aria-hidden="true" />Loading…</div>}>
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/book" element={<BookingPage />} />
@@ -136,6 +137,7 @@ function App() {
                 <Route path="/partner" element={<PartnerRedirect />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              </Suspense>
             </main>
 
             {/* Application Footer */}

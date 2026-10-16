@@ -43,7 +43,7 @@ const LoginPage = () => {
   // Loading state
   const [loading, setLoading] = useState(false);
 
-  const from = location.state?.from?.pathname || '/';
+  const redirect = new URLSearchParams(window.location.search).get('redirect') || location.state?.from?.pathname || '/';
 
   const routeByRole = (role) => {
     if (role === 'admin') {
@@ -51,7 +51,7 @@ const LoginPage = () => {
     } else if (role === 'rider') {
       navigate('/rider', { replace: true });
     } else {
-      navigate(from === '/' ? '/book' : from, { replace: true });
+      navigate(redirect, { replace: true });
     }
   };
 

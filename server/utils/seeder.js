@@ -223,12 +223,48 @@ export const seedData = async () => {
             dryClean: 350
           },
           isActive: true
+        },
+        // Miscellaneous / Special Item (Custom clothing flow)
+        {
+          name: 'Miscellaneous / Special Item',
+          category: 'Household',
+          iconName: 'Sparkles',
+          isCustom: true,
+          pricing: {
+            washOnly: 40,
+            standardSteamIron: 15,
+            crispStarchPress: 25,
+            delicatePress: 30,
+            dryClean: 120
+          },
+          isActive: true
         }
       ];
 
       seededGarments = await Garment.insertMany(garments);
       console.log(`[Seeder] Seeded ${seededGarments.length} Indian garments.`);
     } else {
+      // Ensure custom item exists even if database was previously seeded
+      await Garment.findOneAndUpdate(
+        { name: 'Miscellaneous / Special Item' },
+        {
+          $setOnInsert: {
+            name: 'Miscellaneous / Special Item',
+            category: 'Household',
+            iconName: 'Sparkles',
+            isCustom: true,
+            pricing: {
+              washOnly: 40,
+              standardSteamIron: 15,
+              crispStarchPress: 25,
+              delicatePress: 30,
+              dryClean: 120
+            },
+            isActive: true
+          }
+        },
+        { upsert: true, new: true }
+      );
       seededGarments = await Garment.find();
     }
 

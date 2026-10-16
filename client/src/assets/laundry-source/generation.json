@@ -1,0 +1,25 @@
+{
+  "tool": "image_gen.imagegen",
+  "mode": "built-in generation followed by referenced-image editing; transparent_background=true",
+  "assets": [
+    {
+      "source": "shirt-after.png",
+      "web": [
+        "/images/laundry/shirt-after.webp",
+        "/images/laundry/shirt-after-480.webp"
+      ],
+      "prompt": "Use case: product-mockup. Asset type: isolated product image for an interactive before/after laundry comparison on Indodhobi's homepage. Create one photorealistic, premium light cornflower-blue men's formal cotton button-down shirt on a dark navy hanger. Straight-on front view, perfectly centered, full shirt and complete curved hanger hook visible, long sleeves hanging naturally slightly away from the torso, symmetrical shoulders, crisp collar, neatly buttoned placket, subtle breast pocket, freshly steam-pressed smooth cotton with realistic fine weave and a few natural structural folds only. Soft bright studio lighting from upper left, refined luxury ecommerce photography, blue highlights and realistic fabric volume. Square composition, shirt fills 88 percent of canvas height, balanced margins, consistent frontal camera. Actual transparent background, no backdrop, no floor, no drop shadow outside shirt, no human, no hands, no labels, no text, no logo, no decorative objects, no bubbles. This image must later align precisely with a wrinkled version in a comparison slider."
+    },
+    {
+      "source": "shirt-before.png",
+      "web": [
+        "/images/laundry/shirt-before.webp",
+        "/images/laundry/shirt-before-480.webp"
+      ],
+      "reference": "shirt-after.png",
+      "prompt": "Use case: precise-object-edit. Edit target: the attached blue formal shirt product image. Create the BEFORE laundry state of this exact shirt. Change ONLY the cotton fabric surface: make the entire shirt heavily wrinkled and creased, duller slightly grey-blue, with realistic crumpled fabric texture across chest, sleeves, collar and hem, like it has been worn for a long day and needs washing and pressing. Keep it tasteful and realistic, no exaggerated stains. Preserve EXACTLY the original canvas dimensions, hanger, hook, shirt position, silhouette, sleeve angles, collar position, buttons, pocket, crop, scale, camera, and transparent background. Do not move any object, do not resize the shirt, do not change the hanger or outline. The before and after images will be directly overlaid pixel-for-pixel in a draggable comparison. Photorealistic fabric. No text, no graphics, no background, no extra items."
+    }
+  ],
+  "optimization": "Local WebP exports at 960 and 480 pixels with transparency. Source PNGs retained outside public build assets.",
+  "illustrations": "Garment fallbacks and journey artwork are authored inline SVGs in src/components/home/LaundryArtwork.jsx; service icons reuse lucide-react."
+}

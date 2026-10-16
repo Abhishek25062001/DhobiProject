@@ -38,6 +38,14 @@ const orderItemSchema = new mongoose.Schema({
     type: Number,
     required: true,
     min: 0
+  },
+  customDescription: {
+    type: String,
+    default: ''
+  },
+  isCustomItem: {
+    type: Boolean,
+    default: false
   }
 }, { _id: false });
 

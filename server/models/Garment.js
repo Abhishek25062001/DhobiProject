@@ -56,6 +56,11 @@ const garmentSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
     index: true
+  },
+  isCustom: {
+    type: Boolean,
+    default: false,
+    index: true
   }
 }, {
   timestamps: true

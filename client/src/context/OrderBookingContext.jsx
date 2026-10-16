@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
 import { format, addDays } from 'date-fns';
 import { configService } from '../services/api';
+import { readBookingDraft, readDraftCart, saveBookingDraft } from '../utils/bookingDraft';
 
 const OrderBookingContext = createContext(null);
 
@@ -15,12 +16,14 @@ export const calculateItemUnitPrice = (garment, serviceType, ironingType) => {
       let ironCost = garment.pricing.standardSteamIron;
       if (ironingType === 'CRISP_STARCH') ironCost = garment.pricing.crispStarchPress;
       if (ironingType === 'DELICATE_PRESS') ironCost = garment.pricing.delicatePress;
+      if (ironingType === 'NONE') ironCost = 0;
       return garment.pricing.washOnly + ironCost;
     }
 
     case 'IRON_ONLY': {
       if (ironingType === 'CRISP_STARCH') return garment.pricing.crispStarchPress;
       if (ironingType === 'DELICATE_PRESS') return garment.pricing.delicatePress;
+      if (ironingType === 'NONE') return 0;
       return garment.pricing.standardSteamIron;
     }
 
@@ -33,7 +36,8 @@ export const calculateItemUnitPrice = (garment, serviceType, ironingType) => {
 };
 
 export const OrderBookingProvider = ({ children }) => {
-  const [cartItems, setCartItems] = useState([]);
+  const [initialDraft] = useState(readBookingDraft);
+  const [cartItems, setCartItems] = useState(() => readDraftCart(initialDraft));
 
   // Default dates: Pickup tomorrow, Delivery in 2 days
   const today = new Date();
@@ -43,17 +47,20 @@ export const OrderBookingProvider = ({ children }) => {
   const [preferences, setPreferences] = useState({
     detergentType: 'Standard',
     packagingType: 'Folded',
-    specialInstructions: ''
+    specialInstructions: '',
+    ...initialDraft.preferences
   });
 
   const [pickupSchedule, setPickupSchedule] = useState({
     date: defaultPickupDate,
-    timeSlot: '10:00 AM - 01:00 PM'
+    timeSlot: '10:00 AM - 01:00 PM',
+    ...initialDraft.pickupSchedule
   });
 
   const [deliverySchedule, setDeliverySchedule] = useState({
     date: defaultDeliveryDate,
-    timeSlot: '10:00 AM - 01:00 PM'
+    timeSlot: '10:00 AM - 01:00 PM',
+    ...initialDraft.deliverySchedule
   });
 
   const [pickupAddress, setPickupAddress] = useState({
@@ -61,7 +68,8 @@ export const OrderBookingProvider = ({ children }) => {
     streetAndLandmark: '',
     city: 'New Delhi',
     pincode: '',
-    contactPhone: ''
+    contactPhone: '',
+    ...initialDraft.pickupAddress
   });
 
   const [platformConfig, setPlatformConfig] = useState({
@@ -101,14 +109,30 @@ export const OrderBookingProvider = ({ children }) => {
   }, []);
 
   // Cart operations
-  const addItem = (garment, serviceType = 'WASH_AND_FOLD', ironingType = 'NONE') => {
+  const addItem = (garment, serviceType = 'WASH_AND_FOLD', ironingType = 'NONE', customOptions = {}) => {
     setCartItems((prev) => {
-      const existingIndex = prev.findIndex((item) => item.garment._id === garment._id);
+      const isCustomItem = Boolean(customOptions.isCustomItem || garment.isCustom);
+      const customDescription = customOptions.customDescription || '';
+      const cartItemId = isCustomItem
+        ? (customOptions.cartItemId || `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`)
+        : garment._id;
+
+      const existingIndex = isCustomItem
+        ? prev.findIndex(
+            (item) =>
+              item.cartItemId === cartItemId ||
+              (item.isCustomItem &&
+                item.customDescription === customDescription &&
+                item.serviceType === serviceType &&
+                item.ironingType === ironingType)
+          )
+        : prev.findIndex((item) => !item.isCustomItem && item.garment._id === garment._id);
+
       const unitPrice = calculateItemUnitPrice(garment, serviceType, ironingType);
 
       if (existingIndex > -1) {
         const updated = [...prev];
-        const newQty = updated[existingIndex].quantity + 1;
+        const newQty = updated[existingIndex].quantity + (customOptions.quantity || 1);
         updated[existingIndex] = {
           ...updated[existingIndex],
           quantity: newQty,
@@ -116,29 +140,34 @@ export const OrderBookingProvider = ({ children }) => {
         };
         return updated;
       } else {
+        const qty = customOptions.quantity || 1;
         return [
           ...prev,
           {
+            cartItemId,
             garment,
-            quantity: 1,
+            quantity: qty,
             serviceType,
             ironingType,
             unitPrice,
-            lineTotal: unitPrice
+            lineTotal: unitPrice * qty,
+            isCustomItem,
+            customDescription
           }
         ];
       }
     });
   };
 
-  const updateQuantity = (garmentId, newQuantity) => {
+  const updateQuantity = (identifier, newQuantity) => {
     if (newQuantity <= 0) {
-      removeItem(garmentId);
+      removeItem(identifier);
       return;
     }
     setCartItems((prev) =>
       prev.map((item) => {
-        if (item.garment._id === garmentId) {
+        const matches = item.cartItemId ? item.cartItemId === identifier : item.garment._id === identifier;
+        if (matches) {
           const unitPrice = calculateItemUnitPrice(item.garment, item.serviceType, item.ironingType);
           return {
             ...item,
@@ -152,10 +181,11 @@ export const OrderBookingProvider = ({ children }) => {
     );
   };
 
-  const updateServiceType = (garmentId, serviceType) => {
+  const updateServiceType = (identifier, serviceType) => {
     setCartItems((prev) =>
       prev.map((item) => {
-        if (item.garment._id === garmentId) {
+        const matches = item.cartItemId ? item.cartItemId === identifier : item.garment._id === identifier;
+        if (matches) {
           let ironingType = item.ironingType;
           if (serviceType === 'WASH_AND_FOLD') ironingType = 'NONE';
           else if (ironingType === 'NONE' && (serviceType === 'WASH_AND_IRON' || serviceType === 'IRON_ONLY')) {
@@ -175,10 +205,11 @@ export const OrderBookingProvider = ({ children }) => {
     );
   };
 
-  const updateIroningType = (garmentId, ironingType) => {
+  const updateIroningType = (identifier, ironingType) => {
     setCartItems((prev) =>
       prev.map((item) => {
-        if (item.garment._id === garmentId) {
+        const matches = item.cartItemId ? item.cartItemId === identifier : item.garment._id === identifier;
+        if (matches) {
           const unitPrice = calculateItemUnitPrice(item.garment, item.serviceType, ironingType);
           return {
             ...item,
@@ -192,8 +223,15 @@ export const OrderBookingProvider = ({ children }) => {
     );
   };
 
-  const removeItem = (garmentId) => {
-    setCartItems((prev) => prev.filter((item) => item.garment._id !== garmentId));
+  const removeItem = (identifier) => {
+    setCartItems((prev) =>
+      prev.filter((item) => {
+        if (item.cartItemId) {
+          return item.cartItemId !== identifier;
+        }
+        return item.garment._id !== identifier;
+      })
+    );
   };
 
   const clearCart = () => {
@@ -219,8 +257,14 @@ export const OrderBookingProvider = ({ children }) => {
     setAppliedCoupon(null);
   };
 
-  const [isExpress, setIsExpress] = useState(false);
-  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [isExpress, setIsExpress] = useState(Boolean(initialDraft.isExpress));
+  const [appliedCoupon, setAppliedCoupon] = useState(initialDraft.appliedCoupon || null);
+
+  // Basket state belongs to the provider, including edits made on the homepage.
+  // BookingPage still owns its current step; all other draft fields stay in sync here.
+  useEffect(() => {
+    saveBookingDraft({ cartItems, preferences, pickupSchedule, deliverySchedule, pickupAddress, isExpress, appliedCoupon });
+  }, [cartItems, preferences, pickupSchedule, deliverySchedule, pickupAddress, isExpress, appliedCoupon]);
 
   const applyCoupon = (couponData) => {
     setAppliedCoupon(couponData);
@@ -293,6 +337,7 @@ export const OrderBookingProvider = ({ children }) => {
     <OrderBookingContext.Provider
       value={{
         cartItems,
+        setCartItems,
         addItem,
         updateQuantity,
         updateServiceType,

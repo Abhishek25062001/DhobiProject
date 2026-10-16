@@ -63,6 +63,7 @@ const calculateItemPrice = (garment, serviceType, ironingType) => {
       let ironCost = garment.pricing.standardSteamIron;
       if (ironingType === 'CRISP_STARCH') ironCost = garment.pricing.crispStarchPress;
       if (ironingType === 'DELICATE_PRESS') ironCost = garment.pricing.delicatePress;
+      if (ironingType === 'NONE') ironCost = 0;
       unitPrice = garment.pricing.washOnly + ironCost;
       break;
 
@@ -276,7 +277,9 @@ export const createOrder = async (req, res) => {
         serviceType,
         ironingType,
         unitPrice,
-        lineTotal
+        lineTotal,
+        customDescription: item.customDescription || '',
+        isCustomItem: Boolean(item.isCustomItem || garment.isCustom)
       });
     }
 

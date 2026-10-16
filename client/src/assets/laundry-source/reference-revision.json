@@ -1,0 +1,34 @@
+{
+  "tool": "image_gen.imagegen",
+  "mode": "Built-in tool; reference-guided generation and precise-object edit; transparent_background=true",
+  "reference": "/Users/shivamchowdhry/Desktop/Abhishek/Laundry, Sorted_ Indodhobi’s Freshness Journey.png",
+  "assets": [
+    {
+      "name": "scene-after",
+      "source": "scene-after.png",
+      "outputs": [
+        "/images/laundry/scene-after.webp",
+        "/images/laundry/scene-after-600.webp"
+      ],
+      "prompt": "Use case: product-mockup. Input image: visual reference ONLY, showing the desired Indodhobi homepage. Create ONLY the central photographic laundry arrangement from this design as a separate isolated web asset, not a webpage or screenshot. Portrait composition approximately 4:5 with genuine transparent background. A large freshly pressed pale blue formal button-down shirt on a dark navy hanger, front view, entire hanger hook visible, occupies the upper 75 percent. Make the cotton bright, impeccably crisp, premium and realistic. In the foreground at the bottom: a cream canvas laundry tote with folded dark blue jeans peeking out, a small leafy green sprig to its left, and a low stack of clean folded white towels and blue denim on the right. The tote has a neat purple hanger symbol above the exact word 'Indodhobi'. A small cream card leaning against the folded clothes reads exactly 'Crisp.\\nClean.\\nCarefully\\nYours.' in navy, with a small purple outline heart below. Subtle realistic translucent water splash rising around the lower left shirt and a luminous translucent white steam ribbon around the right, with a few clear bubbles. Match the reference's airy premium photographic styling, soft daylight, realistic woven fabric, white and light blue palette. Keep garment silhouette and objects clearly separated, full scene visible with narrow transparent margins, no floor or room, no UI, no buttons, no headings, no Before/After labels, no divider line, no extra text. Shirt must be straight-on and centered on the canvas horizontal midpoint. The full composition will be used in a live before/after slider and a later edit must preserve all positioning."
+    },
+    {
+      "name": "scene-before",
+      "source": "scene-before.png",
+      "outputs": [
+        "/images/laundry/scene-before.webp",
+        "/images/laundry/scene-before-600.webp"
+      ],
+      "prompt": "Use case: precise-object-edit. This image is the AFTER half of an interactive laundry comparison. Create its matching BEFORE image. Change ONLY the hanging blue shirt's fabric surface: worn, visibly heavily wrinkled and crumpled across chest, sleeves and collar, slightly dull grey-blue. Maintain exact canvas dimensions and transparent alpha background. Preserve pixel-for-pixel positions, sizes, silhouettes and lighting of the hanger, shirt outline, hook, sleeves, all water, bubbles and steam, tote bag, leaves, towels, jeans, card and all printed text. Do not move, redraw, resize, crop, recolor or remove any foreground objects or effects. Only the hanging shirt fabric is changed. No additional objects, text or divider. Strong enough wrinkle difference to be recognizable at small website size, realistic tasteful professional garment photography."
+    },
+    {
+      "name": "laundry-atlas",
+      "source": "laundry-atlas.png",
+      "outputs": [
+        "/images/laundry/laundry-atlas.webp"
+      ],
+      "prompt": "Use case: product-mockup. Asset type: one square 3 by 3 sprite atlas for premium laundry website thumbnails and journey illustrations, on genuine transparent background. The canvas is divided into 9 exactly equal square cells, no visible grid. Every object is wholly contained and centered in its own cell with 18 percent clear padding on every side. Each individual object should be photorealistic with soft daylight, refined blue/lavender color grading, realistic textile or metal texture, no strong shadows and no background. Top row left: dusty pink Indian cotton kurti, hanging straight front view. Top row middle: neatly presented blue denim trousers front view. Top row right: clean white short-sleeved crewneck t-shirt front view. Middle row left: three neatly folded pale blue bedsheets, stacked. Middle row middle: navy men's two-piece suit front view. Middle row right: neatly folded rose-pink saree with restrained gold trim. Bottom row left: small white modern Indian laundry delivery van viewed from side in slight perspective with purple text 'Indodhobi' printed on side, realistic wheels. Bottom row middle: white front-loading washing machine with dark blue glass door and two tiny clear bubbles, photorealistic. Bottom row right: a beautiful small stack of folded blue, white and beige towels with one green leaf at side. Equal object scale, evenly spaced in the exact 3x3 matrix. No cell borders, no labels, no numbers, no UI, no extra items, no human, no watermark. Do not merge any objects across cells."
+    }
+  ],
+  "optimization": "Scene PNGs resized to 1100px and 600px width; atlas resized to 960px square. WebP quality 88. Original generated images retained in this directory. Atlas used as a shared CSS sprite."
+}

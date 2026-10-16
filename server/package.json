@@ -9,7 +9,8 @@
     "dev": "nodemon server.js",
     "seed": "node utils/seeder.js",
     "test": "node tests/verifyPlatform.js",
-    "test:e2e": "node tests/e2eVerification.js"
+    "test:e2e": "node tests/e2eVerification.js",
+    "test:booking": "node tests/verifyBookingUpgrades.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
