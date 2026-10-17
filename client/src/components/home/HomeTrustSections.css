@@ -1,0 +1,62 @@
+.home-trust { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #080f31; padding: 40px 0; }
+.home-sections > section + section { margin-top: 80px; }
+.home-sections > .home-trust { margin-top: 0; }
+.home-trust__shell { max-width: 1536px; padding: 0 48px; margin: auto; }
+.home-trust__header { text-align: center; margin-bottom: 26px; }
+.home-trust__header .home-trust__eyebrow { margin: 0 0 10px; color: #5030ef; font-size: 11px; font-weight: 800; letter-spacing: .25em; text-transform: uppercase; }
+.home-trust__header h2 { margin: 0; font-size: clamp(28px, 3vw, 42px); line-height: 1.2; font-weight: 800; letter-spacing: -.04em; }
+.home-trust__header h2 span { color: #5030ef; }
+.home-trust__header > p:last-child { margin: 12px 0 0; font-size: 14px; line-height: 1.6; color: #536489; }
+.home-trust.home-comparison { padding: 26px 0 22px; }
+.home-comparison .home-trust__header { margin-bottom: 18px; }
+.home-comparison .home-trust__header .home-trust__eyebrow { margin-bottom: 7px; }
+.home-comparison .home-trust__header > p:last-child { margin-top: 8px; }
+.home-comparison { background: linear-gradient(145deg, #fff, #faf9ff); }
+.home-comparison__table-wrap { border: 1px solid #e3def6; border-radius: 20px; overflow-x: auto; }
+.home-comparison__table { width: 100%; min-width: 640px; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 13px; line-height: 1.5; text-align: left; }
+.home-comparison__feature-col { width: 27%; }
+.home-comparison__table th, .home-comparison__table td { padding: 6px 20px; vertical-align: middle; }
+.home-comparison__table thead th { background: #f8f8fc; font-size: 17px; font-weight: 800; padding-top: 11px; padding-bottom: 11px; }
+.home-comparison__table thead th:nth-child(2) { color: #fff; background: #5030ef; text-align: center; border-radius: 18px 18px 0 0; }
+.home-comparison__table tbody th, .home-comparison__table tbody td { border-top: 1px solid #ebe7f6; }
+.home-comparison__table tbody th { font-weight: 750; }
+.home-comparison__table tbody td:nth-child(2) { background: #f4f0ff; border-left: 1px solid #b6a6ff; border-right: 1px solid #b6a6ff; }
+.home-comparison__table tbody tr:last-child td:nth-child(2) { border-bottom: 1px solid #b6a6ff; border-radius: 0 0 18px 18px; }
+.home-comparison__table tbody td:last-child { color: #536489; background: #ffffffb3; }
+.home-comparison__feature, .home-comparison__benefit { display: flex; align-items: center; gap: 14px; }
+.home-comparison__icon { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: 50%; background: #f0ecff; color: #5030ef; }
+.home-comparison__benefit > svg { color: #00a58f; flex-shrink: 0; }
+.home-comparison__action { text-align: center; margin: 6px 0 0; }
+.home-comparison__action a { display: inline-flex; gap: 10px; align-items: center; min-height: 44px; color: #5030ef; font-size: 14px; font-weight: 750; }
+.home-comparison__action a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.home-comparison__action a:focus-visible, .home-comparison__table-wrap:focus-visible { outline: 3px solid #00a89e; outline-offset: 4px; }
+.home-reviews { background: linear-gradient(145deg, #f8f6ff, #efedff); }
+.home-reviews__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.home-review { display: flex; flex-direction: column; min-width: 0; margin: 0; padding: 20px; border: 1px solid #e2dcfb; border-radius: 20px; background: #fff; box-shadow: 0 5px 18px #5030ef05; }
+.home-review--2 { border-color: #9b82ff; }
+.home-review__top { display: flex; align-items: center; justify-content: space-between; color: #e9e2ff; margin-bottom: 12px; }
+.home-review__stars { display: flex; gap: 3px; color: #f5b331; }
+.home-review blockquote { margin: 0 0 18px; color: #475879; font-size: 14px; line-height: 1.7; }
+.home-review figcaption { display: flex; align-items: center; gap: 12px; margin-top: auto; padding-top: 15px; border-top: 1px solid #ece6fc; }
+.home-review__avatar { display: grid; place-items: center; flex-shrink: 0; width: 43px; height: 43px; border-radius: 50%; background: #e9e0ff; color: #5030bd; font-size: 15px; font-weight: 800; }
+.home-review--2 .home-review__avatar { background: #ddebff; color: #285bbd; }
+.home-review--3 .home-review__avatar { background: #d8f5f0; color: #008778; }
+.home-review__name { margin: 0; font-size: 14px; font-weight: 800; line-height: 1.5; }
+.home-review__role { margin: 3px 0 0; font-size: 11px; line-height: 1.5; color: #536489; }
+@media (max-width: 1100px) {
+  .home-trust__shell { padding: 0 28px; }
+  .home-comparison__table th, .home-comparison__table td { padding-left: 14px; padding-right: 14px; }
+  .home-review { padding: 16px; }
+  .home-review figcaption { gap: 8px; }
+}
+@media (max-width: 760px) {
+  .home-trust { padding: 32px 0; }
+  .home-trust__shell { padding: 0 20px; }
+  .home-trust__header h2 span { display: block; }
+  .home-reviews__grid { grid-template-columns: minmax(0, 1fr); max-width: 480px; margin: auto; gap: 14px; }
+  .home-review { padding: 18px; }
+  .home-review blockquote { margin-bottom: 14px; }
+  .home-comparison__table { font-size: 12px; }
+  .home-comparison__feature { gap: 8px; }
+  .home-comparison__table thead th { font-size: 15px; }
+}

@@ -35,8 +35,10 @@
 .hp-after-label svg { color: #00b79d; right: 25px; }
 .hp-comparison-divider { position: absolute; z-index: 3; left: var(--reveal); top: 9%; bottom: 27%; width: 2px; transform: translateX(-1px); background: linear-gradient(transparent, #fff 12%, #fff 90%, transparent); box-shadow: 0 0 13px #fff; pointer-events: none; }
 .hp-comparison-divider > span { display: grid; place-items: center; position: absolute; top: 65%; left: 50%; transform: translate(-50%, -50%); width: 34px; height: 34px; border: 2px solid #fff; border-radius: 50%; background: #4f35efce; color: #fff; box-shadow: 0 2px 10px #30306626; }
-.hp-comparison-range { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; z-index: 4; cursor: ew-resize; touch-action: pan-y; margin: 0; }
-.hp-comparison-art:focus-within { outline: 3px solid #7165e7; outline-offset: 2px; border-radius: 28px; }
+.hp-comparison-range { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; z-index: 4; cursor: ew-resize; touch-action: pan-y; margin: 0; outline: none; }
+.hp-comparison-range:focus, .hp-comparison-range:focus-visible { outline: none; }
+.hp-comparison-art:focus-within { outline: none; }
+.hp-comparison-art:has(.hp-comparison-range:focus-visible) .hp-comparison-divider > span { box-shadow: 0 0 0 4px #7165e780, 0 2px 10px #30306626; }
 .hp-comparison > p { position: absolute; z-index: 2; bottom: 1px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; white-space: nowrap; gap: 6px; background: #ffffffd9; padding: 4px 10px; border-radius: 20px; color: #536489; font-size: 9px; pointer-events: none; }
 .hp-fresh-note { position: absolute; z-index: 2; top: 2%; right: 20px; transform: rotate(-12deg); color: #5140e9; font: italic 19px/1.45 'Comic Sans MS', 'Bradley Hand', cursive; pointer-events: none; }
 .hp-fresh-note:after { content: ''; display: block; width: 65%; height: 9px; border-top: 2px solid #7265f5; border-radius: 50%; margin: 4px auto 0; transform: rotate(-7deg); }
@@ -126,8 +128,8 @@
 .hp-journey-heading h2 span { color: #4f35ef; }
 .hp-journey-heading > p { color: #536489; font-size: 12px; line-height: 1.6; }
 .hp-journey-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 26px; list-style: none; position: relative; margin: 0; padding: 0; }
-.hp-journey-stages:before { content: ''; position: absolute; top: 43px; left: 9%; right: 9%; height: 2px; background: repeating-linear-gradient(90deg, #9d97f2 0 5px, transparent 5px 12px); transform-origin: left; }
-.hp-journey-visible .hp-journey-stages:before { animation: hp-path-in 1.5s ease both; }
+.hp-journey-stages:before { content: ''; position: absolute; top: 43px; left: 9%; right: 9%; height: 2px; background-image: repeating-linear-gradient(90deg, #9d97f2 0 6px, transparent 6px 14px); background-size: 28px 2px; background-repeat: repeat-x; background-position: 0 0; will-change: background-position; }
+.hp-journey-visible .hp-journey-stages:before { animation: hp-line-flow 1.8s linear infinite; }
 .hp-journey-stages li { min-width: 0; position: relative; }
 .hp-journey-visual { width: 135px; height: 86px; margin: 0 0 8px 16px; background: radial-gradient(ellipse, #fff 50%, #fff0 73%); }
 .hp-journey-art { width: 100%; height: 100%; object-fit: contain; }
@@ -151,7 +153,7 @@
 @keyframes hp-quantity-in { from { transform: translateY(3px); opacity: .4; } to { transform: translateY(0); opacity: 1; } }
 @keyframes hp-shine { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes hp-stage-in { from { transform: translateX(-8px); } to { transform: translateX(0); } }
-@keyframes hp-path-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes hp-line-flow { from { background-position: 0 0; } to { background-position: 28px 0; } }
 @media (min-width: 1600px) { .hp-shell { padding-top: 10px; } .hp-hero { column-gap: 26px; } .hp-brand-message { padding-top: 53px; } }
 @media (min-width: 1101px) and (max-width: 1320px) {
   .hp-shell, .id-home-nav > div:first-child { padding-left: 35px; padding-right: 35px; }

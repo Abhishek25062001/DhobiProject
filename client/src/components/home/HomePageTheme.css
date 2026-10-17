@@ -1,0 +1,71 @@
+/* Homepage-only design tokens. Other routes retain their existing styles. */
+.home-page, .id-home-nav, .id-home-footer {
+  --home-ink: #080f31;
+  --home-accent: #5030ef;
+  --home-accent-hover: #3b24d0;
+  --home-muted: #536489;
+  --home-background: #f7f5ff;
+  --home-border: #e2dcfb;
+  --home-status: #008778;
+  --home-gutter: 48px;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+.home-page { color: var(--home-ink); background: var(--home-background); }
+.home-page .hp-page { --hp-purple: var(--home-accent); --hp-purple-dark: var(--home-accent-hover); }
+.home-page :is(.hp-shell, .garment-services__shell, .home-trust__shell, .service-areas__shell),
+.id-home-nav > div:first-child, .id-home-footer > div:first-child {
+  max-width: 1536px; padding-left: var(--home-gutter); padding-right: var(--home-gutter);
+}
+.home-page :is(.garment-services, .home-comparison, .home-reviews, .service-areas) {
+  background: var(--home-background); padding-top: 32px; padding-bottom: 32px;
+}
+.home-page .home-comparison { padding-top: 26px; padding-bottom: 22px; }
+.home-page :is(.garment-services__header h2, .home-trust__header h2, .service-areas__header h2) {
+  font-size: clamp(28px, 3vw, 42px); font-weight: 800; line-height: 1.2; letter-spacing: -.04em;
+}
+.home-page :is(.garment-services__eyebrow, .home-trust__eyebrow, .service-areas__eyebrow) {
+  font-size: 11px; font-weight: 800; letter-spacing: .25em; color: var(--home-accent);
+}
+.home-page :is(.garment-services__intro, .home-trust__header > p:last-child, .service-areas__intro) {
+  font-size: 14px; line-height: 1.6; color: var(--home-muted);
+}
+.home-page :is(.garment-services__grid, .home-reviews__grid, .service-areas__grid) { gap: 18px; }
+.home-page :is(.garment-service, .home-review, .service-area) { border-radius: 20px; box-shadow: 0 5px 18px #5030ef05; }
+.home-page :is(.hp-button, .garment-service--featured .garment-service__book, .service-areas__check) {
+  background: var(--home-accent); border-radius: 12px;
+  transition: background-color .18s ease, box-shadow .18s ease;
+}
+.home-page :is(.hp-button, .garment-service--featured .garment-service__book, .service-areas__check):hover {
+  background: var(--home-accent-hover); transform: none;
+}
+.home-page :is(a, button, [tabindex]):focus-visible, .id-home-nav :is(a, button):focus-visible,
+.id-home-footer a:focus-visible { outline: 3px solid var(--home-status); outline-offset: 4px; }
+.home-page [id] { scroll-margin-top: 90px; }
+.home-page .hp-journey-visible .hp-journey-stages::before { animation-iteration-count: 2; will-change: auto; }
+.home-page .home-comparison__scroll-hint { display: none; }
+.id-home-footer { background: var(--home-ink); padding-top: 0; padding-bottom: 28px; }
+/* The hero already contains the four benefits; keep the footer focused on navigation. */
+.id-home-footer > div > div:first-child { display: none; }
+.id-home-footer > div > div:nth-child(2) { padding-top: 32px; padding-bottom: 32px; }
+.id-home-footer a { display: inline-flex; align-items: center; min-height: 28px; }
+.id-home-footer a:hover { color: #c8bdff; }
+@media (max-width: 1100px) {
+  .home-page, .id-home-nav, .id-home-footer { --home-gutter: 28px; }
+}
+@media (max-width: 700px) {
+  .home-page, .id-home-nav, .id-home-footer { --home-gutter: 20px; }
+  .home-page :is(.garment-services, .home-comparison, .home-reviews, .service-areas) { padding-top: 28px; padding-bottom: 28px; }
+  .home-page .home-comparison__scroll-hint { display: block; margin: 0 0 8px; font-size: 12px; color: var(--home-muted); }
+  .home-page :is(.hp-categories button, .hp-basket-item-list button, .hp-coverage-link) { min-height: 44px; }
+  .home-page .hp-basket-item-list button { min-width: 44px; }
+  .id-home-footer a { min-height: 44px; }
+}
+@media (max-width: 360px) {
+  .home-page, .id-home-nav, .id-home-footer { --home-gutter: 16px; }
+  .id-home-nav > div:first-child > div > a { gap: 8px; }
+  .id-home-nav > div:first-child > div > a p { font-size: 9px; letter-spacing: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-page *, .home-page *::before, .home-page *::after,
+  .id-home-nav *, .id-home-footer * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

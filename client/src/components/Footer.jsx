@@ -1,10 +1,11 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Shirt, Phone, Mail, MapPin, ShieldCheck, HeartHandshake, Sparkles, Clock, ExternalLink } from 'lucide-react';
 
 const Footer = () => {
+  const isHome = useLocation().pathname === "/";
   return (
-    <footer className="bg-slate-900 text-slate-300 pt-16 pb-12 mt-auto border-t border-slate-800">
+    <footer className={`bg-slate-900 text-slate-300 pt-16 pb-12 mt-auto border-t border-slate-800 ${isHome ? 'id-home-footer' : ''}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Assurances Bar */}

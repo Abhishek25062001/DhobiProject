@@ -20,7 +20,7 @@ export default function LaundryJourney() {
     return () => observer.disconnect();
   }, []);
   return <section id="how-it-works" className={`hp-journey ${visible ? 'hp-journey-visible' : ''}`} ref={section} aria-labelledby="hp-journey-title">
-    <div className="hp-journey-heading"><span className="hp-eyebrow">FROM YOUR DOOR. BACK TO YOU.</span><h2 id="hp-journey-title">How <span>Indodhobi</span><br />Works?</h2><p>Laundry, off your to-do list.</p></div>
+    <div className="hp-journey-heading"><span className="hp-eyebrow">FROM YOUR DOOR. BACK TO YOU.</span><h2 id="hp-journey-title">How <span>IndoDhobi</span><br />{' '}Works</h2><p>Laundry, off your to-do list.</p></div>
     <ol className="hp-journey-stages">
       {stages.map((stage, index) => <li key={stage.kind} style={{ '--stage': index }}><div className="hp-journey-visual"><JourneyArt kind={stage.kind} /></div><div className="hp-journey-step-label"><span className="hp-stage-number">{index + 1}</span><div><h3>{stage.title}</h3><p>{stage.description}</p></div></div></li>)}
     </ol>
