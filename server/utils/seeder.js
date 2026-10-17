@@ -528,6 +528,7 @@ export const seedData = async () => {
 
   } catch (error) {
     console.error('[Seeder Error]:', error);
+    throw error;
   }
 };
 

@@ -25,13 +25,13 @@ export const connectDB = async () => {
   if (!primaryUri) {
     console.error('\n❌ [Database] MONGO_URI is not set in /server/.env');
     console.error('   Add: MONGO_URI=mongodb+srv://... or MONGO_URI=mongodb://127.0.0.1:27017/indodhobi');
-    process.exit(1);
+    throw new Error('MONGO_URI is missing. Configure server/.env before starting the API.');
   }
 
   if (primaryUri.includes('<db_password>')) {
     console.error('\n❌ [Database] MONGO_URI still contains the "<db_password>" placeholder.');
     console.error('   Replace it with your real MongoDB Atlas password in /server/.env');
-    process.exit(1);
+    throw new Error('MONGO_URI contains an unresolved database password placeholder.');
   }
 
   try {
@@ -53,7 +53,7 @@ export const connectDB = async () => {
     console.error(`\n❌ [Database] Connection to "${maskedUri}" FAILED.`);
     console.error(`   Reason: ${err.message}`);
     console.error('   Fix your MONGO_URI in /server/.env and restart the server.\n');
-    process.exit(1);
+    throw new Error('MongoDB connection failed. Check MONGO_URI and database access, then restart the API.');
   }
 };
 

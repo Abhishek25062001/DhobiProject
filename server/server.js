@@ -5,7 +5,9 @@ import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import mongoose from 'mongoose';
-import { connectDB } from './config/db.js';
+import { connectDB, disconnectDB } from './config/db.js';
+import { apiPort } from '../shared/runtime.mjs';
+import { startHttpService } from './utils/startHttpService.js';
 import { seedData } from './utils/seeder.js';
 import authRoutes from './routes/authRoutes.js';
 import catalogRoutes from './routes/catalogRoutes.js';
@@ -24,7 +26,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
 // Production HTTP security headers via Helmet
 app.use(
@@ -88,8 +89,10 @@ app.use((req, res, next) => {
 // Enhanced Health check endpoint — exposes real DB host for audit verification
 app.get('/api/health', (req, res) => {
   const conn = mongoose.connection;
-  res.json({
-    status: 'ok',
+  const ready = conn.readyState === 1 && !app.locals.initializing;
+  res.set('Cache-Control', 'no-store').status(ready ? 200 : 503).json({
+    status: ready ? 'ok' : 'unavailable',
+    ready,
     service: 'IndoDhobi API',
     uptime: process.uptime(),
     dbState: conn.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
@@ -101,6 +104,18 @@ app.get('/api/health', (req, res) => {
       !process.env.RAZORPAY_KEY_ID.includes('placeholder')
     )
   });
+});
+
+// Reject immediately while starting or disconnected instead of buffering DB queries.
+app.use('/api', (req, res, next) => {
+  if (mongoose.connection.readyState !== 1 || app.locals.initializing) {
+    return res.set('Retry-After', '1').status(503).json({
+      success: false,
+      code: 'API_UNAVAILABLE',
+      message: 'The service is temporarily unavailable. Please try again.',
+    });
+  }
+  next();
 });
 
 // API Routes
@@ -144,52 +159,27 @@ app.use(errorHandler);
 
 // Start server and trigger auto-seeder
 export const startServer = async () => {
-  try {
-    await connectDB();
-    await seedData();
-    await Order.backfillMissingOtps();
-
-    const startListening = (port) => {
-      const serverInstance = app.listen(port, () => {
-        console.log(`===================================================`);
-        console.log(`🧺 IndoDhobi Backend Server running on port ${port}`);
-        console.log(`🔗 API Base: http://localhost:${port}/api`);
-        console.log(`🔗 Health:   http://localhost:${port}/api/health`);
-        if (port !== Number(process.env.PORT || 5000)) {
-          console.warn(`⚠️  NOTE: Server shifted to port ${port} because port ${process.env.PORT || 5000} was occupied.`);
-          console.warn(`   Update client/vite.config.js proxy target to http://localhost:${port} to match.`);
-        }
-        console.log(`🔐 Demo Customer: customer@indodhobi.com | password123`);
-        console.log(`👑 Demo Admin:    admin@indodhobi.com    | admin123`);
-        console.log(`===================================================`);
-      });
-
-      serverInstance.on('error', (err) => {
-        if (err.code === 'EADDRINUSE') {
-          const nextPort = Number(port) + 1;
-          console.warn(`\n⚠️  Port ${port} is occupied (commonly macOS AirPlay Receiver on port 5000).`);
-          console.log(`🔄 Automatically switching to port ${nextPort}...\n`);
-          startListening(nextPort);
-        } else {
-          console.error('Fatal Server Error:', err);
-          process.exit(1);
-        }
-      });
-
-      return serverInstance;
-    };
-
-    return startListening(PORT);
-  } catch (error) {
-    console.error('Fatal: Failed to start IndoDhobi server:', error);
-    process.exit(1);
-  }
+  const port = apiPort(process.env.PORT);
+  const server = await startHttpService(app, {
+    port,
+    initialize: async () => {
+      await connectDB();
+      await seedData();
+      await Order.backfillMissingOtps();
+    },
+    cleanup: disconnectDB,
+  });
+  console.log(`IndoDhobi API ready at http://localhost:${port}/api`);
+  return server;
 };
 
 
 export { app };
 export default app;
 
-if (process.env.NODE_ENV !== 'test' && (!process.argv[1] || process.argv[1].endsWith('server.js') || process.argv[1].includes('nodemon'))) {
-  startServer();
+if (process.env.NODE_ENV !== 'test' && process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  startServer().catch(error => {
+    console.error(`Failed to start IndoDhobi API: ${error.message}`);
+    process.exitCode = 1;
+  });
 }

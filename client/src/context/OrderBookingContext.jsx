@@ -2,6 +2,9 @@ import React, { createContext, useContext, useState, useMemo, useEffect } from '
 import { format, addDays } from 'date-fns';
 import { configService } from '../services/api';
 import { readBookingDraft, readDraftCart, saveBookingDraft } from '../utils/bookingDraft';
+import useApiResource from '../hooks/useApiResource';
+
+const loadPlatformConfig = signal => configService.getPublicConfig({ signal });
 
 const OrderBookingContext = createContext(null);
 
@@ -72,41 +75,9 @@ export const OrderBookingProvider = ({ children }) => {
     ...initialDraft.pickupAddress
   });
 
-  const [platformConfig, setPlatformConfig] = useState({
-    businessName: 'IndoDhobi Laundry & Dry Cleaning Pvt. Ltd.',
-    gstin: '07AABCI1234F1Z5',
-    sacCode: '999712',
-    supportPhone: '+91 98765 43210',
-    freeDeliveryThreshold: 399,
-    deliveryFee: 49,
-    expressSurcharge: 99,
-    gstPercentage: 5,
-    minStandardTurnaroundHours: 24,
-    detergentOptions: [],
-    packagingOptions: [],
-    serviceTypes: [],
-    ironingTiers: []
-  });
-  const [slots, setSlots] = useState([]);
-  const [loadingConfig, setLoadingConfig] = useState(true);
-
-  const fetchPlatformConfig = async () => {
-    try {
-      const res = await configService.getPublicConfig();
-      if (res.success) {
-        if (res.config) setPlatformConfig(res.config);
-        if (res.slots && Array.isArray(res.slots)) setSlots(res.slots);
-      }
-    } catch (err) {
-      console.error('[Platform Config Load Error]:', err);
-    } finally {
-      setLoadingConfig(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPlatformConfig();
-  }, []);
+  const { data: bootstrap, loading: loadingConfig, error: configError, retry: fetchPlatformConfig } = useApiResource(loadPlatformConfig);
+  const platformConfig = bootstrap?.config || null;
+  const slots = bootstrap?.slots || [];
 
   // Cart operations
   const addItem = (garment, serviceType = 'WASH_AND_FOLD', ironingType = 'NONE', customOptions = {}) => {
@@ -286,13 +257,17 @@ export const OrderBookingProvider = ({ children }) => {
     grandTotal,
     amountNeededForFreeDelivery
   } = useMemo(() => {
-    const freeThreshold = platformConfig?.freeDeliveryThreshold !== undefined ? platformConfig.freeDeliveryThreshold : 399;
-    const baseDelivery = platformConfig?.deliveryFee !== undefined ? platformConfig.deliveryFee : 49;
-    const baseExpress = platformConfig?.expressSurcharge !== undefined ? platformConfig.expressSurcharge : 99;
-    const gstRate = (platformConfig?.gstPercentage !== undefined ? platformConfig.gstPercentage : 5) / 100;
-
     const sub = cartItems.reduce((acc, curr) => acc + curr.lineTotal, 0);
     const count = cartItems.reduce((acc, curr) => acc + curr.quantity, 0);
+    if (!platformConfig) return {
+      subtotal: sub, itemCount: count, pickupDeliveryFee: null, expressSurcharge: null,
+      discountAmount: null, couponCode: appliedCoupon?.code || null, taxAmount: null,
+      grandTotal: null, amountNeededForFreeDelivery: null,
+    };
+    const freeThreshold = platformConfig.freeDeliveryThreshold;
+    const baseDelivery = platformConfig.deliveryFee;
+    const baseExpress = platformConfig.expressSurcharge;
+    const gstRate = platformConfig.gstPercentage / 100;
     const delivery = sub >= freeThreshold ? 0 : sub > 0 ? baseDelivery : 0;
     const expressFee = isExpress && sub > 0 ? baseExpress : 0;
     const discount = appliedCoupon ? Math.min(appliedCoupon.discountAmount, sub) : 0;
@@ -367,11 +342,12 @@ export const OrderBookingProvider = ({ children }) => {
         taxAmount,
         grandTotal,
         amountNeededForFreeDelivery,
-        freeDeliveryThreshold: platformConfig?.freeDeliveryThreshold !== undefined ? platformConfig.freeDeliveryThreshold : 399,
+        freeDeliveryThreshold: platformConfig?.freeDeliveryThreshold ?? null,
         platformConfig,
         slots,
         timeSlots: slots,
         loadingConfig,
+        configError,
         fetchPlatformConfig
       }}
     >

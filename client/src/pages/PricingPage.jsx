@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { catalogService } from '../services/api';
+import useGarments from '../hooks/useGarments';
+import ApiLoadError from '../components/ApiLoadError';
 import { useOrderBooking } from '../context/OrderBookingContext';
 import { 
   Sparkles, 
@@ -42,28 +43,10 @@ const getGarmentIcon = (iconName) => {
 const PricingPage = () => {
   const navigate = useNavigate();
   const { addItem } = useOrderBooking();
-  const [garments, setGarments] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    const fetchCatalog = async () => {
-      try {
-        setLoading(true);
-        const res = await catalogService.getGarments(activeCategory, searchQuery);
-        if (res.success) {
-          setGarments(res.data);
-        }
-      } catch (err) {
-        toast.error('Could not load pricing rate card.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCatalog();
-  }, [activeCategory, searchQuery]);
+  const { garments, loading, error: catalogError, retry: retryCatalog } = useGarments(activeCategory, searchQuery);
 
   const handleAddAndBook = (garment) => {
     addItem(garment, 'WASH_AND_IRON', 'STANDARD_STEAM');
@@ -124,7 +107,7 @@ const PricingPage = () => {
           <Loader2 className="w-8 h-8 text-primary-600 animate-spin mx-auto mb-2" />
           <p className="text-xs text-slate-500">Loading comprehensive garment rate card...</p>
         </div>
-      ) : (
+      ) : catalogError ? <ApiLoadError onRetry={retryCatalog} /> : (
         <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">

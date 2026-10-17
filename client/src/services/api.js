@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { readWithRetry, requireCatalog, requirePublicConfig } from './readWithRetry';
 
 const apiOrigin = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
@@ -97,13 +98,13 @@ export const authService = {
 
 
 export const catalogService = {
-  getGarments: async (category = '', search = '', includeInactive = false) => {
+  getGarments: async (category = '', search = '', includeInactive = false, options = {}) => {
     const params = {};
     if (category && category !== 'All') params.category = category;
     if (search) params.search = search;
     if (includeInactive) params.includeInactive = 'true';
-    const res = await API.get('/catalog/garments', { params });
-    return res.data;
+    const res = await readWithRetry(API, '/catalog/garments', { ...options, params });
+    return requireCatalog(res.data);
   },
   createGarment: async (garmentData) => {
     const res = await API.post('/catalog/garments', garmentData);
@@ -238,9 +239,9 @@ export const orderService = {
 };
 
 export const configService = {
-  getPublicConfig: async () => {
-    const res = await API.get('/config/public');
-    return res.data;
+  getPublicConfig: async (options = {}) => {
+    const res = await readWithRetry(API, '/config/public', options);
+    return requirePublicConfig(res.data);
   },
   updateSettings: async (settingsData) => {
     const res = await API.put('/config/settings', settingsData);

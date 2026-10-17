@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { SERVICE_CODES, IRONING_CODES } from '../../shared/catalogContract.mjs';
 
 const orderItemSchema = new mongoose.Schema({
   garment: {
@@ -21,12 +22,12 @@ const orderItemSchema = new mongoose.Schema({
   },
   serviceType: {
     type: String,
-    enum: ['WASH_AND_FOLD', 'WASH_AND_IRON', 'IRON_ONLY', 'DRY_CLEAN'],
+    enum: [...SERVICE_CODES],
     required: true
   },
   ironingType: {
     type: String,
-    enum: ['NONE', 'STANDARD_STEAM', 'CRISP_STARCH', 'DELICATE_PRESS'],
+    enum: [...IRONING_CODES],
     default: 'NONE'
   },
   unitPrice: {

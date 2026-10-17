@@ -6,6 +6,7 @@ import { OrderBookingProvider } from './context/OrderBookingContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
+import BookingConfigGate from './components/BookingConfigGate';
 
 import HomePage from './pages/HomePage';
 const BookingPage = lazy(() => import('./pages/BookingPage'));
@@ -87,9 +88,9 @@ function App() {
             <main className="grow">
               <Suspense fallback={<div role="status" className="min-h-[60vh] flex items-center justify-center gap-3 text-sm text-slate-500"><span className="h-5 w-5 rounded-full border-2 border-primary-200 border-t-primary-600 motion-safe:animate-spin" aria-hidden="true" />Loading…</div>}>
               <Routes>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/book" element={<BookingPage />} />
-                <Route path="/pricing" element={<PricingPage />} />
+                <Route path="/" element={<BookingConfigGate><HomePage /></BookingConfigGate>} />
+                <Route path="/book" element={<BookingConfigGate><BookingPage /></BookingConfigGate>} />
+                <Route path="/pricing" element={<BookingConfigGate><PricingPage /></BookingConfigGate>} />
                 <Route
                   path="/my-orders"
                   element={
