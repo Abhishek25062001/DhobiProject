@@ -19,6 +19,8 @@ const categorySchema = new mongoose.Schema(
       default: '',
       trim: true
     },
+    shortName: { type: String, default: '', trim: true },
+    legacyNames: { type: [String], default: [] },
     icon: {
       type: String,
       default: 'Shirt',

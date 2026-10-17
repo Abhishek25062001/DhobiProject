@@ -7,6 +7,10 @@ const orderItemSchema = new mongoose.Schema({
     ref: 'Garment',
     required: true
   },
+  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
+  serviceLabel: String,
+  ironingLabel: String,
+  catalogUpdatedAt: Date,
   garmentName: {
     type: String,
     required: true
@@ -18,7 +22,9 @@ const orderItemSchema = new mongoose.Schema({
   quantity: {
     type: Number,
     required: true,
-    min: 1
+    min: 1,
+    max: 999,
+    validate: Number.isInteger
   },
   serviceType: {
     type: String,
@@ -63,7 +69,11 @@ const orderSchema = new mongoose.Schema({
     index: true
   },
   items: [orderItemSchema],
+  billingSnapshot: { type: mongoose.Schema.Types.Mixed, immutable: true },
+  customerSnapshot: { type: mongoose.Schema.Types.Mixed, immutable: true },
   preferences: {
+    detergentTypeLabel: String,
+    packagingTypeLabel: String,
     detergentType: {
       type: String,
       default: 'Standard',
@@ -132,6 +142,8 @@ const orderSchema = new mongoose.Schema({
     default: false
   },
   pricingBreakdown: {
+    gstPercentage: Number,
+    extraPreferenceFee: { type: Number, default: 0 },
     subtotal: { type: Number, required: true, min: 0 },
     discountAmount: { type: Number, default: 0 },
     couponCode: { type: String, default: null },

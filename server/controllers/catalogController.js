@@ -1,6 +1,11 @@
+import { publicCategory } from '../services/publicProjection.js';
 import Garment from '../models/Garment.js';
 import Category from '../models/Category.js';
-import { uploadImageToCloudinary } from '../utils/cloudinary.js';
+import { applyProductMedia } from '../services/media.js';
+import { catalogRecords, serializeGarment, resolveCategory } from '../services/catalog.js';
+
+const detailFields = ['shortName', 'description', 'sortOrder', 'allowedServices', 'allowedIroningTiers'];
+const garmentDetails = body => Object.fromEntries(detailFields.filter(key => body[key] !== undefined).map(key => [key, body[key]]));
 
 // @desc    Get all active garments with optional category filter
 // @route   GET /api/catalog/garments
@@ -8,21 +13,7 @@ import { uploadImageToCloudinary } from '../utils/cloudinary.js';
 export const getGarments = async (req, res) => {
   try {
     const { category, search, includeInactive } = req.query;
-    const filter = {};
-
-    if (includeInactive !== 'true') {
-      filter.isActive = true;
-    }
-
-    if (category && category !== 'All') {
-      filter.category = category;
-    }
-
-    if (search) {
-      filter.name = { $regex: search, $options: 'i' };
-    }
-
-    const garments = await Garment.find(filter).sort({ category: 1, name: 1 });
+    const garments = await catalogRecords({ category, search, includeInactive: includeInactive === 'true' });
 
     return res.json({
       success: true,
@@ -45,40 +36,37 @@ export const createGarment = async (req, res) => {
   try {
     const { name, category, iconName, pricing, isActive, imageUrl, cloudinaryPublicId, imageBase64 } = req.body;
 
-    if (!name || !category || !pricing) {
+    if (!name || (!category && !req.body.categoryId) || !pricing) {
       return res.status(400).json({
         success: false,
         message: 'Name, category, and pricing are required.'
       });
     }
 
-    let finalImageUrl = imageUrl || '';
-    let finalPublicId = cloudinaryPublicId || '';
-
-    if (imageBase64) {
-      const uploadResult = await uploadImageToCloudinary(imageBase64, 'indodhobi/garments');
-      finalImageUrl = uploadResult.imageUrl;
-      finalPublicId = uploadResult.publicId;
-    }
-
-    const garment = await Garment.create({
+    const categoryRecord = await resolveCategory(req.body);
+    const garment = new Garment({
+      ...garmentDetails(req.body),
       name,
-      category,
+      category: categoryRecord.name,
+      categoryId: categoryRecord._id,
       iconName: iconName || 'Shirt',
-      imageUrl: finalImageUrl,
-      cloudinaryPublicId: finalPublicId,
+
       pricing,
       isActive: isActive !== undefined ? Boolean(isActive) : true
     });
 
+    await garment.validate();
+    await applyProductMedia(garment, req.body);
+    await garment.save();
+
     return res.status(201).json({
       success: true,
       message: 'Garment created successfully',
-      data: garment
+      data: await serializeGarment(garment, [categoryRecord])
     });
   } catch (error) {
-    console.error('[Create Garment Error]:', error);
-    return res.status(500).json({
+    console.error('[Create Garment Error]:', error.message);
+    return res.status(error.statusCode || 400).json({
       success: false,
       message: error.message || 'Failed to create garment.'
     });
@@ -102,17 +90,11 @@ export const updateGarment = async (req, res) => {
     }
 
     if (name) garment.name = name;
-    if (category) garment.category = category;
+    Object.assign(garment, garmentDetails(req.body));
+    const categoryRecord = await resolveCategory(req.body, garment);
+    garment.category = categoryRecord.name;
+    garment.categoryId = categoryRecord._id;
     if (iconName) garment.iconName = iconName;
-
-    if (imageBase64) {
-      const uploadResult = await uploadImageToCloudinary(imageBase64, 'indodhobi/garments');
-      garment.imageUrl = uploadResult.imageUrl;
-      garment.cloudinaryPublicId = uploadResult.publicId;
-    } else {
-      if (imageUrl !== undefined) garment.imageUrl = imageUrl;
-      if (cloudinaryPublicId !== undefined) garment.cloudinaryPublicId = cloudinaryPublicId;
-    }
 
     if (pricing) {
       garment.pricing = {
@@ -125,16 +107,18 @@ export const updateGarment = async (req, res) => {
     }
     if (isActive !== undefined) garment.isActive = Boolean(isActive);
 
+    await garment.validate();
+    await applyProductMedia(garment, req.body);
     await garment.save();
 
     return res.status(200).json({
       success: true,
       message: 'Garment updated successfully',
-      data: garment
+      data: await serializeGarment(garment, [categoryRecord])
     });
   } catch (error) {
-    console.error('[Update Garment Error]:', error);
-    return res.status(500).json({
+    console.error('[Update Garment Error]:', error.message);
+    return res.status(error.statusCode || 400).json({
       success: false,
       message: error.message || 'Failed to update garment.'
     });
@@ -157,12 +141,11 @@ export const saveGarment = async (req, res) => {
 // @access  Public
 export const getCategories = async (req, res) => {
   try {
-    await Category.ensureDefaultCategories();
     const categories = await Category.find({ isActive: true }).sort({ sortOrder: 1, name: 1 });
     return res.json({
       success: true,
       count: categories.length,
-      data: categories
+      data: categories.map(publicCategory)
     });
   } catch (error) {
     console.error('[Get Categories Error]:', error);

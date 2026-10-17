@@ -1,42 +1,18 @@
+import { reconcileBasket, pricingRulesSignature } from '../../../shared/basketReconciliation.mjs';
+import { couponQuote } from '../../../shared/coupon.mjs';
+import { calculateItemUnitPrice, calculateTotals, preferredFinish, money, selectionAvailable } from '../../../shared/pricing.mjs';
 import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
 import { format, addDays } from 'date-fns';
 import { configService } from '../services/api';
 import { readBookingDraft, readDraftCart, saveBookingDraft } from '../utils/bookingDraft';
 import useApiResource from '../hooks/useApiResource';
 
+const firstActive = options => (options || []).filter(option => option.isActive !== false).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))[0];
 const loadPlatformConfig = signal => configService.getPublicConfig({ signal });
 
 const OrderBookingContext = createContext(null);
 
-export const calculateItemUnitPrice = (garment, serviceType, ironingType) => {
-  if (!garment || !garment.pricing) return 0;
-
-  switch (serviceType) {
-    case 'WASH_AND_FOLD':
-      return garment.pricing.washOnly;
-
-    case 'WASH_AND_IRON': {
-      let ironCost = garment.pricing.standardSteamIron;
-      if (ironingType === 'CRISP_STARCH') ironCost = garment.pricing.crispStarchPress;
-      if (ironingType === 'DELICATE_PRESS') ironCost = garment.pricing.delicatePress;
-      if (ironingType === 'NONE') ironCost = 0;
-      return garment.pricing.washOnly + ironCost;
-    }
-
-    case 'IRON_ONLY': {
-      if (ironingType === 'CRISP_STARCH') return garment.pricing.crispStarchPress;
-      if (ironingType === 'DELICATE_PRESS') return garment.pricing.delicatePress;
-      if (ironingType === 'NONE') return 0;
-      return garment.pricing.standardSteamIron;
-    }
-
-    case 'DRY_CLEAN':
-      return garment.pricing.dryClean;
-
-    default:
-      return garment.pricing.washOnly;
-  }
-};
+export { calculateItemUnitPrice } from '../../../shared/pricing.mjs';
 
 export const OrderBookingProvider = ({ children }) => {
   const [initialDraft] = useState(readBookingDraft);
@@ -48,21 +24,21 @@ export const OrderBookingProvider = ({ children }) => {
   const defaultDeliveryDate = format(addDays(today, 3), 'yyyy-MM-dd');
 
   const [preferences, setPreferences] = useState({
-    detergentType: 'Standard',
-    packagingType: 'Folded',
+    detergentType: '',
+    packagingType: '',
     specialInstructions: '',
     ...initialDraft.preferences
   });
 
   const [pickupSchedule, setPickupSchedule] = useState({
     date: defaultPickupDate,
-    timeSlot: '10:00 AM - 01:00 PM',
+    timeSlot: '',
     ...initialDraft.pickupSchedule
   });
 
   const [deliverySchedule, setDeliverySchedule] = useState({
     date: defaultDeliveryDate,
-    timeSlot: '10:00 AM - 01:00 PM',
+    timeSlot: '',
     ...initialDraft.deliverySchedule
   });
 
@@ -75,12 +51,39 @@ export const OrderBookingProvider = ({ children }) => {
     ...initialDraft.pickupAddress
   });
 
-  const { data: bootstrap, loading: loadingConfig, error: configError, retry: fetchPlatformConfig } = useApiResource(loadPlatformConfig);
+  const { data: bootstrap, loading: loadingConfig, error: configError, retry: fetchPlatformConfig, fetchedAt: configCheckedAt, refreshing: refreshingConfig } = useApiResource(loadPlatformConfig, 'bootstrap');
   const platformConfig = bootstrap?.config || null;
   const slots = bootstrap?.slots || [];
+  const currentRules = pricingRulesSignature(platformConfig);
+  const [acceptedRules, setAcceptedRules] = useState(initialDraft.pricingRulesSignature || '');
+  useEffect(() => {
+    if (!bootstrap || configError) return;
+    setCartItems(previous => {
+      const next = reconcileBasket(previous, bootstrap.garments || [], bootstrap.config);
+      return JSON.stringify(previous) === JSON.stringify(next) ? previous : next;
+    });
+  }, [bootstrap, configError]);
+  useEffect(() => { if (!cartItems.length && currentRules) setAcceptedRules(currentRules); }, [cartItems.length, currentRules]);
+
+  const [choicesInitialized, setChoicesInitialized] = useState(false);
+  useEffect(() => {
+    if (!bootstrap || choicesInitialized) return;
+    setPreferences(previous => ({ ...previous,
+      detergentType: initialDraft.preferences?.detergentType ?? firstActive(platformConfig.detergentOptions)?.code ?? '',
+      packagingType: initialDraft.preferences?.packagingType ?? firstActive(platformConfig.packagingOptions)?.code ?? '',
+    }));
+    const firstSlot = firstActive(slots)?.label || '';
+    setPickupSchedule(previous => ({ ...previous, timeSlot: initialDraft.pickupSchedule?.timeSlot ?? firstSlot }));
+    setDeliverySchedule(previous => ({ ...previous, timeSlot: initialDraft.deliverySchedule?.timeSlot ?? firstSlot }));
+    setChoicesInitialized(true);
+  }, [bootstrap, choicesInitialized]);
 
   // Cart operations
   const addItem = (garment, serviceType = 'WASH_AND_FOLD', ironingType = 'NONE', customOptions = {}) => {
+    garment = bootstrap?.garments?.find(current => current._id === garment?._id);
+    if (configError || !garment || !selectionAvailable(garment, platformConfig, serviceType, ironingType)) return;
+    const requestedQuantity = customOptions.quantity ?? 1;
+    if (!Number.isInteger(requestedQuantity) || requestedQuantity < 1 || requestedQuantity > 999) return;
     setCartItems((prev) => {
       const isCustomItem = Boolean(customOptions.isCustomItem || garment.isCustom);
       const customDescription = customOptions.customDescription || '';
@@ -103,11 +106,14 @@ export const OrderBookingProvider = ({ children }) => {
 
       if (existingIndex > -1) {
         const updated = [...prev];
-        const newQty = updated[existingIndex].quantity + (customOptions.quantity || 1);
+        const newQty = Math.min(999, updated[existingIndex].quantity + requestedQuantity);
+        const existing = updated[existingIndex];
+        if (!selectionAvailable(garment, platformConfig, existing.serviceType, existing.ironingType)) return prev;
+        const existingPrice = calculateItemUnitPrice(garment, existing.serviceType, existing.ironingType);
         updated[existingIndex] = {
           ...updated[existingIndex],
-          quantity: newQty,
-          lineTotal: unitPrice * newQty
+          garment, quantity: newQty, unitPrice: existingPrice,
+          lineTotal: money(existingPrice * newQty)
         };
         return updated;
       } else {
@@ -119,9 +125,9 @@ export const OrderBookingProvider = ({ children }) => {
             garment,
             quantity: qty,
             serviceType,
-            ironingType,
+            ironingType, unavailableReason: '',
             unitPrice,
-            lineTotal: unitPrice * qty,
+            lineTotal: money(unitPrice * qty),
             isCustomItem,
             customDescription
           }
@@ -131,6 +137,7 @@ export const OrderBookingProvider = ({ children }) => {
   };
 
   const updateQuantity = (identifier, newQuantity) => {
+    if (!Number.isInteger(newQuantity) || newQuantity > 999) return;
     if (newQuantity <= 0) {
       removeItem(identifier);
       return;
@@ -144,7 +151,7 @@ export const OrderBookingProvider = ({ children }) => {
             ...item,
             quantity: newQuantity,
             unitPrice,
-            lineTotal: unitPrice * newQuantity
+            lineTotal: money(unitPrice * newQuantity)
           };
         }
         return item;
@@ -157,18 +164,15 @@ export const OrderBookingProvider = ({ children }) => {
       prev.map((item) => {
         const matches = item.cartItemId ? item.cartItemId === identifier : item.garment._id === identifier;
         if (matches) {
-          let ironingType = item.ironingType;
-          if (serviceType === 'WASH_AND_FOLD') ironingType = 'NONE';
-          else if (ironingType === 'NONE' && (serviceType === 'WASH_AND_IRON' || serviceType === 'IRON_ONLY')) {
-            ironingType = 'STANDARD_STEAM';
-          }
+          const ironingType = preferredFinish(item.garment, platformConfig, serviceType, item.ironingType);
+          if (!selectionAvailable(item.garment, platformConfig, serviceType, ironingType)) return item;
           const unitPrice = calculateItemUnitPrice(item.garment, serviceType, ironingType);
           return {
             ...item,
             serviceType,
-            ironingType,
+            ironingType, unavailableReason: '',
             unitPrice,
-            lineTotal: unitPrice * item.quantity
+            lineTotal: money(unitPrice * item.quantity)
           };
         }
         return item;
@@ -181,12 +185,13 @@ export const OrderBookingProvider = ({ children }) => {
       prev.map((item) => {
         const matches = item.cartItemId ? item.cartItemId === identifier : item.garment._id === identifier;
         if (matches) {
+          if (!selectionAvailable(item.garment, platformConfig, item.serviceType, ironingType)) return item;
           const unitPrice = calculateItemUnitPrice(item.garment, item.serviceType, ironingType);
           return {
             ...item,
-            ironingType,
+            ironingType, unavailableReason: '',
             unitPrice,
-            lineTotal: unitPrice * item.quantity
+            lineTotal: money(unitPrice * item.quantity)
           };
         }
         return item;
@@ -212,17 +217,17 @@ export const OrderBookingProvider = ({ children }) => {
   const resetBooking = () => {
     setCartItems([]);
     setPreferences({
-      detergentType: 'Standard',
-      packagingType: 'Folded',
+      detergentType: firstActive(platformConfig?.detergentOptions)?.code || '',
+      packagingType: firstActive(platformConfig?.packagingOptions)?.code || '',
       specialInstructions: ''
     });
     setPickupSchedule({
       date: defaultPickupDate,
-      timeSlot: '10:00 AM - 01:00 PM'
+      timeSlot: firstActive(slots)?.label || ''
     });
     setDeliverySchedule({
       date: defaultDeliveryDate,
-      timeSlot: '10:00 AM - 01:00 PM'
+      timeSlot: firstActive(slots)?.label || ''
     });
     setIsExpress(false);
     setAppliedCoupon(null);
@@ -231,11 +236,22 @@ export const OrderBookingProvider = ({ children }) => {
   const [isExpress, setIsExpress] = useState(Boolean(initialDraft.isExpress));
   const [appliedCoupon, setAppliedCoupon] = useState(initialDraft.appliedCoupon || null);
 
+  const couponSubtotal = cartItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+  const currentCoupon = bootstrap?.coupons?.find(coupon => coupon.code === appliedCoupon?.code);
+  const couponStatus = appliedCoupon ? couponQuote(currentCoupon, money(couponSubtotal)) : { valid: true, discountAmount: 0 };
+  const unavailableItems = cartItems.filter(item => item.unavailableReason);
+  const reviewRequired = Boolean(cartItems.length && (acceptedRules !== currentRules || cartItems.some(item => item.reviewRequired) || (appliedCoupon && couponStatus.valid && appliedCoupon.discountAmount !== couponStatus.discountAmount)));
+  const acknowledgeReview = () => {
+    setAcceptedRules(currentRules);
+    setCartItems(previous => previous.map(item => ({ ...item, reviewRequired: false, previousUnitPrice: undefined })));
+    if (appliedCoupon && couponStatus.valid) setAppliedCoupon({ ...appliedCoupon, discountAmount: couponStatus.discountAmount, description: currentCoupon.description });
+  };
+
   // Basket state belongs to the provider, including edits made on the homepage.
   // BookingPage still owns its current step; all other draft fields stay in sync here.
   useEffect(() => {
-    saveBookingDraft({ cartItems, preferences, pickupSchedule, deliverySchedule, pickupAddress, isExpress, appliedCoupon });
-  }, [cartItems, preferences, pickupSchedule, deliverySchedule, pickupAddress, isExpress, appliedCoupon]);
+    saveBookingDraft({ cartItems, preferences, pickupSchedule, deliverySchedule, pickupAddress, isExpress, appliedCoupon, pricingRulesSignature: acceptedRules });
+  }, [cartItems, preferences, pickupSchedule, deliverySchedule, pickupAddress, isExpress, appliedCoupon, acceptedRules]);
 
   const applyCoupon = (couponData) => {
     setAppliedCoupon(couponData);
@@ -251,6 +267,7 @@ export const OrderBookingProvider = ({ children }) => {
     itemCount,
     pickupDeliveryFee,
     expressSurcharge,
+    extraPreferenceFee,
     discountAmount,
     couponCode,
     taxAmount,
@@ -264,49 +281,8 @@ export const OrderBookingProvider = ({ children }) => {
       discountAmount: null, couponCode: appliedCoupon?.code || null, taxAmount: null,
       grandTotal: null, amountNeededForFreeDelivery: null,
     };
-    const freeThreshold = platformConfig.freeDeliveryThreshold;
-    const baseDelivery = platformConfig.deliveryFee;
-    const baseExpress = platformConfig.expressSurcharge;
-    const gstRate = platformConfig.gstPercentage / 100;
-    const delivery = sub >= freeThreshold ? 0 : sub > 0 ? baseDelivery : 0;
-    const expressFee = isExpress && sub > 0 ? baseExpress : 0;
-    const discount = appliedCoupon ? Math.min(appliedCoupon.discountAmount, sub) : 0;
-
-    let extraPreferenceFee = 0;
-    if (preferences?.detergentType && platformConfig?.detergentOptions) {
-      const selectedDetergent = platformConfig.detergentOptions.find(
-        (d) => d.code === preferences.detergentType || d.name === preferences.detergentType
-      );
-      if (selectedDetergent && selectedDetergent.extraPricePerOrder > 0) {
-        extraPreferenceFee += selectedDetergent.extraPricePerOrder;
-      }
-    }
-    if (preferences?.packagingType && platformConfig?.packagingOptions) {
-      const selectedPackaging = platformConfig.packagingOptions.find(
-        (p) => p.code === preferences.packagingType || p.name === preferences.packagingType
-      );
-      if (selectedPackaging && selectedPackaging.extraPricePerOrder > 0) {
-        extraPreferenceFee += selectedPackaging.extraPricePerOrder;
-      }
-    }
-
-    const taxableBase = Math.max(0, sub - discount) + delivery + expressFee + extraPreferenceFee;
-    const tax = Math.round(taxableBase * gstRate);
-    const total = taxableBase + tax;
-    const neededForFree = Math.max(0, freeThreshold - sub);
-
-    return {
-      subtotal: sub,
-      itemCount: count,
-      pickupDeliveryFee: delivery,
-      expressSurcharge: expressFee,
-      discountAmount: discount,
-      couponCode: appliedCoupon?.code || null,
-      taxAmount: tax,
-      grandTotal: total,
-      amountNeededForFreeDelivery: neededForFree
-    };
-  }, [cartItems, isExpress, appliedCoupon, preferences, platformConfig]);
+    return calculateTotals({ items: cartItems, config: platformConfig, preferences, isExpress, discountAmount: couponStatus.discountAmount, couponCode: couponStatus.valid ? appliedCoupon?.code || null : null });
+  }, [cartItems, isExpress, appliedCoupon, preferences, platformConfig, couponStatus.discountAmount, couponStatus.valid]);
 
   return (
     <OrderBookingContext.Provider
@@ -337,6 +313,7 @@ export const OrderBookingProvider = ({ children }) => {
         itemCount,
         pickupDeliveryFee,
         expressSurcharge,
+        extraPreferenceFee,
         discountAmount,
         couponCode,
         taxAmount,
@@ -344,8 +321,13 @@ export const OrderBookingProvider = ({ children }) => {
         amountNeededForFreeDelivery,
         freeDeliveryThreshold: platformConfig?.freeDeliveryThreshold ?? null,
         platformConfig,
+        catalogGarments: bootstrap?.garments || [],
+        availableCoupons: bootstrap?.coupons || [],
+        unavailableItems, reviewRequired, acknowledgeReview, couponStatus,
+        bookingBlocked: Boolean(configError || unavailableItems.length || !couponStatus.valid),
         slots,
         timeSlots: slots,
+        configCheckedAt, refreshingConfig,
         loadingConfig,
         configError,
         fetchPlatformConfig

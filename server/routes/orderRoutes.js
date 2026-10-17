@@ -1,7 +1,7 @@
 import express from 'express';
 import {
   getAvailableSlots,
-  createOrder,
+  createOrder, previewOrder,
   verifyPayment,
   payOnlineOrder,
   retryPayment,
@@ -42,6 +42,7 @@ router.patch('/coupons/:id/toggle', protect, authorize('admin'), toggleCoupon);
 router.post('/validate-coupon', protect, validateCoupon);
 router.post('/coupons', protect, authorize('admin'), createCoupon);
 router.get('/analytics', protect, authorize('admin'), getOrderAnalytics);
+router.post('/quote', protect, previewOrder);
 router.post('/', protect, createOrder);
 router.get('/my-orders', protect, getMyOrders);
 router.get('/my-active', protect, getMyActiveOrders);

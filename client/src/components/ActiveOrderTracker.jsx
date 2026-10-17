@@ -1,3 +1,4 @@
+import usePageCopy from '../hooks/usePageCopy';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -41,6 +42,7 @@ const getStageIndex = (status) => {
 };
 
 const ActiveOrderTracker = () => {
+  const copy = usePageCopy('orders');
   const { user, isAuthenticated } = useAuth();
   const [activeOrders, setActiveOrders] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -118,12 +120,9 @@ const ActiveOrderTracker = () => {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
             </span>
-            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400">
-              Live Order In Progress
-            </span>
+            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-400">{copy('live_order_in_progress_a3bf0f5')}</span>
             {lastUpdated && (
-              <span className="text-[10px] text-slate-400 hidden sm:inline">
-                • Synced {format(lastUpdated, 'hh:mm:ss a')}
+              <span className="text-[10px] text-slate-400 hidden sm:inline">{copy('synced_0fc24d7')}{format(lastUpdated, 'hh:mm:ss a')}
               </span>
             )}
           </div>
@@ -136,7 +135,7 @@ const ActiveOrderTracker = () => {
                   type="button"
                   onClick={() => setSelectedIndex((prev) => (prev > 0 ? prev - 1 : activeOrders.length - 1))}
                   className="p-1 rounded-lg hover:bg-white/20 transition-colors text-white"
-                  title="Previous order"
+                  title={copy('previous_order_4102dd7')}
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
@@ -160,7 +159,7 @@ const ActiveOrderTracker = () => {
                   type="button"
                   onClick={() => setSelectedIndex((prev) => (prev < activeOrders.length - 1 ? prev + 1 : 0))}
                   className="p-1 rounded-lg hover:bg-white/20 transition-colors text-white"
-                  title="Next order"
+                  title={copy('next_order_46d70cf')}
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
@@ -174,7 +173,7 @@ const ActiveOrderTracker = () => {
                 fetchActiveOrders().finally(() => setLoading(false));
               }}
               className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 transition-colors text-slate-300 hover:text-white"
-              title="Refresh status"
+              title={copy('refresh_status_442c4b8')}
             >
               <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
             </button>
@@ -188,20 +187,19 @@ const ActiveOrderTracker = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
-                <h3 className="text-base sm:text-lg font-black tracking-tight text-white">
-                  Order #{currentOrder.orderNumber}
+                <h3 className="text-base sm:text-lg font-black tracking-tight text-white">{copy('order_a458d68')}{currentOrder.orderNumber}
                 </h3>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-primary-500/20 text-primary-300 border border-primary-500/30">
                   {currentOrder.orderStatus.replace(/_/g, ' ')}
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 mt-0.5 flex items-center gap-2 flex-wrap">
-                <span>{totalItems} {totalItems === 1 ? 'Garment' : 'Garments'}</span>
+                <span>{totalItems} {totalItems === 1 ? copy('garment_88a6071') : copy('garments_c2e31cb')}</span>
                 <span>•</span>
-                <span>Grand Total: ₹{currentOrder.pricingBreakdown?.grandTotal}</span>
+                <span>{copy('grand_total_ce7c777')}{currentOrder.pricingBreakdown?.grandTotal}</span>
                 <span>•</span>
                 <span className={isPaid ? 'text-emerald-400 font-semibold' : 'text-amber-400 font-semibold'}>
-                  {isPaid ? 'Paid Online' : isCOD ? 'Cash on Delivery (Pending)' : 'Payment Pending'}
+                  {isPaid ? copy('paid_online_5cbec54') : isCOD ? copy('cash_on_delivery_pending_664ede1') : copy('payment_pending_ac3729c')}
                 </span>
               </p>
             </div>
@@ -210,7 +208,7 @@ const ActiveOrderTracker = () => {
               to="/my-orders"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-slate-900 font-bold text-[11px] hover:bg-slate-100 shadow-sm hover:shadow-md transition-all self-start sm:self-auto shrink-0"
             >
-              <span>View Full Order Details</span>
+              <span>{copy('view_full_order_details_5cd2e55')}</span>
               <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
@@ -219,10 +217,9 @@ const ActiveOrderTracker = () => {
           <div className="bg-black/30 backdrop-blur-md rounded-xl p-3 border border-white/10 space-y-2">
             <div className="flex items-center justify-between text-[11px] text-slate-300 font-semibold">
               <span className="flex items-center gap-1 text-primary-300 font-bold">
-                <Sparkles className="w-3 h-3 text-primary-400" />
-                Current Stage: {STAGES[currentStageIdx]?.label}
+                <Sparkles className="w-3 h-3 text-primary-400" />{copy('current_stage_635305b')}{copy('tracker_step_' + STAGES[currentStageIdx]?.id)}
               </span>
-              <span className="text-[10px] text-slate-400">Step {currentStageIdx + 1} of {STAGES.length}</span>
+              <span className="text-[10px] text-slate-400">{copy('step_474a987')}{currentStageIdx + 1}{copy('of_a4282e4')}{STAGES.length}</span>
             </div>
 
             {/* Continuous Progress Track */}
@@ -263,9 +260,9 @@ const ActiveOrderTracker = () => {
                           ? 'text-slate-300'
                           : 'text-slate-500'
                       }`}
-                      title={stage.label}
+                      title={copy('tracker_step_' + stage.id)}
                     >
-                      {stage.label}
+                      {copy('tracker_step_' + stage.id)}
                     </span>
                   </div>
                 );
@@ -283,7 +280,7 @@ const ActiveOrderTracker = () => {
               </div>
               <div className="min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  {isPickupPhase ? 'Pickup Schedule' : 'Delivery Schedule'}
+                  {isPickupPhase ? copy('pickup_schedule_b685a65') : copy('delivery_schedule_38823c2')}
                 </p>
                 <p className="text-xs font-bold text-white truncate">
                   {isPickupPhase ? currentOrder.pickupSchedule?.date : currentOrder.deliverySchedule?.date}
@@ -300,9 +297,7 @@ const ActiveOrderTracker = () => {
                 <Truck className="w-3.5 h-3.5" />
               </div>
               <div className="min-w-0 grow">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Assigned Doorstep Rider
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{copy('assigned_doorstep_rider_acd731d')}</p>
                 {rider?.name ? (
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-white truncate">{rider.name}</span>
@@ -312,14 +307,12 @@ const ActiveOrderTracker = () => {
                         className="inline-flex items-center gap-1 text-[10px] text-teal-300 hover:text-teal-200 font-semibold"
                       >
                         <Phone className="w-2.5 h-2.5" />
-                        <span>Call</span>
+                        <span>{copy('call_d6e645b')}</span>
                       </a>
                     )}
                   </div>
                 ) : (
-                  <p className="text-[11px] text-slate-400 italic truncate">
-                    Rider will be assigned 1 hour before slot.
-                  </p>
+                  <p className="text-[11px] text-slate-400 italic truncate">{copy('rider_will_be_assigned_1_hour_before_slot_b387c68')}</p>
                 )}
               </div>
             </div>
@@ -331,7 +324,7 @@ const ActiveOrderTracker = () => {
               </div>
               <div className="min-w-0 grow">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
-                  {showDeliveryOtp ? 'Doorstep Delivery OTP' : 'Doorstep Pickup OTP'}
+                  {showDeliveryOtp ? copy('doorstep_delivery_otp_acc550e') : copy('doorstep_pickup_otp_7cb30f6')}
                 </p>
                 <div className="flex items-center gap-1.5">
                   <span className="font-mono text-sm font-black tracking-widest text-white px-2 py-0.5 rounded-md bg-black/40 border border-white/10">
@@ -339,9 +332,7 @@ const ActiveOrderTracker = () => {
                       ? currentOrder.verificationCodes?.deliveryOtp || currentOrder.deliveryOtp || '----'
                       : currentOrder.verificationCodes?.pickupOtp || currentOrder.pickupOtp || '----'}
                   </span>
-                  <span className="text-[9px] text-slate-300 truncate">
-                    Share with rider at doorstep
-                  </span>
+                  <span className="text-[9px] text-slate-300 truncate">{copy('share_with_rider_at_doorstep_225b531')}</span>
                 </div>
               </div>
             </div>

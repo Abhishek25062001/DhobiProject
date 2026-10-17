@@ -1,3 +1,4 @@
+import { notifyContentChanged } from './resourceCache.mjs';
 import axios from 'axios';
 import { readWithRetry, requireCatalog, requirePublicConfig } from './readWithRetry';
 
@@ -25,7 +26,10 @@ API.interceptors.request.use((config) => {
 
 // Interceptor to handle unauthenticated 401s
 API.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (['post', 'put', 'patch', 'delete'].includes(response.config.method) && /^\/(?:catalog|config|media|admin\/(?:content|categories|service-areas)|orders\/coupons)(?:\/|$)/.test(response.config.url)) notifyContentChanged();
+    return response;
+  },
   (error) => {
     if (error.response && error.response.status === 401) {
       // Don't auto-clear if we are already on login page
@@ -123,15 +127,16 @@ export const catalogService = {
     const res = await API.post('/catalog/garments', garmentData);
     return res.data;
   },
-  getCategories: async () => {
-    const res = await API.get('/catalog/categories');
+  getCategories: async (options = {}) => {
+    const res = await readWithRetry(API, '/catalog/categories', options);
     return res.data;
   },
 };
 
 export const orderService = {
-  getSlots: async (date) => {
-    const res = await API.get('/orders/slots', { params: { date } });
+  quote: async body => (await API.post('/orders/quote', body)).data,
+  getSlots: async (date, leg = 'pickup') => {
+    const res = await API.get('/orders/slots', { params: { date, leg } });
     return res.data;
   },
   createOrder: async (orderPayload) => {
@@ -303,8 +308,8 @@ export const adminService = {
   },
 
   // 3. Dynamic Categories
-  getCategories: async () => {
-    const res = await API.get('/admin/categories');
+  getCategories: async (options = {}) => {
+    const res = await readWithRetry(API, '/admin/categories', options);
     return res.data;
   },
   createCategory: async (categoryData) => {
@@ -361,3 +366,25 @@ export const notificationService = {
 };
 
 export default API;
+
+export const mediaService = {
+  list: async (includeArchived = false, options = {}) => (await readWithRetry(API, '/media', { ...options, params: { includeArchived } })).data,
+  upload: async body => (await API.post('/media', body)).data,
+  update: async (id, body) => (await API.put(`/media/${id}`, body)).data,
+  archive: async id => (await API.delete(`/media/${id}`)).data,
+  restore: async id => (await API.post(`/media/${id}/restore`)).data,
+};
+
+export const contentService = {
+  get: async (pageKey, options = {}) => (await readWithRetry(API, `/content/${pageKey}`, options)).data,
+  getAdmin: async pageKey => (await API.get(`/admin/content/${pageKey}`)).data,
+  save: async (pageKey, body) => (await API.put(`/admin/content/${pageKey}`, body)).data,
+};
+
+export const serviceAreaService = {
+  list: async (options = {}) => (await readWithRetry(API, '/service-areas', options)).data,
+  check: async (pincode, options = {}) => (await readWithRetry(API, '/service-areas/check', { ...options, params: { pincode } })).data,
+  listAdmin: async () => (await API.get('/admin/service-areas')).data,
+  create: async body => (await API.post('/admin/service-areas', body)).data,
+  save: async (id, body) => (await API.put(`/admin/service-areas/${id}`, body)).data,
+};

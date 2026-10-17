@@ -2,7 +2,7 @@
 .booking-garment-main { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 12px; }
 .booking-garment-photo { display: flex; align-items: flex-start; justify-content: center; padding-top: 8px; }
 .booking-garment-photo .hp-garment-image { display: block; width: 82px; height: 115px; object-fit: contain; }
-.booking-garment-photo .hp-garment-image.hp-sprite { width: 82px; height: 82px; background-image: url('/images/laundry/laundry-atlas.webp'); background-size: 300% 300%; background-repeat: no-repeat; }
+.booking-garment-photo .hp-garment-image.hp-sprite { width: 82px; height: 82px; background-size: 300% 300%; background-repeat: no-repeat; }
 .booking-garment-details { min-width: 0; }
 .booking-garment-services { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }
 .booking-garment-service { display: flex; align-items: center; justify-content: center; gap: 4px; border-width: 1px; border-radius: 8px; padding: 7px 4px; min-height: 40px; cursor: pointer; }

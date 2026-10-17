@@ -11,7 +11,7 @@ export function readBookingDraft() {
 
 export function readDraftCart(draft) {
   if (!Array.isArray(draft.cartItems)) return [];
-  return draft.cartItems.filter(item => item?.garment?._id && item.garment.pricing && Number.isFinite(item.quantity) && item.quantity > 0 && Number.isFinite(item.unitPrice) && Number.isFinite(item.lineTotal));
+  return draft.cartItems.filter(item => item?.garment?._id && item.garment.pricing && Number.isInteger(item.quantity) && item.quantity > 0 && item.quantity <= 999 && Number.isFinite(item.unitPrice) && item.unitPrice >= 0 && Number.isFinite(item.lineTotal) && item.lineTotal >= 0);
 }
 
 export function saveBookingDraft(fields) {

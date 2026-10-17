@@ -1,14 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { JourneyArt } from './LaundryArtwork';
+import ManagedImage from '../ManagedImage';
+import { visibleContentItems } from '../../../../shared/contentSchema.mjs';
 
-const stages = [
-  { kind: 'schedule', title: 'Schedule Pickup', description: 'Pick a time that suits you.' },
-  { kind: 'pickup', title: 'We Pick Up', description: 'Right from your doorstep.' },
-  { kind: 'care', title: 'We Clean with Care', description: 'Wash, press or dry clean.' },
-  { kind: 'delivery', title: 'Fresh Delivery', description: 'Back to you in 48 hours.' },
-];
-
-export default function LaundryJourney() {
+export default function LaundryJourney({ content, text }) {
+  const stages = visibleContentItems(content.stages);
   const section = useRef(null);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
@@ -20,9 +15,9 @@ export default function LaundryJourney() {
     return () => observer.disconnect();
   }, []);
   return <section id="how-it-works" className={`hp-journey ${visible ? 'hp-journey-visible' : ''}`} ref={section} aria-labelledby="hp-journey-title">
-    <div className="hp-journey-heading"><span className="hp-eyebrow">FROM YOUR DOOR. BACK TO YOU.</span><h2 id="hp-journey-title">How <span>IndoDhobi</span><br />{' '}Works</h2><p>Laundry, off your to-do list.</p></div>
+    <div className="hp-journey-heading"><span className="hp-eyebrow">{text(content.eyebrow)}</span><h2 id="hp-journey-title">{text(content.plain)} <span>{text(content.accent)}</span><br />{' '}{text(content.suffix)}</h2><p>{text(content.intro)}</p></div>
     <ol className="hp-journey-stages">
-      {stages.map((stage, index) => <li key={stage.kind} style={{ '--stage': index }}><div className="hp-journey-visual"><JourneyArt kind={stage.kind} /></div><div className="hp-journey-step-label"><span className="hp-stage-number">{index + 1}</span><div><h3>{stage.title}</h3><p>{stage.description}</p></div></div></li>)}
+      {stages.map((stage, index) => <li key={stage.id} style={{ '--stage': index }}><div className="hp-journey-visual"><ManagedImage optional reference={stage.image} className="hp-garment-image hp-journey-art" width={150} height={100} /></div><div className="hp-journey-step-label"><span className="hp-stage-number">{index + 1}</span><div><h3>{text(stage.title)}</h3><p>{text(stage.description)}</p></div></div></li>)}
     </ol>
   </section>;
 }

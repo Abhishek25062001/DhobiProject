@@ -13,9 +13,20 @@
     "seed": "npm --prefix server run seed",
     "test": "npm --prefix server test",
     "test:connectivity": "node --test tests/connectivity.test.mjs client/tests/apiRecovery.test.mjs client/tests/bookingDraft.test.mjs",
-    "test:contracts": "node --test tests/catalogContract.test.mjs"
+    "test:contracts": "node --test tests/catalogContract.test.mjs",
+    "test:admin-content": "node --test server/tests/*.test.mjs",
+    "migrate:website": "node server/scripts/migrateWebsite.js",
+    "test:cache": "node --test client/tests/resourceCache.test.mjs client/tests/basketReconciliation.test.mjs",
+    "test:acceptance": "npm run test:connectivity && npm run test:contracts && npm run test:cache && npm run test:admin-content"
   },
-  "keywords": ["indodhobi", "laundry", "mern", "ironing", "dry-clean", "razorpay"],
+  "keywords": [
+    "indodhobi",
+    "laundry",
+    "mern",
+    "ironing",
+    "dry-clean",
+    "razorpay"
+  ],
   "author": "IndoDhobi Team",
   "license": "ISC",
   "devDependencies": {

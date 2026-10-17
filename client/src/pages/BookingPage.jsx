@@ -1,3 +1,10 @@
+import BasketReview from '../components/BasketReview';
+import { saveBookingDraft } from '../utils/bookingDraft';
+import ContentAssurances from '../components/ContentAssurances';
+import useServiceAreas from '../hooks/useServiceAreas';
+import useSiteContent from '../hooks/useSiteContent';
+import { activeOptions, customTemplate, validPreferences, scheduleAllowed } from '../../../shared/bookingChoices.mjs';
+import { availableServices, availableFinishes, preferredFinish, selectionAvailable, IRONING_PRICE_KEYS, money } from '../../../shared/pricing.mjs';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -7,6 +14,7 @@ import PaymentModal from '../components/PaymentModal';
 import BookingGarmentCard from '../components/booking/BookingGarmentCard';
 import BookingBagThumbnail from '../components/booking/BookingBagThumbnail';
 import useGarments from '../hooks/useGarments';
+import useCategories from '../hooks/useCategories';
 import ApiLoadError from '../components/ApiLoadError';
 import { launchRazorpayCheckout } from '../utils/razorpayCheckout';
 import { 
@@ -129,40 +137,31 @@ const BookingPage = () => {
     amountNeededForFreeDelivery,
     platformConfig,
     freeDeliveryThreshold,
-    slots
+    slots,
+    catalogGarments,
+    extraPreferenceFee, reviewRequired, bookingBlocked, fetchPlatformConfig, configCheckedAt, availableCoupons, acknowledgeReview
   } = useOrderBooking();
 
+  const coverage = useServiceAreas();
+  const activeHub = coverage.areas.find(area => area.pincodes.includes(pickupAddress.pincode?.trim()));
+  const pageContent = useSiteContent('book', platformConfig);
+  const copy = pageContent.t;
+  const categoryResource = useCategories();
+  const categoryOptions = [{ _id: 'All', name: copy('allCategories') }, ...categoryResource.categories];
   const [activeStep, setActiveStep] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const { garments, loading: loadingGarments, error: catalogError, retry: retryCatalog } = useGarments(selectedCategory, searchQuery);
   const [showMobileCart, setShowMobileCart] = useState(false);
-  const [allGarments, setAllGarments] = useState([]);
-
-  // Fetch all catalog garments once to compute category counts
-  useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const res = await catalogService.getGarments('', '');
-        if (res.success && res.data) {
-          setAllGarments(res.data);
-        }
-      } catch (err) {
-        // silent fallback
-      }
-    };
-    fetchAll();
-  }, []);
+  const { garments: allGarments } = useGarments();
 
   const categoryCounts = React.useMemo(() => {
     const source = allGarments.length > 0 ? allGarments : garments;
-    const counts = { All: 0, Men: 0, Women: 0, Household: 0, 'Winter & Heavy': 0 };
+    const counts = { All: 0 };
     source.forEach((g) => {
-      if (!g.isCustom && !g.name?.includes('Miscellaneous')) {
+      if (!g.isCustom) {
         counts.All = (counts.All || 0) + 1;
-        if (counts[g.category] !== undefined) {
-          counts[g.category] += 1;
-        }
+        counts[g.categoryId] = (counts[g.categoryId] || 0) + 1;
       }
     });
     return counts;
@@ -213,7 +212,7 @@ const BookingPage = () => {
           activeStep,
           appliedCoupon
         };
-        sessionStorage.setItem('indodhobi_draft_booking', JSON.stringify(draft));
+        saveBookingDraft(draft);
       } catch (err) {
         console.warn('[Draft Persistence Error]:', err);
       }
@@ -254,7 +253,7 @@ const BookingPage = () => {
 
   // Promo coupon state
   const [couponInput, setCouponInput] = useState('');
-  const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [serverQuote, setServerQuote] = useState(null);
   const [validatingCoupon, setValidatingCoupon] = useState(false);
 
   // Payment method selection
@@ -266,19 +265,6 @@ const BookingPage = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   // Fetch available promo coupons from backend
-  useEffect(() => {
-    const fetchCoupons = async () => {
-      try {
-        const res = await orderService.getCoupons();
-        if (res.success && res.coupons) {
-          setAvailableCoupons(res.coupons);
-        }
-      } catch (err) {
-        console.warn('Failed to load coupons:', err);
-      }
-    };
-    fetchCoupons();
-  }, []);
 
   const handleApplyCoupon = async (codeToApply) => {
     const code = (codeToApply || couponInput || '').trim();
@@ -327,48 +313,21 @@ const BookingPage = () => {
     }
   }, [user]);
 
-  // Slot capacity state for selected pickup date
   const [slotCapacities, setSlotCapacities] = useState({});
-
+  const [deliveryCapacities, setDeliveryCapacities] = useState({});
+  const [slotsError, setSlotsError] = useState('');
+  const [slotRefresh, setSlotRefresh] = useState(0);
   useEffect(() => {
-    const fetchSlots = async () => {
-      if (!pickupSchedule.date) return;
-      try {
-        const res = await orderService.getSlots(pickupSchedule.date);
-        if (res.success && res.slots) {
-          const map = {};
-          res.slots.forEach((s) => {
-            map[s.slot] = {
-              remaining: s.remainingCapacity,
-              isAvailable: s.isAvailable,
-              isPast: s.isPast
-            };
-          });
-          setSlotCapacities(map);
-        }
-      } catch (err) {
-        // Silently continue with defaults
-      }
-    };
-
-    fetchSlots();
-  }, [pickupSchedule.date]);
-
-  const availableSlotsList = React.useMemo(() => {
-    if (slots && slots.length > 0) {
-      return slots.filter((s) => s.isActive !== false).map((s) => s.label);
-    }
-    const fromCapacities = Object.keys(slotCapacities);
-    if (fromCapacities.length > 0) {
-      return fromCapacities;
-    }
-    return [
-      '08:00 AM - 10:00 AM',
-      '10:00 AM - 01:00 PM',
-      '02:00 PM - 05:00 PM',
-      '06:00 PM - 09:00 PM'
-    ];
-  }, [slots, slotCapacities]);
+    let current = true;
+    setSlotCapacities({}); setDeliveryCapacities({}); setSlotsError('');
+    Promise.all([orderService.getSlots(pickupSchedule.date, 'pickup'), orderService.getSlots(deliverySchedule.date, 'delivery')]).then(([pickup, delivery]) => {
+      if (!current) return;
+      const mapped = response => Object.fromEntries(response.slots.map(slot => [slot.slot, { remaining: slot.remainingCapacity, isAvailable: slot.isAvailable, isPast: slot.isPast }]));
+      setSlotCapacities(mapped(pickup)); setDeliveryCapacities(mapped(delivery));
+    }).catch(() => { if (current) setSlotsError('We could not verify slot availability. Please retry.'); });
+    return () => { current = false; };
+  }, [pickupSchedule.date, deliverySchedule.date, slots, slotRefresh, configCheckedAt]);
+  const availableSlotsList = activeOptions(slots).map(slot => slot.label);
 
   // Generate horizontal strip dates for Pickup
   const pickupDateCapsules = React.useMemo(() => {
@@ -378,14 +337,14 @@ const BookingPage = () => {
       const d = addDays(base, i);
       const dateStr = format(d, 'yyyy-MM-dd');
       let title = '';
-      if (i === 0) title = 'Today';
-      else if (i === 1) title = 'Tomorrow';
+      if (i === 0) title = copy('today');
+      else if (i === 1) title = copy('tomorrow');
       else title = format(d, 'EEE d');
       const sub = format(d, 'MMM');
       list.push({ dateStr, title, sub, dateObj: d });
     }
     return list;
-  }, []);
+  }, [pageContent.page]);
 
   // Generate horizontal strip dates for Delivery (guarantee minimum 24h turnaround)
   const deliveryDateCapsules = React.useMemo(() => {
@@ -395,32 +354,26 @@ const BookingPage = () => {
       const d = addDays(pickupDateObj, i);
       const dateStr = format(d, 'yyyy-MM-dd');
       let title = '';
-      if (i === 1) title = 'Next Day';
+      if (i === 1) title = copy('nextDay');
       else title = format(d, 'EEE d');
       const sub = format(d, 'MMM');
       list.push({ dateStr, title, sub, dateObj: d });
     }
     return list;
-  }, [pickupSchedule.date]);
+  }, [pickupSchedule.date, pageContent.page]);
 
-  // Template for custom garments
-  const customGarmentTemplate = React.useMemo(() => {
-    return (
-      garments.find((g) => g.isCustom || g.name.includes('Miscellaneous')) || {
-        _id: 'custom_misc_id',
-        name: 'Miscellaneous / Special Item',
-        category: 'Household',
-        isCustom: true,
-        pricing: {
-          washOnly: 40,
-          standardSteamIron: 15,
-          crispStarchPress: 25,
-          delicatePress: 30,
-          dryClean: 120
-        }
-      }
-    );
-  }, [garments]);
+  const customGarmentTemplate = customTemplate(catalogGarments);
+  const customServices = customGarmentTemplate ? availableServices(customGarmentTemplate, platformConfig) : [];
+  const customFinishes = customGarmentTemplate ? availableFinishes(customGarmentTemplate, platformConfig) : [];
+  const customAvailable = customGarmentTemplate && selectionAvailable(customGarmentTemplate, platformConfig, customServiceType, customIroningType);
+  const customEstimate = customAvailable ? money(calculateItemUnitPrice(customGarmentTemplate, customServiceType, customIroningType) * customQuantity) : null;
+  const openCustom = () => {
+    if (!customServices.length) return;
+    const service = customServices.find(option => option.code === customServiceType)?.code || customServices[0].code;
+    setCustomServiceType(service);
+    setCustomIroningType(preferredFinish(customGarmentTemplate, platformConfig, service, customIroningType));
+    setShowCustomModal(true);
+  };
 
   // Handler to add custom item to bag
   const handleAddCustomGarment = (e) => {
@@ -430,6 +383,7 @@ const BookingPage = () => {
       return;
     }
 
+    if (!customAvailable) { toast.error('Custom garment booking is currently unavailable.'); return; }
     addItem(
       customGarmentTemplate,
       customServiceType,
@@ -457,6 +411,7 @@ const BookingPage = () => {
 
   // Validation before advancing to next step
   const handleNextStep = () => {
+    if (bookingBlocked || reviewRequired) { toast.error('Review the updated laundry bag before continuing.'); return; }
     if (activeStep === 1) {
       if (cartItems.length === 0) {
         toast.error('Please add at least one garment to your laundry bag.');
@@ -465,9 +420,11 @@ const BookingPage = () => {
       setActiveStep(2);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (activeStep === 2) {
+      if (!validPreferences(preferences, platformConfig)) { toast.error('Choose available detergent and packaging options before continuing.'); return; }
       setActiveStep(3);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (activeStep === 3) {
+      if (coverage.loading || coverage.error || !activeHub) { toast.error(coverage.error ? 'Coverage could not be checked. Please retry.' : 'Enter a supported six-digit pincode before continuing.'); return; }
       if (!pickupAddress.flatAndBuilding || !pickupAddress.streetAndLandmark || !pickupAddress.pincode) {
         toast.error('Please fill in complete pickup address details.');
         return;
@@ -480,10 +437,11 @@ const BookingPage = () => {
         toast.error('Please select a delivery date and slot.');
         return;
       }
-      if (new Date(deliverySchedule.date) <= new Date(pickupSchedule.date)) {
-        toast.error('Delivery date must be scheduled after pickup date (minimum 24-hour turnaround required).');
+      if (!scheduleAllowed(pickupSchedule, deliverySchedule, slots, platformConfig, isExpress)) {
+        toast.error(`Choose delivery at least ${isExpress ? platformConfig.expressTurnaroundHours : platformConfig.minStandardTurnaroundHours} hours after the pickup window ends.`);
         return;
       }
+      if (!slotCapacities[pickupSchedule.timeSlot]?.isAvailable || !deliveryCapacities[deliverySchedule.timeSlot]?.isAvailable) { toast.error('Choose available pickup and delivery slots.'); return; }
       setActiveStep(4);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -510,7 +468,7 @@ const BookingPage = () => {
         activeStep: 4,
         appliedCoupon
       };
-      sessionStorage.setItem('indodhobi_draft_booking', JSON.stringify(draft));
+      saveBookingDraft(draft);
       toast('Please log in or register to place your laundry order.', { icon: '🔐' });
       navigate('/login?redirect=/book');
       return;
@@ -520,6 +478,10 @@ const BookingPage = () => {
       toast.error('Your laundry bag is empty.');
       return;
     }
+
+    if (bookingBlocked || reviewRequired) { toast.error('Review the updated laundry bag before placing the order.'); return; }
+    if (!validPreferences(preferences, platformConfig)) { toast.error('Choose available care preferences.'); setActiveStep(2); return; }
+    if (coverage.error || coverage.loading || !activeHub || !scheduleAllowed(pickupSchedule, deliverySchedule, slots, platformConfig, isExpress)) { toast.error('Review your address and available schedule.'); setActiveStep(3); return; }
 
     setPlacingOrder(true);
 
@@ -542,10 +504,19 @@ const BookingPage = () => {
           ...pickupAddress,
           contactPhone: pickupAddress.contactPhone || user.phone
         },
-        paymentMethod
+        paymentMethod,
+        ...(paymentMethod === 'ONLINE' ? { onlineSubMethod: 'RAZORPAY_CHECKOUT' } : {})
       };
 
-      const res = await orderService.createOrder(orderPayload);
+      const preview = await orderService.quote(orderPayload);
+      const changed = preview.quote.pricingBreakdown.grandTotal !== grandTotal || preview.quote.items.some((item, index) => item.unitPrice !== cartItems[index]?.unitPrice);
+      if (changed && !(serverQuote?.reviewed && serverQuote.fingerprint === preview.fingerprint)) {
+        setServerQuote({ ...preview, reviewed: false });
+        await fetchPlatformConfig();
+        toast('Booking details changed. Review the updated quote before placing the order.');
+        return;
+      }
+      const res = await orderService.createOrder({ ...orderPayload, quoteFingerprint: preview.fingerprint });
 
       if (res.success && res.order) {
         setCreatedOrder(res.order);
@@ -585,6 +556,10 @@ const BookingPage = () => {
         toast.error(res.message || 'Failed to place order.');
       }
     } catch (error) {
+      if (error.response?.status === 409 && error.response.data.quote) {
+        setServerQuote({ quote: error.response.data.quote, fingerprint: error.response.data.fingerprint, reviewed: false });
+        await fetchPlatformConfig();
+      }
       console.error('[Place Order Error]:', error);
       toast.error(error.response?.data?.message || 'Server error while booking order.');
     } finally {
@@ -599,18 +574,24 @@ const BookingPage = () => {
     navigate('/order-success', { state: { order: updatedOrder || createdOrder } });
   };
 
+  if (pageContent.error) return <ApiLoadError message="Book content could not be loaded." onRetry={pageContent.retry} />;
+  if (pageContent.loading) return <div className="min-h-[70vh]" aria-busy="true" />;
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10 pb-28 lg:pb-12">
       
+      <BasketReview />
+      {serverQuote && !serverQuote.reviewed && <section role="status" className="my-4 p-4 rounded-2xl border border-amber-200 bg-amber-50 text-sm space-y-3"><h3 className="font-bold">Updated booking quote</h3><p>The current total is ₹{serverQuote.quote.pricingBreakdown.grandTotal}. Review the refreshed bag and booking details.</p><button type="button" className="btn-primary" disabled={bookingBlocked} onClick={() => { acknowledgeReview(); setServerQuote({ ...serverQuote, reviewed: true }); }}>Review and accept updated quote</button></section>}
+      <ContentAssurances content={pageContent.section('assurances')} text={pageContent.text} />
       {/* ================= STEP PROGRESS WIZARD ================= */}
       <div className="mb-8">
         {/* Desktop Stepper (Visible sm and above) */}
         <div className="hidden sm:grid grid-cols-4 gap-3">
           {[
-            { num: 1, label: 'Select Clothes', desc: 'Garments & Ironing' },
-            { num: 2, label: 'Wash Care', desc: 'Detergents & Bags' },
-            { num: 3, label: 'Schedule', desc: 'Pickup & Delivery' },
-            { num: 4, label: 'Checkout', desc: 'Payment & Confirm' }
+            { num: 1, label: copy('select_clothes_10f8467'), desc: copy('garments_ironing_0f2c96e') },
+            { num: 2, label: copy('wash_care_22e6486'), desc: copy('detergents_bags_8be2e01') },
+            { num: 3, label: copy('schedule_f4830a1'), desc: copy('pickup_delivery_dcb17ea') },
+            { num: 4, label: copy('checkout_99e71f4'), desc: copy('payment_confirm_580a0c3') }
           ].map((s) => (
             <div
               key={s.num}
@@ -651,16 +632,15 @@ const BookingPage = () => {
         {/* Mobile Stepper (Clean compact progress bar on small screens) */}
         <div className="sm:hidden bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-extrabold text-slate-900">
-              Step {activeStep} of 4:{' '}
+            <span className="font-extrabold text-slate-900">{copy('step_474a987')}{activeStep}{copy('of_4_3e185dd')}{' '}
               <span className="text-primary-600">
                 {activeStep === 1
-                  ? 'Select Clothes'
+                  ? copy('select_clothes_10f8467')
                   : activeStep === 2
-                  ? 'Wash Care & Preferences'
+                  ? copy('wash_care_preferences_46943c5')
                   : activeStep === 3
-                  ? 'Schedule Pickup & Delivery'
-                  : 'Review & Payment'}
+                  ? copy('schedule_pickup_delivery_2ec3005')
+                  : copy('review_payment_6af7ffb')}
               </span>
             </span>
             <div className="flex items-center gap-1.5">
@@ -705,7 +685,8 @@ const BookingPage = () => {
               <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                   <div className="flex items-center gap-1.5 overflow-x-auto w-full pb-1 sm:pb-0 scrollbar-none">
-                    {['All', 'Men', 'Women', 'Household', 'Winter & Heavy'].map((cat) => {
+                    {categoryOptions.map((category) => {
+                      const cat = category._id;
                       const isSelected = selectedCategory === cat;
                       const count = categoryCounts[cat] || 0;
                       return (
@@ -719,7 +700,7 @@ const BookingPage = () => {
                               : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
                           }`}
                         >
-                          <span>{cat}</span>
+                          <span>{category.name}</span>
                           {count > 0 && (
                             <span
                               className={`text-[10px] font-extrabold px-1.5 py-0.2 rounded-full ${
@@ -739,7 +720,7 @@ const BookingPage = () => {
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="text"
-                      placeholder="Search garments (e.g. Saree, Kurta)..."
+                      placeholder={copy('search_garments_e_g_saree_kurta_6631e90')}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="w-full pl-9 pr-8 py-2 text-sm sm:text-xs rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 bg-white"
@@ -749,7 +730,7 @@ const BookingPage = () => {
                         type="button"
                         onClick={() => setSearchQuery('')}
                         className="w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center cursor-pointer transition-colors"
-                        title="Clear search"
+                        title={copy('clear_search_3b7ea51')}
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -759,20 +740,19 @@ const BookingPage = () => {
               </div>
 
               {/* Garments Listing */}
-              {loadingGarments ? (
+              {categoryResource.error ? <ApiLoadError message={copy('we_couldn_t_load_categories_2a81ded')} onRetry={categoryResource.retry} /> : loadingGarments || categoryResource.loading ? (
                 <div className="p-12 text-center bg-white rounded-3xl border border-slate-200">
                   <Loader2 className="w-8 h-8 text-primary-600 animate-spin mx-auto mb-2" />
-                  <p className="text-xs text-slate-500">Loading catalog with Indian garments...</p>
+                  <p className="text-xs text-slate-500">{copy('loading_catalog_with_indian_garments_088f6b4')}</p>
                 </div>
               ) : catalogError ? <ApiLoadError onRetry={retryCatalog} /> : (
                 <div className="space-y-4">
-                  {garments.filter((g) => !g.isCustom && !g.name.includes('Miscellaneous')).length === 0 ? (
+                  {garments.filter((g) => !g.isCustom).length === 0 ? (
                     <div className="p-8 sm:p-12 text-center bg-white rounded-3xl border border-slate-200 space-y-3">
                       <Search className="w-8 h-8 mx-auto text-slate-300" />
                       <div>
-                        <h4 className="font-bold text-sm text-slate-800">No garments found</h4>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          We couldn't find any garments matching "{searchQuery}" in {selectedCategory}.
+                        <h4 className="font-bold text-sm text-slate-800">{copy('no_garments_found_f0ba2e5')}</h4>
+                        <p className="text-xs text-slate-500 mt-0.5">{copy('we_couldn_t_find_any_garments_matching_17361d6')}{searchQuery}{copy('in_76af5ae')}{selectedCategory}.
                         </p>
                       </div>
                       <button
@@ -782,14 +762,12 @@ const BookingPage = () => {
                           setSelectedCategory('All');
                         }}
                         className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs cursor-pointer transition-colors"
-                      >
-                        Reset Filters &amp; View All
-                      </button>
+                      >{copy('reset_filters_view_all_30b1e7a')}</button>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                       {garments
-                        .filter((g) => !g.isCustom && !g.name.includes('Miscellaneous'))
+                        .filter((g) => !g.isCustom)
                         .map((garment) => {
                           const cartItem = cartItems.find((i) => !i.isCustomItem && i.garment._id === garment._id);
                           return <BookingGarmentCard
@@ -801,6 +779,7 @@ const BookingPage = () => {
                             updateServiceType={updateServiceType}
                             updateIroningType={updateIroningType}
                             fallbackIcon={getGarmentIcon(garment.iconName)}
+                            copy={copy}
                           />;
                       })}
                     </div>
@@ -808,7 +787,8 @@ const BookingPage = () => {
 
                   {/* UPGRADE 3: Dedicated "+ Add Custom / Unlisted Garment" Card below the catalog */}
                   <div
-                    onClick={() => setShowCustomModal(true)}
+                    onClick={openCustom}
+                    aria-disabled={!customServices.length}
                     className="p-5 rounded-3xl border-2 border-dashed border-primary-300 hover:border-primary-500 bg-primary-50/40 hover:bg-primary-50/70 transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left group shadow-xs"
                   >
                     <div className="flex items-center gap-4">
@@ -817,16 +797,10 @@ const BookingPage = () => {
                       </div>
                       <div>
                         <div className="flex items-center gap-2 justify-center sm:justify-start">
-                          <h4 className="font-extrabold text-sm text-slate-900">
-                            + Add Custom / Unlisted Garment
-                          </h4>
-                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold">
-                            Doorstep Confirmed
-                          </span>
+                          <h4 className="font-extrabold text-sm text-slate-900">{copy('add_custom_unlisted_garment_c8441ac')}</h4>
+                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold">{copy('doorstep_confirmed_3b1e8f6')}</span>
                         </div>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Can't find a specific item? Add designer sarees, sherwanis, heavy drapes, or special fabric items.
-                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">{copy('can_t_find_a_specific_item_add_designer_sarees_sherwanis_heavy_dr_5c6acf7')}</p>
                       </div>
                     </div>
 
@@ -834,12 +808,12 @@ const BookingPage = () => {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setShowCustomModal(true);
+                        openCustom();
                       }}
                       className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-sm shadow-primary-600/30 flex items-center gap-1.5 shrink-0 cursor-pointer"
                     >
                       <Plus className="w-4 h-4" />
-                      <span>Add Custom Garment</span>
+                      <span>{customServices.length ? copy('add_custom_garment_836db4a') : copy('custom_booking_unavailable_fa86d80')}</span>
                     </button>
                   </div>
                 </div>
@@ -852,7 +826,7 @@ const BookingPage = () => {
                   onClick={handleNextStep}
                   className="px-6 py-3.5 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-primary-600/30 flex items-center gap-2"
                 >
-                  <span>Continue to Wash Care &amp; Preferences</span>
+                  <span>{copy('continue_to_wash_care_preferences_993a5fe')}</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
@@ -864,26 +838,15 @@ const BookingPage = () => {
           {activeStep === 2 && (
             <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Custom Wash Care &amp; Preferences</h3>
-                <p className="text-xs text-slate-500">
-                  Tell our dhobi masters exactly how you like your garments treated.
-                </p>
+                <h3 className="text-lg font-bold text-slate-900">{copy('custom_wash_care_preferences_aa687d7')}</h3>
+                <p className="text-xs text-slate-500">{copy('tell_our_dhobi_masters_exactly_how_you_like_your_garments_treated_f4f63bd')}</p>
               </div>
 
               {/* Detergent Type */}
               <div className="space-y-3">
-                <label className="block text-xs font-bold text-slate-800">
-                  1. Detergent Selection:
-                </label>
+                <label className="block text-xs font-bold text-slate-800">{copy('1_detergent_selection_dc575a4')}</label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {(platformConfig?.detergentOptions?.filter((d) => d.isActive !== false)?.length
-                    ? platformConfig.detergentOptions.filter((d) => d.isActive !== false)
-                    : [
-                        { code: 'Standard', name: 'Standard Gentle', description: 'Mild German liquid detergent for daily wear.', extraPricePerOrder: 0 },
-                        { code: 'Hypoallergenic', name: 'Hypoallergenic Baby-Safe', description: 'Dermatologist-tested, zero fragrance or allergens.', extraPricePerOrder: 0 },
-                        { code: 'Fabric Softener Plus', name: 'Fabric Softener Plus', description: 'Enriched with natural botanical softening conditioners.', extraPricePerOrder: 0 }
-                      ]
-                  ).map((d) => (
+                  {activeOptions(platformConfig?.detergentOptions).map((d) => (
                     <div
                       key={d.code}
                       onClick={() => setPreferences({ ...preferences, detergentType: d.code })}
@@ -912,17 +875,9 @@ const BookingPage = () => {
 
               {/* Packaging Type */}
               <div className="space-y-3">
-                <label className="block text-xs font-bold text-slate-800">
-                  2. Packaging Preference:
-                </label>
+                <label className="block text-xs font-bold text-slate-800">{copy('2_packaging_preference_53710c7')}</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {(platformConfig?.packagingOptions?.filter((p) => p.isActive !== false)?.length
-                    ? platformConfig.packagingOptions.filter((p) => p.isActive !== false)
-                    : [
-                        { code: 'Folded', name: 'Neatly Folded in Eco-Bags', description: 'Protected in breathable, biodegradable paper totes for your wardrobe shelves.', extraPricePerOrder: 0 },
-                        { code: 'On Hangers', name: 'Crisp on Hangers', description: 'Ready-to-hang wooden / wire hangers wrapped in dust covers (ideal for suits & sarees).', extraPricePerOrder: 0 }
-                      ]
-                  ).map((p) => (
+                  {activeOptions(platformConfig?.packagingOptions).map((p) => (
                     <div
                       key={p.code}
                       onClick={() => setPreferences({ ...preferences, packagingType: p.code })}
@@ -951,19 +906,19 @@ const BookingPage = () => {
 
               {/* Special Instructions */}
               <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-800">
-                  3. Special Handling Instructions (Optional):
-                </label>
+                <label className="block text-xs font-bold text-slate-800">{copy('3_special_handling_instructions_optional_3675d2c')}</label>
                 <textarea
                   rows={3}
                   value={preferences.specialInstructions}
                   onChange={(e) => setPreferences({ ...preferences, specialInstructions: e.target.value })}
-                  placeholder="e.g. Mild tea stain on white linen shirt collar; please use extra starch on cotton kurta cuffs; do not twist delicate silk saree."
+                  placeholder={copy('e_g_mild_tea_stain_on_white_linen_shirt_collar_please_use_extra_s_6fa3769')}
                   className="w-full px-3.5 py-2.5 text-xs rounded-2xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
                 />
               </div>
 
-              {/* Express 24-Hour Turnaround Toggle Switch */}
+              {!activeOptions(platformConfig.detergentOptions).length && <p role="status" className="text-amber-800">{copy('no_detergent_options_are_currently_available_275e52e')}</p>}
+              {!activeOptions(platformConfig.packagingOptions).length && <p role="status" className="text-amber-800">{copy('no_packaging_options_are_currently_available_d85736b')}</p>}
+              {/* Express turnaround */}
               <div
                 className={`p-4 sm:p-5 rounded-2xl border transition-all ${
                   isExpress
@@ -982,16 +937,11 @@ const BookingPage = () => {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-sm text-slate-900">
-                          Express 24-Hour Turnaround
-                        </span>
+                        <span className="font-extrabold text-sm text-slate-900">{copy('express_24_hour_turnaround_668d8c9')}</span>
                         <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-black uppercase tracking-wider">
-                          +₹{platformConfig?.expressSurcharge ?? 99} Express
-                        </span>
+                          +₹{platformConfig?.expressSurcharge ?? 99}{copy('express_fc1fab4')}</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Priority wash, iron &amp; fast doorstep return within 24 hours of pickup.
-                      </p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">{copy('priority_wash_iron_fast_doorstep_return_within_24_hours_of_pickup_931d9f5')}</p>
                     </div>
                   </div>
 
@@ -1030,7 +980,7 @@ const BookingPage = () => {
                   className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-50 flex items-center gap-1.5"
                 >
                   <ChevronLeft className="w-4 h-4" />
-                  <span>Back to Clothes</span>
+                  <span>{copy('back_to_clothes_9bc8636')}</span>
                 </button>
 
                 <button
@@ -1038,7 +988,7 @@ const BookingPage = () => {
                   onClick={handleNextStep}
                   className="px-6 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-primary-600/30 flex items-center gap-2"
                 >
-                  <span>Continue to Schedule &amp; Address</span>
+                  <span>{copy('continue_to_schedule_address_4484d25')}</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
@@ -1053,10 +1003,8 @@ const BookingPage = () => {
               {/* Pickup & Delivery Slots */}
               <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">Doorstep Pickup &amp; Delivery Schedule</h3>
-                  <p className="text-xs text-slate-500">
-                    Choose when our rider should collect and deliver your fresh clothes.
-                  </p>
+                  <h3 className="text-lg font-bold text-slate-900">{copy('doorstep_pickup_delivery_schedule_30f6f96')}</h3>
+                  <p className="text-xs text-slate-500">{copy('choose_when_our_rider_should_collect_and_deliver_your_fresh_cloth_9784617')}</p>
                 </div>
 
                 {/* Pickup Section */}
@@ -1064,18 +1012,15 @@ const BookingPage = () => {
                   <div className="flex items-center justify-between text-primary-700 font-bold text-xs">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-primary-600" />
-                      <span>STEP A: PICKUP DATE &amp; TIME</span>
+                      <span>{copy('step_a_pickup_date_time_9483530')}</span>
                     </div>
-                    <span className="text-[11px] font-semibold text-slate-500">
-                      Selected: <strong className="text-primary-800">{pickupSchedule.date}</strong>
+                    <span className="text-[11px] font-semibold text-slate-500">{copy('selected_1f153fd')}<strong className="text-primary-800">{pickupSchedule.date}</strong>
                     </span>
                   </div>
 
                   {/* Horizontal Scrollable Strip of Capsule Buttons for Pickup Date */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
-                      Select Pickup Date:
-                    </label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">{copy('select_pickup_date_c000c54')}</label>
                     <div className="flex gap-2 overflow-x-auto pb-2 pt-0.5 scrollbar-thin">
                       {pickupDateCapsules.map((d) => {
                         const isSelected = pickupSchedule.date === d.dateStr;
@@ -1112,14 +1057,12 @@ const BookingPage = () => {
 
                   {/* Responsive 2x2 Grid for Pickup Time Slots */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
-                      Select Pickup Time Slot:
-                    </label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">{copy('select_pickup_time_slot_1585889')}</label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       {availableSlotsList.map((slot) => {
                         const slotInfo = slotCapacities[slot];
-                        const remaining = slotInfo ? slotInfo.remaining : 15;
-                        const isUnavailable = slotInfo ? !slotInfo.isAvailable : false;
+                        const remaining = slotInfo ? slotInfo.remaining : 0;
+                        const isUnavailable = slotInfo ? !slotInfo.isAvailable : true;
                         const isPast = slotInfo?.isPast;
                         const isSelected = pickupSchedule.timeSlot === slot;
                         const icon = getSlotIcon(slot);
@@ -1149,13 +1092,9 @@ const BookingPage = () => {
                             </div>
                             <div className="flex items-center gap-1.5 mt-1">
                               {isPast ? (
-                                <span className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-600 text-[10px] font-bold">
-                                  Passed
-                                </span>
+                                <span className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-600 text-[10px] font-bold">{copy('passed_436fe71')}</span>
                               ) : isUnavailable ? (
-                                <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 text-[10px] font-black uppercase tracking-wider">
-                                  Slot Full
-                                </span>
+                                <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 text-[10px] font-black uppercase tracking-wider">{copy('slot_full_a764bd9')}</span>
                               ) : (
                                 <span
                                   className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
@@ -1164,8 +1103,7 @@ const BookingPage = () => {
                                       : 'bg-emerald-50 text-emerald-700 border border-emerald-200/50'
                                   }`}
                                 >
-                                  {remaining} slots left
-                                </span>
+                                  {remaining}{copy('slots_left_6bed6dd')}</span>
                               )}
                             </div>
                           </button>
@@ -1180,18 +1118,15 @@ const BookingPage = () => {
                   <div className="flex items-center justify-between text-teal-700 font-bold text-xs">
                     <div className="flex items-center gap-2">
                       <PackageCheck className="w-4 h-4 text-teal-600" />
-                      <span>STEP B: DELIVERY DATE &amp; TIME (Turnaround guaranteed)</span>
+                      <span>{copy('step_b_delivery_date_time_turnaround_guaranteed_4811be8')}</span>
                     </div>
-                    <span className="text-[11px] font-semibold text-slate-500">
-                      Selected: <strong className="text-teal-800">{deliverySchedule.date}</strong>
+                    <span className="text-[11px] font-semibold text-slate-500">{copy('selected_1f153fd')}<strong className="text-teal-800">{deliverySchedule.date}</strong>
                     </span>
                   </div>
 
                   {/* Horizontal Scrollable Strip of Capsule Buttons for Delivery Date */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
-                      Select Delivery Date:
-                    </label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">{copy('select_delivery_date_4e1040a')}</label>
                     <div className="flex gap-2 overflow-x-auto pb-2 pt-0.5 scrollbar-thin">
                       {deliveryDateCapsules.map((d) => {
                         const isSelected = deliverySchedule.date === d.dateStr;
@@ -1220,11 +1155,10 @@ const BookingPage = () => {
 
                   {/* Responsive 2x2 Grid for Delivery Time Slots */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
-                      Select Delivery Time Slot:
-                    </label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">{copy('select_delivery_time_slot_225aa91')}</label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       {availableSlotsList.map((slot) => {
+                        const isUnavailable = !deliveryCapacities[slot]?.isAvailable || !scheduleAllowed(pickupSchedule, { ...deliverySchedule, timeSlot: slot }, slots, platformConfig, isExpress);
                         const isSelected = deliverySchedule.timeSlot === slot;
                         const icon = getSlotIcon(slot);
 
@@ -1232,6 +1166,7 @@ const BookingPage = () => {
                           <button
                             key={slot}
                             type="button"
+                            disabled={isUnavailable}
                             onClick={() => setDeliverySchedule({ ...deliverySchedule, timeSlot: slot })}
                             className={`p-3.5 rounded-2xl border text-left transition-all relative cursor-pointer ${
                               isSelected
@@ -1248,9 +1183,7 @@ const BookingPage = () => {
                                 <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />
                               )}
                             </div>
-                            <span className="text-[10px] font-medium text-slate-500 block mt-1">
-                              Standard Doorstep Return
-                            </span>
+                            <span className="text-[10px] font-medium text-slate-500 block mt-1">{copy('standard_doorstep_return_e91e5f2')}</span>
                           </button>
                         );
                       })}
@@ -1260,27 +1193,25 @@ const BookingPage = () => {
 
               </div>
 
+              {slotsError && <ApiLoadError message={slotsError} onRetry={() => setSlotRefresh(value => value + 1)} />}
+              {!availableSlotsList.length && <p role="status" className="text-amber-800">{copy('no_pickup_or_delivery_slots_are_currently_available_663898f')}</p>}
               {/* Address Form */}
               <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <MapPin className="w-5 h-5 text-primary-600" />
-                    <h3 className="text-base font-bold text-slate-900">Pickup &amp; Delivery Address</h3>
+                    <h3 className="text-base font-bold text-slate-900">{copy('pickup_delivery_address_f376344')}</h3>
                   </div>
 
                   {user && user.addresses && user.addresses.length > 0 && (
-                    <span className="text-xs text-primary-600 font-semibold">
-                      Saved Address Book Active
-                    </span>
+                    <span className="text-xs text-primary-600 font-semibold">{copy('saved_address_book_active_498350d')}</span>
                   )}
                 </div>
 
                 {/* 1-Click Saved Addresses Picker */}
                 {user && user.addresses && user.addresses.length > 0 && (
                   <div className="space-y-2 pb-2 border-b border-slate-100">
-                    <span className="text-xs font-bold text-slate-700 block">
-                      Choose from Your Saved Addresses:
-                    </span>
+                    <span className="text-xs font-bold text-slate-700 block">{copy('choose_from_your_saved_addresses_7f7841f')}</span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {user.addresses.map((addr) => {
                         const isSelected =
@@ -1302,9 +1233,7 @@ const BookingPage = () => {
                             <div className="flex items-center justify-between mb-1">
                               <span className="font-bold text-xs text-slate-900">{addr.label}</span>
                               {addr.isDefault && (
-                                <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                                  Default
-                                </span>
+                                <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">{copy('default_21b111c')}</span>
                               )}
                             </div>
                             <p className="text-[11px] text-slate-700 font-medium truncate">{addr.flatAndBuilding}</p>
@@ -1320,12 +1249,10 @@ const BookingPage = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div className="sm:col-span-2">
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Flat / House No. / Building / Tower Name *
-                    </label>
+                    <label className="block font-semibold text-slate-700 mb-1">{copy('flat_house_no_building_tower_name_6fc717e')}</label>
                     <input
                       type="text"
-                      placeholder="e.g. Flat 402, Royal Palms Apartments"
+                      placeholder={copy('e_g_flat_402_royal_palms_apartments_3147891')}
                       value={pickupAddress.flatAndBuilding}
                       onChange={(e) => setPickupAddress({ ...pickupAddress, flatAndBuilding: e.target.value })}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
@@ -1333,12 +1260,10 @@ const BookingPage = () => {
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Street / Sector / Landmark *
-                    </label>
+                    <label className="block font-semibold text-slate-700 mb-1">{copy('street_sector_landmark_36c3a05')}</label>
                     <input
                       type="text"
-                      placeholder="e.g. Barakhamba Road, Near Connaught Place Metro"
+                      placeholder={copy('e_g_barakhamba_road_near_connaught_place_metro_a3a52e9')}
                       value={pickupAddress.streetAndLandmark}
                       onChange={(e) => setPickupAddress({ ...pickupAddress, streetAndLandmark: e.target.value })}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
@@ -1346,7 +1271,7 @@ const BookingPage = () => {
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">City</label>
+                    <label className="block font-semibold text-slate-700 mb-1">{copy('city_fc33f73')}</label>
                     <input
                       type="text"
                       value={pickupAddress.city}
@@ -1356,21 +1281,24 @@ const BookingPage = () => {
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">PIN Code *</label>
+                    <label className="block font-semibold text-slate-700 mb-1">{copy('pin_code_99d9a4a')}</label>
                     <input
                       type="text"
-                      placeholder="e.g. 110001"
+                      placeholder={copy('e_g_110001_d1c3a44')}
+                      inputMode="numeric"
+                      maxLength={6}
                       value={pickupAddress.pincode}
                       onChange={(e) => setPickupAddress({ ...pickupAddress, pincode: e.target.value })}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
                     />
+                    {pickupAddress.pincode?.length === 6 && <p role="status" className="text-xs mt-1 text-slate-500">{coverage.loading ? 'Checking coverage…' : coverage.error ? <button type="button" onClick={coverage.retry}>Coverage unavailable. Retry</button> : activeHub ? `Served by ${activeHub.shortName || activeHub.name}` : 'This pincode is outside our current service areas.'}</p>}
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="block font-semibold text-slate-700 mb-1">Rider Contact Mobile *</label>
+                    <label className="block font-semibold text-slate-700 mb-1">{copy('rider_contact_mobile_48f4d3d')}</label>
                     <input
                       type="text"
-                      placeholder="e.g. 9876543210"
+                      placeholder={copy('e_g_9876543210_c759847')}
                       value={pickupAddress.contactPhone}
                       onChange={(e) => setPickupAddress({ ...pickupAddress, contactPhone: e.target.value })}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
@@ -1383,7 +1311,7 @@ const BookingPage = () => {
                   <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-2">
                       <Bookmark className="w-4 h-4 text-primary-600" />
-                      <span className="font-semibold text-slate-700">Save to Address Book as:</span>
+                      <span className="font-semibold text-slate-700">{copy('save_to_address_book_as_96af417')}</span>
                       <div className="flex items-center gap-1.5">
                         {['Home', 'Work', 'Other'].map((lbl) => (
                           <button
@@ -1413,7 +1341,7 @@ const BookingPage = () => {
                       ) : (
                         <Plus className="w-3.5 h-3.5" />
                       )}
-                      <span>Save Address</span>
+                      <span>{copy('save_address_953a617')}</span>
                     </button>
                   </div>
                 )}
@@ -1426,7 +1354,7 @@ const BookingPage = () => {
                     className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-50 flex items-center gap-1.5"
                   >
                     <ChevronLeft className="w-4 h-4" />
-                    <span>Back to Wash Care</span>
+                    <span>{copy('back_to_wash_care_69a5047')}</span>
                   </button>
 
                   <button
@@ -1434,7 +1362,7 @@ const BookingPage = () => {
                     onClick={handleNextStep}
                     className="px-6 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-primary-600/30 flex items-center gap-2"
                   >
-                    <span>Proceed to Review &amp; Payment</span>
+                    <span>{copy('proceed_to_review_payment_809373d')}</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -1448,10 +1376,8 @@ const BookingPage = () => {
           {activeStep === 4 && (
             <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Review &amp; Payment Method</h3>
-                <p className="text-xs text-slate-500">
-                  Select how you want to pay. No payment details are charged until order verification.
-                </p>
+                <h3 className="text-lg font-bold text-slate-900">{copy('review_payment_method_ad1a20d')}</h3>
+                <p className="text-xs text-slate-500">{copy('select_how_you_want_to_pay_no_payment_details_are_charged_until_o_c462674')}</p>
               </div>
 
               {/* Payment Mode Selector */}
@@ -1467,21 +1393,15 @@ const BookingPage = () => {
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-extrabold text-sm text-slate-900">
-                      Cash on Delivery (COD)
-                    </span>
+                    <span className="font-extrabold text-sm text-slate-900">{copy('cash_on_delivery_cod_3e718c3')}</span>
                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                       paymentMethod === 'COD' ? 'border-primary-600 bg-primary-600' : 'border-slate-300'
                     }`}>
                       {paymentMethod === 'COD' && <div className="w-2 h-2 rounded-full bg-white" />}
                     </div>
                   </div>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    Pay comfortably in cash or scan the rider's UPI QR code when your fresh clothes are delivered to your door.
-                  </p>
-                  <span className="inline-block mt-3 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                    No upfront payment needed
-                  </span>
+                  <p className="text-xs text-slate-600 leading-relaxed">{copy('pay_comfortably_in_cash_or_scan_the_rider_s_upi_qr_code_when_your_0381334')}</p>
+                  <span className="inline-block mt-3 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">{copy('no_upfront_payment_needed_c7336ac')}</span>
                 </div>
 
                 {/* Mode 2: Online Payment */}
@@ -1494,21 +1414,15 @@ const BookingPage = () => {
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-extrabold text-sm text-slate-900">
-                      Online Payment (Instant Receipt)
-                    </span>
+                    <span className="font-extrabold text-sm text-slate-900">{copy('online_payment_instant_receipt_7ebabcb')}</span>
                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                       paymentMethod === 'ONLINE' ? 'border-primary-600 bg-primary-600' : 'border-slate-300'
                     }`}>
                       {paymentMethod === 'ONLINE' && <div className="w-2 h-2 rounded-full bg-white" />}
                     </div>
                   </div>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    Pay securely using UPI (Google Pay, PhonePe, Paytm), Credit/Debit Cards, or Net Banking.
-                  </p>
-                  <span className="inline-block mt-3 px-2 py-0.5 rounded-md bg-teal-100 text-teal-800 font-bold text-[10px]">
-                    Instant Tax Invoice &amp; Contactless
-                  </span>
+                  <p className="text-xs text-slate-600 leading-relaxed">{copy('pay_securely_using_upi_google_pay_phonepe_paytm_credit_debit_card_5143e9c')}</p>
+                  <span className="inline-block mt-3 px-2 py-0.5 rounded-md bg-teal-100 text-teal-800 font-bold text-[10px]">{copy('instant_tax_invoice_contactless_3005108')}</span>
                 </div>
 
               </div>
@@ -1516,21 +1430,20 @@ const BookingPage = () => {
               {/* Order Recap Summary */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 text-xs space-y-2">
                 <div className="flex justify-between font-bold text-slate-900 border-b border-slate-200 pb-2">
-                  <span>Selected Schedule:</span>
-                  <span className="text-primary-700">
-                    Pickup: {pickupSchedule.date} ({pickupSchedule.timeSlot})
+                  <span>{copy('selected_schedule_1aa83a2')}</span>
+                  <span className="text-primary-700">{copy('pickup_5571c3f')}{pickupSchedule.date} ({pickupSchedule.timeSlot})
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>Delivery Target:</span>
+                  <span>{copy('delivery_target_81bfc95')}</span>
                   <span className="font-medium">{deliverySchedule.date} ({deliverySchedule.timeSlot})</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>Detergent &amp; Packaging:</span>
+                  <span>{copy('detergent_packaging_211215c')}</span>
                   <span className="font-medium">{preferences.detergentType} • {preferences.packagingType}</span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>Delivery Address:</span>
+                  <span>{copy('delivery_address_50d0cb0')}</span>
                   <span className="font-medium truncate max-w-xs">{pickupAddress.flatAndBuilding}, {pickupAddress.city}</span>
                 </div>
               </div>
@@ -1543,28 +1456,28 @@ const BookingPage = () => {
                   className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-50 flex items-center gap-1.5"
                 >
                   <ChevronLeft className="w-4 h-4" />
-                  <span>Back to Schedule</span>
+                  <span>{copy('back_to_schedule_0fac064')}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handlePlaceOrder}
-                  disabled={placingOrder}
+                  disabled={placingOrder || bookingBlocked || reviewRequired}
                   className="px-8 py-4 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-extrabold text-sm shadow-xl shadow-primary-600/30 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
                   {placingOrder ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Booking Your Order...</span>
+                      <span>{copy('booking_your_order_8a6d2bf')}</span>
                     </>
                   ) : !user || !isAuthenticated ? (
                     <>
-                      <span>Login to Confirm Order (₹{grandTotal})</span>
+                      <span>{copy('login_to_confirm_order_68c97cb')}{grandTotal})</span>
                       <ChevronRight className="w-4 h-4" />
                     </>
                   ) : (
                     <>
-                      <span>Confirm Order &amp; Schedule Pickup (₹{grandTotal})</span>
+                      <span>{copy('confirm_order_schedule_pickup_6cab36c')}{grandTotal})</span>
                       <PackageCheck className="w-4 h-4" />
                     </>
                   )}
@@ -1582,11 +1495,11 @@ const BookingPage = () => {
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <ShoppingBag className="w-5 h-5 text-primary-600" />
-                <h3 className="font-bold text-base text-slate-900">Your Laundry Bag</h3>
+                <h3 className="font-bold text-base text-slate-900">{copy('your_laundry_bag_250ccdc')}</h3>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                  {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                  {itemCount} {itemCount === 1 ? copy('item_4a33eac') : copy('items_5f3c4f8')}
                 </span>
                 {cartItems.length > 0 && (
                   <button
@@ -1599,9 +1512,7 @@ const BookingPage = () => {
                       }
                     }}
                     className="text-[11px] font-bold text-rose-500 hover:text-rose-700 cursor-pointer transition-colors"
-                  >
-                    Clear
-                  </button>
+                  >{copy('clear_83b12c2')}</button>
                 )}
               </div>
             </div>
@@ -1611,20 +1522,20 @@ const BookingPage = () => {
               {amountNeededForFreeDelivery > 0 ? (
                 <div>
                   <div className="flex justify-between font-semibold text-teal-900 mb-1">
-                    <span>Add ₹{amountNeededForFreeDelivery} more for FREE Delivery!</span>
-                    <span>Threshold: ₹{freeDeliveryThreshold}</span>
+                    <span>{copy('add_c396233')}{amountNeededForFreeDelivery}{copy('more_for_free_delivery_d6ff51e')}</span>
+                    <span>{copy('threshold_599295c')}{freeDeliveryThreshold}</span>
                   </div>
                   <div className="w-full bg-teal-200 h-2 rounded-full overflow-hidden">
                     <div
                       className="bg-teal-600 h-full transition-all duration-300"
-                      style={{ width: `${Math.min(100, (subtotal / (freeDeliveryThreshold || 399)) * 100)}%` }}
+                      style={{ width: `${Math.min(100, (subtotal / freeDeliveryThreshold) * 100)}%` }}
                     />
                   </div>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 text-teal-800 font-bold">
                   <CheckCircle2 className="w-4 h-4 text-teal-600" />
-                  <span>Congratulations! FREE Doorstep Delivery applied.</span>
+                  <span>{copy('congratulations_free_doorstep_delivery_applied_6e636fc')}</span>
                 </div>
               )}
             </div>
@@ -1633,10 +1544,8 @@ const BookingPage = () => {
             {cartItems.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-400 space-y-2">
                 <Shirt className="w-8 h-8 mx-auto text-slate-300 stroke-[1.5]" />
-                <p>Your laundry bag is currently empty.</p>
-                <p className="text-[11px] text-slate-500">
-                  Select shirts, sarees, bedsheets or kurtas to begin.
-                </p>
+                <p>{copy('your_laundry_bag_is_currently_empty_da9186d')}</p>
+                <p className="text-[11px] text-slate-500">{copy('select_shirts_sarees_bedsheets_or_kurtas_to_begin_3fcd438')}</p>
               </div>
             ) : (
               <div className="max-h-72 overflow-y-auto space-y-3 pr-1 text-xs divide-y divide-slate-100">
@@ -1648,17 +1557,14 @@ const BookingPage = () => {
                         {item.isCustomItem && item.customDescription ? item.customDescription : item.garment.name}
                       </h4>
                       {item.isCustomItem && (
-                        <span className="inline-block px-1.5 py-0.5 text-[9px] font-bold text-amber-800 bg-amber-50 rounded border border-amber-200">
-                          Estimated Rate — Confirmed at Doorstep
-                        </span>
+                        <span className="inline-block px-1.5 py-0.5 text-[9px] font-bold text-amber-800 bg-amber-50 rounded border border-amber-200">{copy('estimated_rate_confirmed_at_doorstep_df207ef')}</span>
                       )}
                       <p className="text-[10px] text-slate-500 truncate">
-                        {item.serviceType.replace(/_/g, ' ')}
-                        {item.ironingType !== 'NONE' && ` • ${item.ironingType.replace(/_/g, ' ')}`}
+                        {platformConfig.serviceTypes.find(option => option.code === item.serviceType)?.name || item.serviceType}
+                        {item.ironingType !== 'NONE' && ` • ${(platformConfig.ironingTiers.find(option => option.code === item.ironingType)?.name || item.ironingType)}`}
                       </p>
                       <div className="text-[11px] text-slate-600 font-medium">
-                        ₹{item.unitPrice} each
-                      </div>
+                        ₹{item.unitPrice}{copy('each_1312908')}</div>
                     </div>
 
                     <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
@@ -1668,7 +1574,7 @@ const BookingPage = () => {
                           type="button"
                           onClick={() => updateQuantity(item.cartItemId || item.garment._id, item.quantity - 1)}
                           className="w-5 h-5 rounded bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
-                          title="Decrease"
+                          title={copy('decrease_991e5ab')}
                         >
                           <Minus className="w-2.5 h-2.5" />
                         </button>
@@ -1679,7 +1585,7 @@ const BookingPage = () => {
                           type="button"
                           onClick={() => updateQuantity(item.cartItemId || item.garment._id, item.quantity + 1)}
                           className="w-5 h-5 rounded bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
-                          title="Increase"
+                          title={copy('increase_0c2d3b8')}
                         >
                           <Plus className="w-2.5 h-2.5" />
                         </button>
@@ -1688,10 +1594,10 @@ const BookingPage = () => {
                         type="button"
                         onClick={() => removeItem(item.cartItemId || item.garment._id)}
                         className="text-slate-400 hover:text-rose-500 p-0.5 text-[10px] flex items-center gap-0.5 cursor-pointer transition-colors"
-                        title="Remove item"
+                        title={copy('remove_item_5a89edf')}
                       >
                         <Trash2 className="w-3 h-3" />
-                        <span>Remove</span>
+                        <span>{copy('remove_c3812fc')}</span>
                       </button>
                     </div>
                   </div>
@@ -1703,15 +1609,14 @@ const BookingPage = () => {
             <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
               <span className="font-bold text-slate-700 block text-[11px] uppercase tracking-wider flex items-center gap-1.5">
                 <Tag className="w-3.5 h-3.5 text-primary-600" />
-                <span>Apply Promo Coupon</span>
+                <span>{copy('apply_promo_coupon_da582b8')}</span>
               </span>
 
               {appliedCoupon ? (
                 <div className="p-3 bg-teal-50 border border-teal-200 rounded-2xl flex items-center justify-between">
                   <div>
                     <span className="font-extrabold text-teal-800 text-xs block">
-                      {appliedCoupon.code} applied!
-                    </span>
+                      {appliedCoupon.code}{copy('applied_7eb0dce')}</span>
                     <span className="text-[10px] text-teal-600 block">
                       {appliedCoupon.description} (-₹{discountAmount})
                     </span>
@@ -1720,9 +1625,7 @@ const BookingPage = () => {
                     type="button"
                     onClick={removeCoupon}
                     className="text-[11px] font-bold text-rose-500 hover:text-rose-700 cursor-pointer"
-                  >
-                    Remove
-                  </button>
+                  >{copy('remove_c3812fc')}</button>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1731,7 +1634,7 @@ const BookingPage = () => {
                       type="text"
                       value={couponInput}
                       onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                      placeholder="e.g. FIRST50"
+                      placeholder={copy('e_g_first50_9688fc1')}
                       className="flex-1 px-3 py-2 text-xs font-mono font-bold rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 uppercase tracking-wider"
                     />
                     <button
@@ -1740,7 +1643,7 @@ const BookingPage = () => {
                       onClick={() => handleApplyCoupon(couponInput)}
                       className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs disabled:opacity-50 cursor-pointer transition-all"
                     >
-                      {validatingCoupon ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Apply'}
+                      {validatingCoupon ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : copy('apply_31e392d')}
                     </button>
                   </div>
 
@@ -1750,9 +1653,9 @@ const BookingPage = () => {
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-slate-700 font-bold flex items-center gap-1">
                           <Percent className="w-3 h-3 text-teal-600" />
-                          <span>Available Offers ({availableCoupons.length})</span>
+                          <span>{copy('available_offers_bb31856')}{availableCoupons.length})</span>
                         </span>
-                        <span className="text-[10px] text-slate-400">Tap to apply</span>
+                        <span className="text-[10px] text-slate-400">{copy('tap_to_apply_cf700ba')}</span>
                       </div>
                       
                       <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -1796,7 +1699,7 @@ const BookingPage = () => {
                                       : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
                                   }`}
                                 >
-                                  {isApplied ? 'Applied' : 'Apply'}
+                                  {isApplied ? copy('applied_0c79a9c') : copy('apply_31e392d')}
                                 </button>
                               </div>
 
@@ -1810,15 +1713,15 @@ const BookingPage = () => {
                               {/* Full Financial Criteria: Min Order & Max Cashback Limit */}
                               <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-1.5 border-t border-slate-100 text-[10px]">
                                 <span className="inline-flex items-center gap-1 font-medium text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                                  <span>Min Order:</span>
+                                  <span>{copy('min_order_cb47004')}</span>
                                   <strong className="text-slate-800">
-                                    {minReq > 0 ? `₹${minReq}` : 'No Min.'}
+                                    {minReq > 0 ? `₹${minReq}` : copy('no_min_5fa6dc3')}
                                   </strong>
                                 </span>
                                 <span className="inline-flex items-center gap-1 font-medium text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                                  <span>Max Cashback / Discount:</span>
+                                  <span>{copy('max_cashback_discount_bcd10fb')}</span>
                                   <strong className="text-slate-800">
-                                    {c.maxDiscountAmount ? `₹${c.maxDiscountAmount}` : 'Unlimited'}
+                                    {c.maxDiscountAmount !== null && c.maxDiscountAmount !== undefined ? `₹${c.maxDiscountAmount}` : copy('unlimited_11dde17')}
                                   </strong>
                                 </span>
                               </div>
@@ -1828,12 +1731,10 @@ const BookingPage = () => {
                                 {isEligible ? (
                                   <span className="text-emerald-700 font-semibold flex items-center gap-1">
                                     <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                    <span>Unlocked &amp; ready to apply</span>
+                                    <span>{copy('unlocked_ready_to_apply_5e69d12')}</span>
                                   </span>
                                 ) : (
-                                  <span className="text-amber-700 font-medium">
-                                    Add ₹{minReq - subtotal} more garments to unlock
-                                  </span>
+                                  <span className="text-amber-700 font-medium">{copy('add_c396233')}{minReq - subtotal}{copy('more_garments_to_unlock_a1e113e')}</span>
                                 )}
                               </div>
                             </div>
@@ -1849,40 +1750,41 @@ const BookingPage = () => {
             {/* Bill Details */}
             <div className="mt-4 pt-4 border-t border-slate-100 space-y-2 text-xs">
               <div className="flex justify-between text-slate-600">
-                <span>Garments Subtotal:</span>
+                <span>{copy('garments_subtotal_7d1bbfa')}</span>
                 <span className="font-bold text-slate-800">₹{subtotal}</span>
               </div>
 
               {discountAmount > 0 && (
                 <div className="flex justify-between text-teal-700 font-semibold">
-                  <span>Promo Discount ({couponCode}):</span>
+                  <span>{copy('promo_discount_12679ff')}{couponCode}):</span>
                   <span className="font-mono font-bold">-₹{discountAmount}</span>
                 </div>
               )}
 
               <div className="flex justify-between text-slate-600">
-                <span>Pickup &amp; Delivery Fee:</span>
+                <span>{copy('pickup_delivery_fee_037a708')}</span>
                 <span className={pickupDeliveryFee === 0 ? 'text-teal-600 font-bold' : 'font-bold text-slate-800'}>
-                  {pickupDeliveryFee === 0 ? 'FREE' : `₹${pickupDeliveryFee}`}
+                  {pickupDeliveryFee === 0 ? copy('free_19f1fa5') : `₹${pickupDeliveryFee}`}
                 </span>
               </div>
 
+              {extraPreferenceFee > 0 && <div className="flex justify-between"><span>{copy('care_preferences_f48cdc3')}</span><span>₹{extraPreferenceFee}</span></div>}
               {expressSurcharge > 0 && (
                 <div className="flex justify-between text-amber-700 font-semibold">
                   <span className="flex items-center gap-1">
                     <Zap className="w-3.5 h-3.5 fill-current" />
-                    <span>Express 24h Turnaround:</span>
+                    <span>{copy('express_24h_turnaround_c072d1a')}</span>
                   </span>
                   <span className="font-mono font-bold">+₹{expressSurcharge}</span>
                 </div>
               )}
 
               <div className="flex justify-between text-slate-600">
-                <span>GST ({platformConfig?.gstPercentage ?? 5}% SGST + CGST):</span>
+                <span>{copy('gst_0b3ccae')}{platformConfig?.gstPercentage ?? 5}{copy('sgst_cgst_9c39265')}</span>
                 <span className="font-bold text-slate-800">₹{taxAmount}</span>
               </div>
               <div className="flex justify-between text-base font-black text-slate-900 pt-2 border-t border-slate-200">
-                <span>Grand Total:</span>
+                <span>{copy('grand_total_8d7627e')}</span>
                 <span className="text-primary-700 font-mono">₹{grandTotal}</span>
               </div>
             </div>
@@ -1895,7 +1797,7 @@ const BookingPage = () => {
                 onClick={handleNextStep}
                 className="w-full mt-4 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 flex items-center justify-center gap-1.5"
               >
-                <span>Proceed to Step {activeStep + 1}</span>
+                <span>{copy('proceed_to_step_78af469')}{activeStep + 1}</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
             )}
@@ -1906,18 +1808,16 @@ const BookingPage = () => {
           <div className="bg-slate-900 text-white p-4 rounded-3xl text-xs space-y-1.5 shadow-xs">
             <div className="flex items-center gap-2 text-teal-400 font-bold">
               <Shield className="w-4 h-4" />
-              <span>IndoDhobi Fabric Guarantee</span>
+              <span>{copy('indodhobi_fabric_guarantee_5168188')}</span>
             </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              Every garment is barcoded upon pickup. Zero fabric mixing, zero color bleeding, and free re-wash if not satisfied.
-            </p>
+            <p className="text-[11px] text-slate-400 leading-relaxed">{copy('every_garment_is_barcoded_upon_pickup_zero_fabric_mixing_zero_col_79bced3')}</p>
           </div>
         </div>
 
       </div>
 
       {/* Custom / Unlisted Garment Modal */}
-      {showCustomModal && (
+      {showCustomModal && customGarmentTemplate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] overflow-y-auto">
             {/* Header */}
@@ -1927,12 +1827,8 @@ const BookingPage = () => {
                   ✨
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-base text-slate-900">
-                    Add Custom / Unlisted Garment
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Add specialty fabrics, designer items, or unlisted textiles
-                  </p>
+                  <h3 className="font-extrabold text-base text-slate-900">{copy('add_custom_unlisted_garment_c3646df')}</h3>
+                  <p className="text-[11px] text-slate-500">{copy('add_specialty_fabrics_designer_items_or_unlisted_textiles_87171d5')}</p>
                 </div>
               </div>
               <button
@@ -1946,40 +1842,29 @@ const BookingPage = () => {
 
             {/* Description Input */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-800">
-                Garment Description or Item Name *
-              </label>
+              <label className="block text-xs font-bold text-slate-800">{copy('garment_description_or_item_name_0c70993')}</label>
               <input
                 type="text"
                 value={customGarmentDesc}
                 onChange={(e) => setCustomGarmentDesc(e.target.value)}
-                placeholder="e.g. Silk Zari Shawl, Heavy Velvet Curtains (1 Pair), Designer Sherwani"
+                placeholder={copy('e_g_silk_zari_shawl_heavy_velvet_curtains_1_pair_designer_sherwan_fb18bb5')}
                 className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
                 autoFocus
               />
-              <p className="text-[10px] text-slate-400">
-                Be specific with fabric details so our dhobi masters apply the right gentle wash process.
-              </p>
+              <p className="text-[10px] text-slate-400">{copy('be_specific_with_fabric_details_so_our_dhobi_masters_apply_the_ri_6a2dd8c')}</p>
             </div>
 
             {/* Service Choice Chips */}
             <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-800">
-                Choose Service Type:
-              </label>
+              <label className="block text-xs font-bold text-slate-800">{copy('choose_service_type_7a6a2a3')}</label>
               <div className="grid grid-cols-2 gap-2">
-                {[
-                  { id: 'WASH_AND_FOLD', label: 'Wash & Fold', icon: '🧺', price: customGarmentTemplate.pricing.washOnly },
-                  { id: 'WASH_AND_IRON', label: 'Wash & Iron', icon: '👔', price: customGarmentTemplate.pricing.washOnly + customGarmentTemplate.pricing.standardSteamIron },
-                  { id: 'IRON_ONLY', label: 'Iron Only', icon: '♨️', price: customGarmentTemplate.pricing.standardSteamIron },
-                  { id: 'DRY_CLEAN', label: 'Dry Clean', icon: '🧴', price: customGarmentTemplate.pricing.dryClean }
-                ].map((s) => {
+                {customServices.map(option => ({ id: option.code, label: option.shortName || option.name, icon: { WASH_AND_FOLD: '🧺', WASH_AND_IRON: '👔', IRON_ONLY: '♨️', DRY_CLEAN: '🧴' }[option.code], price: calculateItemUnitPrice(customGarmentTemplate, option.code, preferredFinish(customGarmentTemplate, platformConfig, option.code, customIroningType)) })).map((s) => {
                   const isSelected = customServiceType === s.id;
                   return (
                     <button
                       key={s.id}
                       type="button"
-                      onClick={() => setCustomServiceType(s.id)}
+                      onClick={() => { setCustomServiceType(s.id); setCustomIroningType(preferredFinish(customGarmentTemplate, platformConfig, s.id, customIroningType)); }}
                       className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
                         isSelected
                           ? 'border-primary-600 bg-primary-50 text-primary-950 ring-2 ring-primary-500/20 shadow-xs'
@@ -1991,7 +1876,7 @@ const BookingPage = () => {
                         {isSelected && <CheckCircle2 className="w-4 h-4 text-primary-600 shrink-0" />}
                       </div>
                       <span className="font-bold text-xs text-slate-900">{s.label}</span>
-                      <span className="text-[11px] font-semibold text-slate-500">From ₹{s.price}</span>
+                      <span className="text-[11px] font-semibold text-slate-500">{copy('from_bfd0b98')}{s.price}</span>
                     </button>
                   );
                 })}
@@ -2001,16 +1886,9 @@ const BookingPage = () => {
             {/* Ironing Finish Pills if Wash & Iron or Iron Only */}
             {(customServiceType === 'WASH_AND_IRON' || customServiceType === 'IRON_ONLY') && (
               <div className="space-y-1.5 pt-1">
-                <label className="block text-xs font-bold text-slate-800">
-                  Ironing Finish Preference:
-                </label>
+                <label className="block text-xs font-bold text-slate-800">{copy('ironing_finish_preference_c203210')}</label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                  {[
-                    ...(customServiceType === 'WASH_AND_IRON' ? [{ id: 'NONE', label: 'No Iron', delta: '₹0' }] : []),
-                    { id: 'STANDARD_STEAM', label: 'Standard Steam', delta: `+₹${customGarmentTemplate.pricing.standardSteamIron}` },
-                    { id: 'CRISP_STARCH', label: 'Crisp Starch', delta: `+₹${customGarmentTemplate.pricing.crispStarchPress}` },
-                    { id: 'DELICATE_PRESS', label: 'Delicate Press', delta: `+₹${customGarmentTemplate.pricing.delicatePress}` }
-                  ].map((tier) => {
+                  {customFinishes.map(option => ({ id: option.code, label: option.shortName || option.name, delta: `+₹${customGarmentTemplate.pricing[IRONING_PRICE_KEYS[option.code]]}` })).map((tier) => {
                     const isSelected = customIroningType === tier.id;
                     return (
                       <button
@@ -2037,8 +1915,8 @@ const BookingPage = () => {
             {/* Quantity Selector */}
             <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
               <div>
-                <span className="block text-xs font-bold text-slate-800">Quantity</span>
-                <span className="text-[10px] text-slate-400">Total number of identical garments</span>
+                <span className="block text-xs font-bold text-slate-800">{copy('quantity_822bab8')}</span>
+                <span className="text-[10px] text-slate-400">{copy('total_number_of_identical_garments_432adfc')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -2053,7 +1931,7 @@ const BookingPage = () => {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setCustomQuantity(customQuantity + 1)}
+                  onClick={() => setCustomQuantity(Math.min(999, customQuantity + 1))}
                   className="w-8 h-8 rounded-xl bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center font-bold text-sm cursor-pointer shadow-2xs"
                 >
                   <Plus className="w-4 h-4" />
@@ -2066,16 +1944,11 @@ const BookingPage = () => {
               <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-xs">
-                    Estimated Rate: ₹{calculateItemUnitPrice(customGarmentTemplate, customServiceType, customIroningType) * customQuantity}
+                  <span className="font-extrabold text-xs">{copy('estimated_rate_7181680')}{customEstimate ?? '—'}
                   </span>
-                  <span className="px-1.5 py-0.5 rounded-full bg-amber-200/80 text-amber-900 text-[9px] font-black tracking-wide">
-                    Confirmed at Doorstep
-                  </span>
+                  <span className="px-1.5 py-0.5 rounded-full bg-amber-200/80 text-amber-900 text-[9px] font-black tracking-wide">{copy('confirmed_at_doorstep_f990920')}</span>
                 </div>
-                <p className="text-[10px] text-amber-700 leading-snug">
-                  Our rider will physically inspect the fabric, dimensions, and care tags upon doorstep collection. If any rate adjustment is needed, it will be transparently confirmed before washing begins.
-                </p>
+                <p className="text-[10px] text-amber-700 leading-snug">{copy('our_rider_will_physically_inspect_the_fabric_dimensions_and_care__943baef')}</p>
               </div>
             </div>
 
@@ -2085,16 +1958,15 @@ const BookingPage = () => {
                 type="button"
                 onClick={() => setShowCustomModal(false)}
                 className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-50 cursor-pointer"
-              >
-                Cancel
-              </button>
+              >{copy('cancel_19766ed')}</button>
               <button
                 type="button"
+                disabled={!customAvailable}
                 onClick={handleAddCustomGarment}
                 className="px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-extrabold text-xs shadow-md shadow-primary-600/30 flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>Add to Laundry Bag (₹{calculateItemUnitPrice(customGarmentTemplate, customServiceType, customIroningType) * customQuantity})</span>
+                <span>{copy('add_to_laundry_bag_30b522f')}{customEstimate ?? '—'})</span>
               </button>
             </div>
           </div>
@@ -2121,12 +1993,12 @@ const BookingPage = () => {
                 <div className="flex items-center gap-1.5">
                   <span className="font-black text-sm text-slate-900">₹{grandTotal}</span>
                   <span className="text-[10px] text-primary-600 font-bold flex items-center">
-                    <span>View Bag</span>
+                    <span>{copy('view_bag_fd3023c')}</span>
                     <ChevronUp className="w-3 h-3 ml-0.5" />
                   </span>
                 </div>
                 <span className="text-[10px] text-slate-500 block truncate max-w-[140px]">
-                  {pickupDeliveryFee === 0 ? 'FREE Doorstep Delivery' : `Delivery: ₹${pickupDeliveryFee}`}
+                  {pickupDeliveryFee === 0 ? copy('free_doorstep_delivery_6be93f0') : `Delivery: ₹${pickupDeliveryFee}`}
                 </span>
               </div>
             </button>
@@ -2138,21 +2010,21 @@ const BookingPage = () => {
                 onClick={handleNextStep}
                 className="px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 active:scale-95 text-white font-extrabold text-xs shadow-md shadow-primary-600/30 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
               >
-                <span>Step {activeStep + 1}</span>
+                <span>{copy('step_474a987')}{activeStep + 1}</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
             ) : (
               <button
                 type="button"
                 onClick={handlePlaceOrder}
-                disabled={placingOrder}
+                disabled={placingOrder || bookingBlocked || reviewRequired}
                 className="px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 active:scale-95 text-white font-extrabold text-xs shadow-md shadow-primary-600/30 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all disabled:opacity-50"
               >
                 {placingOrder ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <>
-                    <span>Confirm Order</span>
+                    <span>{copy('confirm_order_252eea6')}</span>
                     <PackageCheck className="w-4 h-4" />
                   </>
                 )}
@@ -2177,9 +2049,9 @@ const BookingPage = () => {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <ShoppingBag className="w-5 h-5 text-primary-600" />
-                <h3 className="font-extrabold text-base text-slate-900">Your Laundry Bag</h3>
+                <h3 className="font-extrabold text-base text-slate-900">{copy('your_laundry_bag_250ccdc')}</h3>
                 <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                  {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                  {itemCount} {itemCount === 1 ? copy('item_4a33eac') : copy('items_5f3c4f8')}
                 </span>
               </div>
               <button
@@ -2196,20 +2068,20 @@ const BookingPage = () => {
               {amountNeededForFreeDelivery > 0 ? (
                 <div>
                   <div className="flex justify-between font-semibold text-teal-900 mb-1">
-                    <span>Add ₹{amountNeededForFreeDelivery} more for FREE Delivery!</span>
-                    <span>Threshold: ₹{freeDeliveryThreshold}</span>
+                    <span>{copy('add_c396233')}{amountNeededForFreeDelivery}{copy('more_for_free_delivery_d6ff51e')}</span>
+                    <span>{copy('threshold_599295c')}{freeDeliveryThreshold}</span>
                   </div>
                   <div className="w-full bg-teal-200 h-2 rounded-full overflow-hidden">
                     <div
                       className="bg-teal-600 h-full transition-all duration-300"
-                      style={{ width: `${Math.min(100, (subtotal / (freeDeliveryThreshold || 399)) * 100)}%` }}
+                      style={{ width: `${Math.min(100, (subtotal / freeDeliveryThreshold) * 100)}%` }}
                     />
                   </div>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 text-teal-800 font-bold">
                   <CheckCircle2 className="w-4 h-4 text-teal-600" />
-                  <span>Congratulations! FREE Doorstep Delivery applied.</span>
+                  <span>{copy('congratulations_free_doorstep_delivery_applied_6e636fc')}</span>
                 </div>
               )}
             </div>
@@ -2224,17 +2096,14 @@ const BookingPage = () => {
                       {item.isCustomItem && item.customDescription ? item.customDescription : item.garment.name}
                     </h4>
                     {item.isCustomItem && (
-                      <span className="inline-block px-1.5 py-0.5 text-[9px] font-bold text-amber-800 bg-amber-50 rounded border border-amber-200">
-                        Estimated Rate — Confirmed at Doorstep
-                      </span>
+                      <span className="inline-block px-1.5 py-0.5 text-[9px] font-bold text-amber-800 bg-amber-50 rounded border border-amber-200">{copy('estimated_rate_confirmed_at_doorstep_df207ef')}</span>
                     )}
                     <p className="text-[10px] text-slate-500 truncate">
-                      {item.serviceType.replace(/_/g, ' ')}
-                      {item.ironingType !== 'NONE' && ` • ${item.ironingType.replace(/_/g, ' ')}`}
+                      {platformConfig.serviceTypes.find(option => option.code === item.serviceType)?.name || item.serviceType}
+                      {item.ironingType !== 'NONE' && ` • ${(platformConfig.ironingTiers.find(option => option.code === item.ironingType)?.name || item.ironingType)}`}
                     </p>
                     <div className="text-[11px] text-slate-600 font-medium">
-                      ₹{item.unitPrice} each
-                    </div>
+                      ₹{item.unitPrice}{copy('each_1312908')}</div>
                   </div>
 
                   <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
@@ -2244,7 +2113,7 @@ const BookingPage = () => {
                         type="button"
                         onClick={() => updateQuantity(item.cartItemId || item.garment._id, item.quantity - 1)}
                         className="w-5 h-5 rounded bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
-                        title="Decrease"
+                        title={copy('decrease_991e5ab')}
                       >
                         <Minus className="w-2.5 h-2.5" />
                       </button>
@@ -2255,7 +2124,7 @@ const BookingPage = () => {
                         type="button"
                         onClick={() => updateQuantity(item.cartItemId || item.garment._id, item.quantity + 1)}
                         className="w-5 h-5 rounded bg-primary-600 hover:bg-primary-700 text-white flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
-                        title="Increase"
+                        title={copy('increase_0c2d3b8')}
                       >
                         <Plus className="w-2.5 h-2.5" />
                       </button>
@@ -2264,10 +2133,10 @@ const BookingPage = () => {
                       type="button"
                       onClick={() => removeItem(item.cartItemId || item.garment._id)}
                       className="text-slate-400 hover:text-rose-500 p-0.5 text-[10px] flex items-center gap-0.5 cursor-pointer"
-                      title="Remove"
+                      title={copy('remove_c3812fc')}
                     >
                       <Trash2 className="w-3 h-3" />
-                      <span>Remove</span>
+                      <span>{copy('remove_c3812fc')}</span>
                     </button>
                   </div>
                 </div>
@@ -2279,16 +2148,14 @@ const BookingPage = () => {
               {appliedCoupon ? (
                 <div className="p-2.5 bg-teal-50 border border-teal-200 rounded-xl flex items-center justify-between text-xs">
                   <div>
-                    <span className="font-bold text-teal-800 text-xs block">{appliedCoupon.code} applied!</span>
-                    <span className="text-[10px] text-teal-600">Saved ₹{discountAmount}</span>
+                    <span className="font-bold text-teal-800 text-xs block">{appliedCoupon.code}{copy('applied_7eb0dce')}</span>
+                    <span className="text-[10px] text-teal-600">{copy('saved_1d840a7')}{discountAmount}</span>
                   </div>
                   <button
                     type="button"
                     onClick={removeCoupon}
                     className="text-[10px] font-bold text-rose-500 hover:text-rose-700 cursor-pointer"
-                  >
-                    Remove
-                  </button>
+                  >{copy('remove_c3812fc')}</button>
                 </div>
               ) : (
                 <div className="flex gap-1.5">
@@ -2296,7 +2163,7 @@ const BookingPage = () => {
                     type="text"
                     value={couponInput}
                     onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                    placeholder="Enter coupon code..."
+                    placeholder={copy('enter_coupon_code_bde2e70')}
                     className="flex-1 px-3 py-1.5 text-xs font-mono font-bold rounded-xl border border-slate-300 uppercase tracking-wider"
                   />
                   <button
@@ -2305,7 +2172,7 @@ const BookingPage = () => {
                     onClick={() => handleApplyCoupon(couponInput)}
                     className="px-3 py-1.5 rounded-xl bg-slate-900 text-white font-bold text-xs disabled:opacity-50 cursor-pointer"
                   >
-                    {validatingCoupon ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Apply'}
+                    {validatingCoupon ? <Loader2 className="w-3 h-3 animate-spin" /> : copy('apply_31e392d')}
                   </button>
                 </div>
               )}
@@ -2314,33 +2181,34 @@ const BookingPage = () => {
             {/* Bill Details */}
             <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs">
               <div className="flex justify-between text-slate-600">
-                <span>Garments Subtotal:</span>
+                <span>{copy('garments_subtotal_7d1bbfa')}</span>
                 <span className="font-bold text-slate-800">₹{subtotal}</span>
               </div>
               {discountAmount > 0 && (
                 <div className="flex justify-between text-teal-700 font-semibold">
-                  <span>Promo Discount ({couponCode}):</span>
+                  <span>{copy('promo_discount_12679ff')}{couponCode}):</span>
                   <span className="font-mono font-bold">-₹{discountAmount}</span>
                 </div>
               )}
               <div className="flex justify-between text-slate-600">
-                <span>Pickup &amp; Delivery:</span>
+                <span>{copy('pickup_delivery_d58f53c')}</span>
                 <span className={pickupDeliveryFee === 0 ? 'text-teal-600 font-bold' : 'font-bold text-slate-800'}>
-                  {pickupDeliveryFee === 0 ? 'FREE' : `₹${pickupDeliveryFee}`}
+                  {pickupDeliveryFee === 0 ? copy('free_19f1fa5') : `₹${pickupDeliveryFee}`}
                 </span>
               </div>
+              {extraPreferenceFee > 0 && <div className="flex justify-between"><span>{copy('care_preferences_f48cdc3')}</span><span>₹{extraPreferenceFee}</span></div>}
               {expressSurcharge > 0 && (
                 <div className="flex justify-between text-amber-700 font-semibold">
-                  <span>Express 24h Turnaround:</span>
+                  <span>{copy('express_24h_turnaround_c072d1a')}</span>
                   <span className="font-mono font-bold">+₹{expressSurcharge}</span>
                 </div>
               )}
               <div className="flex justify-between text-slate-600">
-                <span>GST (5% SGST + CGST):</span>
+                <span>{copy('gst_5_sgst_cgst_29812e7')}</span>
                 <span className="font-bold text-slate-800">₹{taxAmount}</span>
               </div>
               <div className="flex justify-between text-sm font-black text-slate-900 pt-2 border-t border-slate-200">
-                <span>Grand Total:</span>
+                <span>{copy('grand_total_8d7627e')}</span>
                 <span className="text-primary-700 font-mono text-base">₹{grandTotal}</span>
               </div>
             </div>
@@ -2355,7 +2223,7 @@ const BookingPage = () => {
                 }}
                 className="w-full py-3.5 rounded-2xl bg-primary-600 hover:bg-primary-700 active:scale-98 text-white font-extrabold text-sm shadow-md shadow-primary-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all"
               >
-                <span>{activeStep < 4 ? `Proceed to Step ${activeStep + 1}` : 'Review Order'}</span>
+                <span>{activeStep < 4 ? `Proceed to Step ${activeStep + 1}` : copy('review_order_1f1edc7')}</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>

@@ -1,3 +1,6 @@
+import { visibleContentItems } from '../../../shared/contentSchema.mjs';
+import { useGlobalContent } from '../context/SiteContentContext';
+import ManagedImage from './ManagedImage';
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -19,6 +22,9 @@ import NotificationBell from './NotificationBell';
 const Navbar = () => {
   const { user, isAuthenticated, isAdmin, isRider, logout } = useAuth();
   const { itemCount } = useOrderBooking();
+  const { global } = useGlobalContent();
+  const branding = global.section('branding');
+  const copy = global.t;
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -39,23 +45,8 @@ const Navbar = () => {
     navLinks = [
       { name: 'Rider Portal', path: '/rider', icon: Bike }
     ];
-  } else if (isAuthenticated) {
-    // Customer navigation: retail booking & order tracking
-    navLinks = [
-      { name: 'Home', path: '/' },
-      { name: 'Book Laundry', path: '/book', highlight: true },
-      { name: 'Pricing & Services', path: '/pricing' },
-      { name: 'Service Areas', path: '/operational-areas' },
-      { name: 'My Orders', path: '/my-orders' }
-    ];
   } else {
-    // Guest navigation: public discovery & booking
-    navLinks = [
-      { name: 'Home', path: '/' },
-      { name: 'Book Laundry', path: '/book', highlight: true },
-      { name: 'Pricing & Services', path: '/pricing' },
-      { name: 'Service Areas', path: '/operational-areas' }
-    ];
+    navLinks = visibleContentItems(global.section('navigation')?.items).filter(link => link.audience === 'all' || link.audience === (isAuthenticated ? 'customer' : 'guest')).map(link => ({ id: link.id, name: global.text(link.label), path: link.href, highlight: link.highlight }));
   }
 
   const isActive = (path) => location.pathname === path;
@@ -68,19 +59,17 @@ const Navbar = () => {
           {/* Logo & Brand */}
           <Link to={logoDestination} className="flex items-center gap-3 group">
             <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-primary-700 via-primary-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-primary-500/20 group-hover:scale-105 transition-transform">
-              <Shirt className="w-6 h-6 stroke-[2.2]" />
+              <ManagedImage optional reference={branding?.logo} className="w-6 h-6" width={24} height={24} />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-extrabold text-xl sm:text-2xl tracking-tight text-slate-900">
-                  Indo<span className="text-primary-600">Dhobi</span>
+                  {global.text(branding?.name)}<span className="text-primary-600">{global.text(branding?.accent)}</span>
                 </span>
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
-                  IN
-                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">{copy('in_fed1d87')}</span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium tracking-wide">
-                Fresh & Crisp Doorstep Laundry
+                {global.text(branding?.tagline)}
               </p>
             </div>
           </Link>
@@ -94,7 +83,7 @@ const Navbar = () => {
               if (link.highlight) {
                 return (
                   <Link
-                    key={link.path}
+                    key={link.id || link.path}
                     to={link.path}
                     className="relative ml-2 mr-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-primary-600 hover:bg-primary-700 shadow-sm shadow-primary-600/30 transition-all flex items-center gap-1.5 hover:shadow-md"
                   >
@@ -111,7 +100,7 @@ const Navbar = () => {
 
               return (
                 <Link
-                  key={link.path}
+                  key={link.id || link.path}
                   to={link.path}
                   className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2 ${
                     active
@@ -134,7 +123,7 @@ const Navbar = () => {
                 <Link
                   to="/profile"
                   className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 text-slate-700 hover:text-slate-900 text-sm font-medium transition-colors"
-                  title="View your profile & account"
+                  title={copy('view_your_profile_account_d71788f')}
                 >
                   {(() => {
                     const avatarSrc = user?.profileImage?.url || user?.profileImage?.imageUrl || (typeof user?.profileImage === 'string' ? user.profileImage : '');
@@ -143,7 +132,7 @@ const Navbar = () => {
                         {avatarSrc ? (
                           <img
                             src={avatarSrc}
-                            alt={user?.name || 'User'}
+                            alt={user?.name || copy('user_b512d97')}
                             className="w-7 h-7 rounded-lg object-cover border border-slate-200"
                             onError={(e) => {
                               e.currentTarget.style.display = 'none';
@@ -156,27 +145,23 @@ const Navbar = () => {
                           className="navbar-avatar-fallback w-7 h-7 rounded-lg bg-primary-100 text-primary-700 items-center justify-center font-bold text-xs"
                           style={{ display: avatarSrc ? 'none' : 'flex' }}
                         >
-                          {user?.name?.charAt(0) || 'U'}
+                          {user?.name?.charAt(0) || copy('u_a25513c')}
                         </div>
                       </div>
                     );
                   })()}
                   <span className="max-w-[100px] truncate">{user?.name?.split(' ')[0]}</span>
                   {user?.role === 'admin' && (
-                    <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
-                      Admin
-                    </span>
+                    <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded">{copy('admin_c1c224b')}</span>
                   )}
                   {user?.role === 'rider' && (
-                    <span className="bg-teal-100 text-teal-800 text-[10px] font-bold px-1.5 py-0.5 rounded">
-                      Rider
-                    </span>
+                    <span className="bg-teal-100 text-teal-800 text-[10px] font-bold px-1.5 py-0.5 rounded">{copy('rider_8eb9369')}</span>
                   )}
                 </Link>
                 <button
                   onClick={logout}
                   className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                  title="Log out"
+                  title={copy('log_out_4961614')}
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
@@ -186,15 +171,11 @@ const Navbar = () => {
                 <Link
                   to="/login"
                   className="px-3.5 py-2 text-sm font-medium text-slate-700 hover:text-primary-600 transition-colors"
-                >
-                  Sign In
-                </Link>
+                >{copy('sign_in_bcc0bcc')}</Link>
                 <Link
                   to="/register"
                   className="px-4 py-2 text-sm font-semibold text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
-                >
-                  Register
-                </Link>
+                >{copy('register_bb7234e')}</Link>
               </div>
             )}
           </div>
@@ -206,7 +187,7 @@ const Navbar = () => {
               <Link
                 to="/book"
                 className="p-2 text-primary-600 hover:bg-primary-50 rounded-xl relative"
-                aria-label="View booking cart"
+                aria-label={copy('view_booking_cart_2ed067a')}
               >
                 <ShoppingBag className="w-5 h-5" />
                 {itemCount > 0 && (
@@ -219,7 +200,7 @@ const Navbar = () => {
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl focus:outline-hidden"
-              aria-label="Toggle navigation menu"
+              aria-label={copy('toggle_navigation_menu_5106483')}
               aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -236,7 +217,7 @@ const Navbar = () => {
               const LinkIcon = link.icon;
               return (
                 <Link
-                  key={link.path}
+                  key={link.id || link.path}
                   to={link.path}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-base font-medium ${
@@ -270,7 +251,7 @@ const Navbar = () => {
                         {avatarSrc ? (
                           <img
                             src={avatarSrc}
-                            alt={user?.name || 'User'}
+                            alt={user?.name || copy('user_b512d97')}
                             className="w-9 h-9 rounded-xl object-cover border border-slate-200"
                             onError={(e) => {
                               e.currentTarget.style.display = 'none';
@@ -283,7 +264,7 @@ const Navbar = () => {
                           className="navbar-mobile-avatar-fallback w-9 h-9 rounded-xl bg-primary-100 text-primary-700 items-center justify-center font-bold text-sm"
                           style={{ display: avatarSrc ? 'none' : 'flex' }}
                         >
-                          {user?.name?.charAt(0) || 'U'}
+                          {user?.name?.charAt(0) || copy('u_a25513c')}
                         </div>
                       </div>
                     );
@@ -299,9 +280,7 @@ const Navbar = () => {
                     setMobileMenuOpen(false);
                   }}
                   className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100"
-                >
-                  Sign Out
-                </button>
+                >{copy('sign_out_0b184bc')}</button>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
@@ -309,16 +288,12 @@ const Navbar = () => {
                   to="/login"
                   onClick={() => setMobileMenuOpen(false)}
                   className="text-center py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50"
-                >
-                  Sign In
-                </Link>
+                >{copy('sign_in_bcc0bcc')}</Link>
                 <Link
                   to="/register"
                   onClick={() => setMobileMenuOpen(false)}
                   className="text-center py-2.5 rounded-xl bg-primary-600 text-white font-semibold text-sm hover:bg-primary-700 shadow-xs"
-                >
-                  Register
-                </Link>
+                >{copy('register_bb7234e')}</Link>
               </div>
             )}
           </div>

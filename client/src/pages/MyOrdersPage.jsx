@@ -1,3 +1,6 @@
+import ContentState from '../components/ContentState';
+import usePageCopy from '../hooks/usePageCopy';
+import { orderServiceLabel, orderFinishLabel } from '../../../shared/orderSnapshot.mjs';
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { orderService } from '../services/api';
@@ -51,6 +54,7 @@ const getStepIndex = (status) => {
 };
 
 const MyOrdersPage = () => {
+  const copy = usePageCopy('orders');
   const { user, isAdmin, isRider } = useAuth();
   const navigate = useNavigate();
 
@@ -188,17 +192,13 @@ const MyOrdersPage = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+    <ContentState resource={copy}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-            My Laundry Orders &amp; Live Tracking
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Track individual garment progress from hub pickup to doorstep delivery.
-          </p>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{copy('my_laundry_orders_live_tracking_a92f072')}</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">{copy('track_individual_garment_progress_from_hub_pickup_to_doorstep_del_8511b99')}</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -207,14 +207,14 @@ const MyOrdersPage = () => {
             className="px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>Refresh</span>
+            <span>{copy('refresh_0e91610')}</span>
           </button>
           <Link
             to="/book"
             className="px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>New Booking</span>
+            <span>{copy('new_booking_502c524')}</span>
           </Link>
         </div>
       </div>
@@ -223,23 +223,21 @@ const MyOrdersPage = () => {
       {loading ? (
         <div className="p-16 text-center bg-white rounded-3xl border border-slate-200">
           <Loader2 className="w-8 h-8 text-primary-600 animate-spin mx-auto mb-3" />
-          <p className="text-xs text-slate-500 font-medium">Retrieving your order history...</p>
+          <p className="text-xs text-slate-500 font-medium">{copy('retrieving_your_order_history_1db4ed3')}</p>
         </div>
       ) : orders.length === 0 ? (
         <div className="p-16 text-center bg-white rounded-3xl border border-slate-200 space-y-4 max-w-lg mx-auto">
           <div className="w-16 h-16 rounded-3xl bg-primary-50 text-primary-600 flex items-center justify-center mx-auto">
             <Package className="w-8 h-8" />
           </div>
-          <h3 className="text-lg font-bold text-slate-900">No Orders Placed Yet</h3>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            You haven't scheduled any laundry or steam press pickups yet. Book your first wash load now!
-          </p>
+          <h3 className="text-lg font-bold text-slate-900">{copy('no_orders_placed_yet_8185f12')}</h3>
+          <p className="text-xs text-slate-500 leading-relaxed">{copy('you_haven_t_scheduled_any_laundry_or_steam_press_pickups_yet_book_b57f5ae')}</p>
           <div className="pt-2">
             <Link
               to="/book"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-primary-600 text-white font-bold text-xs shadow-md shadow-primary-600/30 hover:bg-primary-700"
             >
-              <span>Schedule First Wash (From ₹30)</span>
+              <span>{copy('schedule_first_wash_from_30_f42f90d')}</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
@@ -281,23 +279,21 @@ const MyOrdersPage = () => {
                         </span>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                        <p className="text-xs text-slate-500">
-                          Placed on {new Date(order.createdAt).toLocaleDateString('en-IN', {
+                        <p className="text-xs text-slate-500">{copy('placed_on_bbba0c2')}{new Date(order.createdAt).toLocaleDateString('en-IN', {
                             day: 'numeric',
                             month: 'short',
                             year: 'numeric'
-                          })} • {order.items?.length || 0} Garments
-                        </p>
+                          })} • {order.items?.length || 0}{copy('garments_a2c86ca')}</p>
                         {['BOOKED', 'ORDER_PLACED', 'CONFIRMED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'OUT_FOR_PICKUP'].includes(order.orderStatus) && (order.verificationCodes?.pickupOtp || order.pickupOtp) && (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-amber-100 border border-amber-300 text-amber-950 font-mono font-black text-xs shadow-xs">
                             <KeyRound className="w-3.5 h-3.5 text-amber-700" />
-                            <span>Pickup OTP: {order.verificationCodes?.pickupOtp || order.pickupOtp}</span>
+                            <span>{copy('pickup_otp_dc427e5')}{order.verificationCodes?.pickupOtp || order.pickupOtp}</span>
                           </span>
                         )}
                         {['OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(order.orderStatus) && (order.verificationCodes?.deliveryOtp || order.deliveryOtp) && (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-teal-100 border border-teal-300 text-teal-950 font-mono font-black text-xs shadow-xs">
                             <ShieldCheck className="w-3.5 h-3.5 text-teal-700" />
-                            <span>Delivery OTP: {order.verificationCodes?.deliveryOtp || order.deliveryOtp}</span>
+                            <span>{copy('delivery_otp_eef1f34')}{order.verificationCodes?.deliveryOtp || order.deliveryOtp}</span>
                           </span>
                         )}
                       </div>
@@ -311,30 +307,23 @@ const MyOrdersPage = () => {
                         {order.orderStatus === 'CANCELLED' || order.payment?.status === 'CANCELLED' ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-slate-400" />
-                            <span className="text-xs font-bold text-slate-500">
-                              CANCELLED
-                            </span>
+                            <span className="text-xs font-bold text-slate-500">{copy('cancelled_8ab6812')}</span>
                           </>
                         ) : order.payment?.status === 'REFUNDED' ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-indigo-500" />
-                            <span className="text-xs font-bold text-indigo-700">
-                              REFUNDED
-                            </span>
+                            <span className="text-xs font-bold text-indigo-700">{copy('refunded_6e72ba4')}</span>
                           </>
                         ) : order.payment?.status === 'PAID' ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                            <span className="text-xs font-bold text-emerald-800">
-                              PAID
-                            </span>
+                            <span className="text-xs font-bold text-emerald-800">{copy('paid_e17956e')}</span>
                           </>
                         ) : (
                           <>
                             <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
                             <span className="text-xs font-bold text-amber-800">
-                              {order.payment?.method || 'COD'} - PENDING
-                            </span>
+                              {order.payment?.method || copy('cod_ca8c637')}{copy('pending_3c9730e')}</span>
                           </>
                         )}
                       </div>
@@ -361,12 +350,8 @@ const MyOrdersPage = () => {
                             <KeyRound className="w-5 h-5 stroke-[2.5]" />
                           </div>
                           <div>
-                            <span className="text-[11px] font-black uppercase tracking-wider text-amber-800 block">
-                              Doorstep Pickup OTP
-                            </span>
-                            <p className="text-xs text-amber-900 font-medium">
-                              Share this 4-digit code verbally with our pickup rider at your doorstep.
-                            </p>
+                            <span className="text-[11px] font-black uppercase tracking-wider text-amber-800 block">{copy('doorstep_pickup_otp_7cb30f6')}</span>
+                            <p className="text-xs text-amber-900 font-medium">{copy('share_this_4_digit_code_verbally_with_our_pickup_rider_at_your_do_fbd91e8')}</p>
                           </div>
                         </div>
                         <div className="px-4 py-2 rounded-xl bg-white border-2 border-amber-400 text-center font-mono font-black text-xl text-amber-950 shadow-xs tracking-widest shrink-0">
@@ -382,12 +367,8 @@ const MyOrdersPage = () => {
                             <ShieldCheck className="w-5 h-5 stroke-[2.5]" />
                           </div>
                           <div>
-                            <span className="text-[11px] font-black uppercase tracking-wider text-teal-800 block">
-                              Doorstep Delivery Confirmation OTP
-                            </span>
-                            <p className="text-xs text-teal-900 font-medium">
-                              Verify and inspect your clean garments, then share this 4-digit code verbally with the rider.
-                            </p>
+                            <span className="text-[11px] font-black uppercase tracking-wider text-teal-800 block">{copy('doorstep_delivery_confirmation_otp_efa2ebf')}</span>
+                            <p className="text-xs text-teal-900 font-medium">{copy('verify_and_inspect_your_clean_garments_then_share_this_4_digit_co_59e51fc')}</p>
                           </div>
                         </div>
                         <div className="px-4 py-2 rounded-xl bg-white border-2 border-teal-500 text-center font-mono font-black text-xl text-teal-950 shadow-xs tracking-widest shrink-0">
@@ -399,9 +380,7 @@ const MyOrdersPage = () => {
                     {/* Visual Step-by-Step Progress Bar */}
                     {!isCancelled ? (
                       <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
-                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-6">
-                          Live Order Trajectory
-                        </h4>
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-6">{copy('live_order_trajectory_c88502b')}</h4>
 
                         <div className="relative">
                           {/* Background line */}
@@ -439,7 +418,7 @@ const MyOrdersPage = () => {
                                         : 'text-slate-400'
                                     }`}
                                   >
-                                    {st.label}
+                                    {copy('order_step_' + st.key)}
                                   </span>
                                 </div>
                               );
@@ -450,7 +429,7 @@ const MyOrdersPage = () => {
                     ) : (
                       <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
                         <AlertCircle className="w-4 h-4 shrink-0" />
-                        <span>This order was cancelled. No charges were made.</span>
+                        <span>{copy('this_order_was_cancelled_no_charges_were_made_601d4f5')}</span>
                       </div>
                     )}
 
@@ -459,15 +438,13 @@ const MyOrdersPage = () => {
                       
                       {/* Left: Schedule & Address */}
                       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 space-y-4 text-xs">
-                        <h4 className="font-bold text-slate-900 border-b border-slate-100 pb-2">
-                          Logistics &amp; Scheduling
-                        </h4>
+                        <h4 className="font-bold text-slate-900 border-b border-slate-100 pb-2">{copy('logistics_scheduling_9eae2d7')}</h4>
 
                         <div className="space-y-3">
                           <div className="flex items-start gap-2.5">
                             <Clock className="w-4 h-4 text-primary-600 shrink-0 mt-0.5" />
                             <div>
-                              <span className="font-bold text-slate-800">Pickup Schedule:</span>
+                              <span className="font-bold text-slate-800">{copy('pickup_schedule_64b5474')}</span>
                               <p className="text-slate-600">
                                 {order.pickupSchedule?.date} • {order.pickupSchedule?.timeSlot}
                               </p>
@@ -477,7 +454,7 @@ const MyOrdersPage = () => {
                           <div className="flex items-start gap-2.5">
                             <Truck className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
                             <div>
-                              <span className="font-bold text-slate-800">Delivery Target:</span>
+                              <span className="font-bold text-slate-800">{copy('delivery_target_81bfc95')}</span>
                               <p className="text-slate-600">
                                 {order.deliverySchedule?.date} • {order.deliverySchedule?.timeSlot}
                               </p>
@@ -487,12 +464,11 @@ const MyOrdersPage = () => {
                           <div className="flex items-start gap-2.5">
                             <MapPin className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                             <div>
-                              <span className="font-bold text-slate-800">Doorstep Address:</span>
+                              <span className="font-bold text-slate-800">{copy('doorstep_address_bc63632')}</span>
                               <p className="text-slate-600">
                                 {order.pickupAddress?.flatAndBuilding}, {order.pickupAddress?.streetAndLandmark}, {order.pickupAddress?.city} - {order.pickupAddress?.pincode}
                               </p>
-                              <p className="text-slate-500 text-[11px] mt-0.5">
-                                Contact: {order.pickupAddress?.contactPhone}
+                              <p className="text-slate-500 text-[11px] mt-0.5">{copy('contact_8fe6d39')}{order.pickupAddress?.contactPhone}
                               </p>
                             </div>
                           </div>
@@ -511,12 +487,12 @@ const MyOrdersPage = () => {
                                     <Bike className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
                                     <div>
                                       <span className="font-bold text-slate-800">
-                                        {isDeliveryLeg ? 'Assigned Delivery Rider:' : 'Assigned Pickup Rider:'}
+                                        {isDeliveryLeg ? copy('assigned_delivery_rider_e855a22') : copy('assigned_pickup_rider_f1820f5')}
                                       </span>
                                       <p className="text-slate-600">
                                         {activeRider.name} •{' '}
                                         <a href={`tel:${activeRider.phone}`} className="text-teal-700 font-bold hover:underline">
-                                          {activeRider.phone || 'Contact via IndoDhobi'}
+                                          {activeRider.phone || copy('contact_via_indodhobi_d8ec29b')}
                                         </a>
                                       </p>
                                     </div>
@@ -527,8 +503,7 @@ const MyOrdersPage = () => {
                                   <div className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-[11px] flex items-center gap-2">
                                     <QrCode className="w-4 h-4 text-amber-700 shrink-0" />
                                     <p className="leading-relaxed">
-                                      <strong>Doorstep Payment Options:</strong> Pay our rider via exact Cash or scan our Official Company Dynamic UPI QR (GPay / PhonePe / Paytm / BHIM) upon delivery.
-                                    </p>
+                                      <strong>{copy('doorstep_payment_options_3369dd9')}</strong>{copy('pay_our_rider_via_exact_cash_or_scan_our_official_company_dynamic_bc725d0')}</p>
                                   </div>
                                 )}
                               </>
@@ -539,7 +514,7 @@ const MyOrdersPage = () => {
                           {order.logistics?.bagTagId && (
                             <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
                               <Tag className="w-4 h-4 text-teal-600 shrink-0" />
-                              <span className="text-slate-600 font-medium">Bag Tag ID:</span>
+                              <span className="text-slate-600 font-medium">{copy('bag_tag_id_e68c185')}</span>
                               <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                                 {order.logistics.bagTagId}
                               </span>
@@ -549,7 +524,7 @@ const MyOrdersPage = () => {
                           {/* Inspection Notes if present */}
                           {order.logistics?.inspectionNotes && (
                             <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px]">
-                              <span className="font-bold text-amber-900">Doorstep Inspection Notes: </span>
+                              <span className="font-bold text-amber-900">{copy('doorstep_inspection_notes_4652744')}</span>
                               <span className="text-amber-800">{order.logistics.inspectionNotes}</span>
                             </div>
                           )}
@@ -557,8 +532,7 @@ const MyOrdersPage = () => {
                           {/* Stain & Inspection Photos if present */}
                           {order.logistics?.inspectionPhotos?.length > 0 && (
                             <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                              <span className="font-bold text-slate-800 block text-[11px]">
-                                Doorstep Stain &amp; Fabric Inspection Photos ({order.logistics.inspectionPhotos.length}):
+                              <span className="font-bold text-slate-800 block text-[11px]">{copy('doorstep_stain_fabric_inspection_photos_7044151')}{order.logistics.inspectionPhotos.length}):
                               </span>
                               <div className="grid grid-cols-3 gap-2">
                                 {order.logistics.inspectionPhotos.map((photo, pIdx) => (
@@ -574,9 +548,7 @@ const MyOrdersPage = () => {
                                       alt={`Inspection Photo ${pIdx + 1}`}
                                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                                     />
-                                    <span className="absolute bottom-1 right-1 bg-slate-900/70 text-[9px] text-white px-1.5 py-0.5 rounded font-mono">
-                                      View
-                                    </span>
+                                    <span className="absolute bottom-1 right-1 bg-slate-900/70 text-[9px] text-white px-1.5 py-0.5 rounded font-mono">{copy('view_dcc839a')}</span>
                                   </a>
                                 ))}
                               </div>
@@ -585,7 +557,7 @@ const MyOrdersPage = () => {
 
                           {order.preferences?.specialInstructions && (
                             <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-[11px]">
-                              <span className="font-bold text-slate-700">Special Notes: </span>
+                              <span className="font-bold text-slate-700">{copy('special_notes_d9e1e32')}</span>
                               <span className="text-slate-600">{order.preferences.specialInstructions}</span>
                             </div>
                           )}
@@ -595,8 +567,8 @@ const MyOrdersPage = () => {
                       {/* Right: Itemized Bill Breakdown */}
                       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 space-y-4 text-xs">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                          <h4 className="font-bold text-slate-900">Itemized Bill Breakdown</h4>
-                          <span className="text-slate-500 font-medium">Tax Invoice</span>
+                          <h4 className="font-bold text-slate-900">{copy('itemized_bill_breakdown_158df3e')}</h4>
+                          <span className="text-slate-500 font-medium">{copy('tax_invoice_e6876b3')}</span>
                         </div>
 
                         <div className="max-h-48 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100">
@@ -606,8 +578,8 @@ const MyOrdersPage = () => {
                                 <span className="font-bold text-slate-800">{item.garmentName}</span>
                                 <span className="text-slate-500 ml-1.5 font-medium">× {item.quantity}</span>
                                 <p className="text-[10px] text-slate-400">
-                                  {item.serviceType.replace(/_/g, ' ')}
-                                  {item.ironingType !== 'NONE' && ` • ${item.ironingType.replace(/_/g, ' ')}`}
+                                  {orderServiceLabel(item)}
+                                  {item.ironingType !== 'NONE' && ` • ${orderFinishLabel(item)}`}
                                 </p>
                               </div>
                               <span className="font-semibold text-slate-900">₹{item.lineTotal}</span>
@@ -617,19 +589,22 @@ const MyOrdersPage = () => {
 
                         <div className="pt-3 border-t border-slate-100 space-y-1.5">
                           <div className="flex justify-between text-slate-500">
-                            <span>Subtotal:</span>
+                            <span>{copy('subtotal_8cf83a4')}</span>
                             <span>₹{order.pricingBreakdown?.subtotal}</span>
                           </div>
                           <div className="flex justify-between text-slate-500">
-                            <span>Pickup &amp; Delivery Fee:</span>
-                            <span>{order.pricingBreakdown?.pickupDeliveryFee === 0 ? 'FREE' : `₹${order.pricingBreakdown?.pickupDeliveryFee}`}</span>
+                            <span>{copy('pickup_delivery_fee_037a708')}</span>
+                            <span>{order.pricingBreakdown?.pickupDeliveryFee === 0 ? copy('free_19f1fa5') : `₹${order.pricingBreakdown?.pickupDeliveryFee}`}</span>
                           </div>
-                          <div className="flex justify-between text-slate-500">
-                            <span>GST (5%):</span>
+                          {order.pricingBreakdown?.expressSurcharge > 0 && <div className="flex justify-between"><span>{copy('order_extra_express')}</span><span>₹{order.pricingBreakdown.expressSurcharge}</span></div>}
+              {order.pricingBreakdown?.extraPreferenceFee > 0 && <div className="flex justify-between"><span>{copy('order_extra_preferences')}</span><span>₹{order.pricingBreakdown.extraPreferenceFee}</span></div>}
+              {order.pricingBreakdown?.discountAmount > 0 && <div className="flex justify-between"><span>{copy('order_extra_discount')} ({order.pricingBreakdown.couponCode}):</span><span>−₹{order.pricingBreakdown.discountAmount}</span></div>}
+              <div className="flex justify-between text-slate-500">
+                            <span>{copy('gst_5_be9ba6d')}{order.pricingBreakdown?.gstPercentage != null ? ` (${order.pricingBreakdown.gstPercentage}%)` : ''}:</span>
                             <span>₹{order.pricingBreakdown?.taxAmount}</span>
                           </div>
                           <div className="flex justify-between font-black text-slate-900 text-sm pt-2 border-t border-slate-200">
-                            <span>Grand Total:</span>
+                            <span>{copy('grand_total_8d7627e')}</span>
                             <span className="text-primary-700">₹{order.pricingBreakdown?.grandTotal}</span>
                           </div>
                         </div>
@@ -642,7 +617,7 @@ const MyOrdersPage = () => {
                             className="py-2 px-3 rounded-xl font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 flex items-center justify-center gap-1.5 text-xs transition-all shadow-2xs cursor-pointer"
                           >
                             <FileText className="w-3.5 h-3.5 text-primary-600" />
-                            <span>View / Print GST Invoice</span>
+                            <span>{copy('view_print_gst_invoice_6d32a48')}</span>
                           </button>
 
                           {['BOOKED', 'PICKUP_ASSIGNED'].includes(order.orderStatus) && (
@@ -657,7 +632,7 @@ const MyOrdersPage = () => {
                               ) : (
                                 <Ban className="w-3.5 h-3.5 text-rose-600" />
                               )}
-                              <span>Cancel Order</span>
+                              <span>{copy('cancel_order_205f016')}</span>
                             </button>
                           )}
                         </div>
@@ -672,7 +647,7 @@ const MyOrdersPage = () => {
                               className="flex-1 py-2.5 px-3 rounded-xl font-bold text-white bg-primary-600 hover:bg-primary-700 shadow-sm flex items-center justify-center gap-1.5 text-xs transition-colors cursor-pointer"
                             >
                               <CreditCard className="w-3.5 h-3.5" />
-                              <span>{actionLoadingId === order._id ? 'Opening Gateway...' : 'Retry Online Payment'}</span>
+                              <span>{actionLoadingId === order._id ? copy('opening_gateway_fd005d6') : copy('retry_online_payment_2902f50')}</span>
                             </button>
                             <button
                               type="button"
@@ -681,7 +656,7 @@ const MyOrdersPage = () => {
                               className="py-2.5 px-3 rounded-xl font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 flex items-center justify-center gap-1.5 text-xs transition-colors cursor-pointer"
                             >
                               <Receipt className="w-3.5 h-3.5 text-slate-500" />
-                              <span>Switch to COD</span>
+                              <span>{copy('switch_to_cod_4b139f8')}</span>
                             </button>
                           </div>
                         )}
@@ -692,9 +667,7 @@ const MyOrdersPage = () => {
                     {/* Status History & Audit Trail */}
                     {order.statusHistory && order.statusHistory.length > 0 && (
                       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 space-y-3">
-                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                          Live Status Timeline &amp; Audit Trail
-                        </h4>
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{copy('live_status_timeline_audit_trail_1ed0194')}</h4>
                         <div className="space-y-3 border-l-2 border-teal-200 ml-2 pl-4">
                           {order.statusHistory.map((hist, idx) => (
                             <div key={idx} className="relative text-xs">
@@ -739,7 +712,7 @@ const MyOrdersPage = () => {
         />
       )}
 
-    </div>
+    </div></ContentState>
   );
 };
 

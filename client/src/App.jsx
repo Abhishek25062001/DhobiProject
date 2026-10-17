@@ -1,3 +1,5 @@
+import { SiteContentProvider } from './context/SiteContentContext';
+import PageMetadata from './components/PageMetadata';
 import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -47,6 +49,8 @@ function App() {
     <Router>
       <AuthProvider>
         <OrderBookingProvider>
+          <SiteContentProvider>
+          <PageMetadata />
           <div className="flex flex-col min-h-screen bg-slate-50 text-slate-800">
             {/* Global Toast Notifications */}
             <Toaster
@@ -144,6 +148,7 @@ function App() {
             {/* Application Footer */}
             <Footer />
           </div>
+        </SiteContentProvider>
         </OrderBookingProvider>
       </AuthProvider>
     </Router>

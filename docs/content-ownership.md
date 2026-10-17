@@ -2,9 +2,9 @@
 
 T02 establishes where website data belongs and how the remaining implementation tasks must connect it. Keep the current layout, CSS, typography, image framing, responsive behavior and booking flow. Replace the sources of content inside those components.
 
-The runtime change in T02 shares existing catalog price keys and order selection codes between the database schemas and the website validator. The target fields, endpoints and admin controls below are requirements for T03–T14; they are not yet implemented. T02 does not migrate database records or make the website fully admin-managed.
+This document preserves the T02 baseline and implementation contract. T02 itself only shared existing catalog price keys and order selection codes between the database schemas and website validator. The subsequent T03–T15 work is now complete; see [task progress](implementation-tasks.md), [administrator instructions](website-administration.md) and [acceptance results](acceptance-results.md) for the implemented behavior and verification. Statements about the original sources below describe the pre-migration baseline.
 
-## Current baseline
+## Original T02 baseline
 
 Checked against source and the local public API on 17 October 2026:
 
@@ -153,4 +153,4 @@ Public GETs are read-only. Default creation belongs to an explicit migration/see
 
 `npm run test:contracts` validates real Mongoose documents and serialized catalog payloads without a database connection. It covers legacy price fields and order codes, zero values, missing/negative prices, invalid selection codes and renamed display labels. `npm run test:connectivity` retains T01 and basket-draft regression checks. The production client build verifies that the shared module resolves in the frontend bundle.
 
-No CSS, page markup, images, stored prices or calculation formulas are changed by T02. Admin editors, content APIs, migrations and update propagation remain assigned to the tasks below.
+No CSS, page markup, images, stored prices or calculation formulas are changed by T02. Admin editors, content APIs, migrations and update propagation remain assigned to the remaining implementation tasks.

@@ -1,52 +1,14 @@
-export const HOME_CARE_OPTIONS = [
-  { id: 'wash', label: 'Wash', service: 'WASH_AND_FOLD', ironing: 'NONE', description: 'Washed, dried & neatly folded.', shortLabel: 'Wash & fold' },
-  { id: 'steam', label: 'Steam Press', service: 'IRON_ONLY', ironing: 'STANDARD_STEAM', description: 'A smooth finish. No wash included.', shortLabel: 'Steam press' },
-  { id: 'dry', label: 'Dry Clean', service: 'DRY_CLEAN', ironing: 'NONE', description: 'Specialist care for delicate pieces.', shortLabel: 'Dry clean' },
-  { id: 'starch', label: 'Starch', service: 'IRON_ONLY', ironing: 'CRISP_STARCH', description: 'A crisp starch press for your cottons.', shortLabel: 'Starch press' },
-];
-
 export const formatRupees = value => new Intl.NumberFormat('en-IN', {
   style: 'currency', currency: 'INR', maximumFractionDigits: 2,
 }).format(value).replace(/\.00$/, '');
 
 export function garmentPresentation(garment) {
-  const name = garment?.name || '';
-  if (/t-shirt|polo/i.test(name)) return { name: 'T-Shirt', kind: 'tshirt' };
-  if (/shirt/i.test(name)) return { name: 'Shirt', kind: 'shirt' };
-  if (/trouser|jeans/i.test(name)) return { name: 'Trousers', kind: 'trousers' };
-  if (/kurti/i.test(name)) return { name: 'Kurti', kind: 'kurti' };
-  if (/kurta/i.test(name)) return { name: 'Kurta', kind: 'kurti' };
-  if (/saree/i.test(name)) return { name: 'Saree', kind: 'saree' };
-  if (/salwar|kameez/i.test(name)) return { name: 'Salwar suit', kind: 'kurti' };
-  if (/suit|blazer/i.test(name)) return { name: 'Suit / Blazer', kind: 'suit' };
-  if (/dress|gown/i.test(name)) return { name: 'Dress', kind: 'kurti' };
-  if (/single.*bedsheet/i.test(name)) return { name: 'Single bedsheet', kind: 'linen' };
-  if (/bedsheet/i.test(name)) return { name: 'King bedsheet', kind: 'linen' };
-  if (/towel/i.test(name)) return { name: 'Bath towel', kind: 'linen' };
-  if (/curtain/i.test(name)) return { name: 'Curtain', kind: 'curtain' };
-  if (/quilt|comforter|rajai/i.test(name)) return { name: 'Quilt / Rajai', kind: 'linen' };
-  if (/jacket|sweater/i.test(name)) return { name: 'Jacket / Sweater', kind: 'suit' };
-  return { name, kind: 'shirt' };
+  return { name: garment?.shortName || garment?.name || '' };
 }
 
-// Derive the tabs from garment records: the separate category directory can
-// contain categories with no active garments and uses different display names.
-export function catalogueCategories(garments) {
-  const groups = [...new Set(garments.map(garment => garment.category))];
-  const ordered = ['Men', 'Women', 'Household', 'Winter & Heavy'];
-  return groups.sort((a, b) => {
-    const rank = name => ordered.includes(name) ? ordered.indexOf(name) : ordered.length;
-    return rank(a) - rank(b);
-  }).map(category => ({
-    value: category,
-    label: category === 'Household' ? 'Home' : category === 'Winter & Heavy' ? 'Winter' : category,
-  }));
-}
-
-export function itemCareLabel(item) {
-  if (item.serviceType === 'WASH_AND_IRON') {
-    return item.ironingType === 'CRISP_STARCH' ? 'Wash + starch' : item.ironingType === 'DELICATE_PRESS' ? 'Wash + delicate press' : 'Wash + press';
-  }
-  if (item.ironingType === 'DELICATE_PRESS' && item.serviceType === 'IRON_ONLY') return 'Delicate press';
-  return HOME_CARE_OPTIONS.find(option => option.service === item.serviceType && option.ironing === item.ironingType)?.shortLabel || item.serviceType.replaceAll('_', ' ').toLowerCase();
+export function itemCareLabel(item, config) {
+  const service = config?.serviceTypes?.find(option => option.code === item.serviceType);
+  const finish = config?.ironingTiers?.find(option => option.code === item.ironingType);
+  const care = config?.homeCareOptions?.find(option => option.service === item.serviceType && option.ironing === item.ironingType);
+  return care?.shortLabel || [service?.shortName || service?.name, finish?.shortName || finish?.name].filter(Boolean).join(' · ');
 }

@@ -1,3 +1,8 @@
+import ContentState from '../components/ContentState';
+import usePageCopy from '../hooks/usePageCopy';
+import useServiceAreas from '../hooks/useServiceAreas';
+import ApiLoadError from '../components/ApiLoadError';
+import { serviceAreaService } from '../services/api';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
@@ -14,80 +19,10 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-const HUBS = [
-  {
-    id: 'delhi',
-    name: 'Delhi NCR (Central, South & West)',
-    badge: 'Flagship Hub',
-    pincodeRange: '110001 - 110085',
-    turnaround: '24 - 48 Hours',
-    coverage: [
-      'Connaught Place & Barakhamba Rd (110001)',
-      'Chanakyapuri & Diplomatic Enclave (110021)',
-      'Hauz Khas, Green Park & Safdarjung (110016)',
-      'Vasant Kunj & Vasant Vihar (110070)',
-      'Greater Kailash I & II, CR Park (110048)',
-      'Saket, Malviya Nagar & Sainik Farms (110017)',
-      'Defence Colony & South Extension (110024)',
-      'Okhla Industrial & Friends Colony (110020)',
-      'Dwarka Sectors 1 to 23 (110075)',
-      'Rohini & Pitampura (110085)',
-      'Punjabi Bagh & Rajouri Garden (110027)'
-    ],
-    pincodes: ['110001', '110002', '110003', '110016', '110017', '110019', '110020', '110021', '110024', '110025', '110027', '110048', '110070', '110075', '110085']
-  },
-  {
-    id: 'gurugram',
-    name: 'Gurugram (CyberCity & Golf Course Rd)',
-    badge: 'Express Hub',
-    pincodeRange: '122001 - 122018',
-    turnaround: '24 - 48 Hours',
-    coverage: [
-      'DLF Phase 1, 2, 3, 4 & 5 (122002)',
-      'Cyber City & Cyber Hub Enclave (122002)',
-      'Golf Course Road & DLF Camellias (122002)',
-      'Golf Course Extension & Sector 56 (122011)',
-      'Sector 29, 43, 44 Commercial Hub (122009)',
-      'Sohna Road & Subhash Chowk (122018)',
-      'Old Gurugram & Sector 14 (122001)'
-    ],
-    pincodes: ['122001', '122002', '122003', '122009', '122011', '122018']
-  },
-  {
-    id: 'noida',
-    name: 'Noida & Greater Noida Expressway',
-    badge: 'High-Capacity Hub',
-    pincodeRange: '201301 - 201310',
-    turnaround: '24 - 48 Hours',
-    coverage: [
-      'Sector 18 & Atta Market Commercial Hub (201301)',
-      'Sector 50 & Central Noida Residential (201301)',
-      'Sector 62 IT Parks & Fortis Corridor (201307)',
-      'Sector 74, 76, 78 High-Rise Clusters (201301)',
-      'Sector 128, 137 Noida Expressway (201304)',
-      'Greater Noida Knowledge Park & Pari Chowk (201310)'
-    ],
-    pincodes: ['201301', '201303', '201304', '201307', '201310']
-  },
-  {
-    id: 'bengaluru',
-    name: 'Bengaluru (Tech Corridors & Central)',
-    badge: 'Southern Hub',
-    pincodeRange: '560001 - 560103',
-    turnaround: '48 Hours',
-    coverage: [
-      'Indiranagar & Defence Colony (560038)',
-      'Koramangala Blocks 1 through 8 (560034)',
-      'HSR Layout Sectors 1 to 7 (560102)',
-      'Whitefield & ITPL Corridor (560066)',
-      'Bellandur & Outer Ring Road (560103)',
-      'MG Road, Lavelle Road & Richmond Town (560001)'
-    ],
-    pincodes: ['560001', '560008', '560034', '560038', '560066', '560100', '560102', '560103']
-  }
-];
-
 const OperationalAreasPage = () => {
+  const copy = usePageCopy('areas');
+  const coverage = useServiceAreas();
+  const [checking, setChecking] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [checkResult, setCheckResult] = useState(null);
 
@@ -95,55 +30,19 @@ const OperationalAreasPage = () => {
     window.scrollTo(0, 0);
   }, []);
 
-  const handleCheckPincode = (e) => {
+  const handleCheckPincode = async (e) => {
     e.preventDefault();
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) {
-      setCheckResult(null);
-      return;
-    }
-
-    // Check pincode match or locality name match
-    let matchedHub = null;
-    let matchedArea = '';
-
-    for (const hub of HUBS) {
-      if (hub.pincodes.includes(query)) {
-        matchedHub = hub;
-        matchedArea = `Pincode ${query}`;
-        break;
-      }
-      const foundArea = hub.coverage.find(a => a.toLowerCase().includes(query));
-      if (foundArea) {
-        matchedHub = hub;
-        matchedArea = foundArea;
-        break;
-      }
-      if (hub.name.toLowerCase().includes(query)) {
-        matchedHub = hub;
-        matchedArea = hub.name;
-        break;
-      }
-    }
-
-    if (matchedHub) {
-      setCheckResult({
-        serviceable: true,
-        hub: matchedHub.name,
-        area: matchedArea,
-        turnaround: matchedHub.turnaround,
-        message: `Hooray! Doorstep pickup & laundry delivery is actively servicing your area with a ${matchedHub.turnaround} turnaround!`
-      });
-    } else {
-      setCheckResult({
-        serviceable: false,
-        message: `We haven't launched our full doorstep fleet in "${searchQuery}" yet. We are actively expanding! Contact support or check back soon.`
-      });
-    }
+    setChecking(true); setCheckResult(null);
+    try {
+      const result = await serviceAreaService.check(searchQuery.trim());
+      setCheckResult({ serviceable: result.serviceable, area: searchQuery.trim(),
+        message: result.serviceable ? `Doorstep service is available through ${result.area.name}. ${result.area.turnaround}` : `We do not currently offer doorstep service for ${searchQuery.trim()}.` });
+    } catch (error) { setCheckResult({ serviceable: false, message: error.response?.data?.message || 'Coverage could not be checked. Please try again.' }); }
+    finally { setChecking(false); }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 space-y-12">
+    <ContentState resource={copy}><div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 space-y-12">
       <div className="max-w-6xl mx-auto space-y-10">
         
         {/* Header Hero Banner */}
@@ -151,44 +50,41 @@ const OperationalAreasPage = () => {
           <div className="space-y-4 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-teal-500/20 text-teal-300 text-xs font-bold border border-teal-500/30">
               <Compass className="w-3.5 h-3.5 text-teal-400 animate-spin" />
-              <span>Doorstep Pickup &amp; 48-Hour Hub Delivery</span>
+              <span>{copy('doorstep_pickup_48_hour_hub_delivery_42f5b6e')}</span>
             </div>
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
-              Our Operational Hubs &amp; <br />
-              <span className="bg-gradient-to-r from-teal-400 via-primary-300 to-indigo-300 bg-clip-text text-transparent">
-                Serviceable Cities
-              </span>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">{copy('our_operational_hubs_b64da69')}<br />
+              <span className="bg-gradient-to-r from-teal-400 via-primary-300 to-indigo-300 bg-clip-text text-transparent">{copy('serviceable_cities_aaadc60')}</span>
             </h1>
-            <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
-              IndoDhobi operates commercial temperature-controlled laundry and German steam pressing hubs across Delhi NCR, Gurugram, Noida, and Bengaluru. Check your pincode below to confirm doorstep service!
-            </p>
+            <p className="text-sm sm:text-base text-slate-300 leading-relaxed">{copy('indodhobi_operates_commercial_temperature_controlled_laundry_and__ecd0ee0')}</p>
           </div>
 
           {/* Quick Pincode Checker Card */}
           <div className="w-full md:w-96 bg-white/10 backdrop-blur-xl p-6 rounded-2xl border border-white/20 text-white shadow-2xl shrink-0">
             <h3 className="text-sm font-bold flex items-center gap-2 mb-2">
               <Search className="w-4 h-4 text-teal-300" />
-              <span>Instant Pincode / Area Checker</span>
+              <span>{copy('instant_pincode_checker_38bc744')}</span>
             </h3>
-            <p className="text-xs text-slate-300 mb-4">
-              Enter your 6-digit pincode or locality name:
-            </p>
+            <p className="text-xs text-slate-300 mb-4">{copy('enter_your_6_digit_pincode_0a9af78')}</p>
 
             <form onSubmit={handleCheckPincode} className="space-y-3">
               <div className="relative">
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="e.g. 110001 or Vasant Kunj"
+                  disabled={checking}
+                  inputMode="numeric"
+                  maxLength={6}
+                  onChange={(e) => { setSearchQuery(e.target.value); setCheckResult(null); }}
+                  placeholder={copy('e_g_110001_d1c3a44')}
                   className="w-full px-4 py-2.5 rounded-xl bg-white text-slate-900 text-xs font-semibold placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-primary-400"
                 />
               </div>
               <button
                 type="submit"
+                disabled={checking}
                 className="w-full py-2.5 rounded-xl bg-primary-600 hover:bg-primary-500 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <span>Check Serviceability</span>
+                <span>{copy('check_serviceability_6c8dbe0')}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </form>
@@ -212,8 +108,7 @@ const OperationalAreasPage = () => {
                       <Link
                         to="/book"
                         className="inline-block mt-2 font-bold text-emerald-300 underline hover:text-white"
-                      >
-                        Book Pickup for {checkResult.area} &rarr;
+                      >{copy('book_pickup_for_cd4d6a8')}{checkResult.area} &rarr;
                       </Link>
                     )}
                   </div>
@@ -226,18 +121,15 @@ const OperationalAreasPage = () => {
         {/* 4 Operational Hub Grid */}
         <div className="space-y-6">
           <div className="text-center sm:text-left">
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-              Active Fleet Networks &amp; Plant Locations
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-600 mt-1">
-              Every hub features dedicated doorstep logistics riders, digital bag-tagging, and 100% fabric-safe batch processing.
-            </p>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">{copy('active_fleet_networks_plant_locations_7960bf4')}</h2>
+            <p className="text-xs sm:text-sm text-slate-600 mt-1">{copy('every_hub_features_dedicated_doorstep_logistics_riders_digital_ba_0d9d5d9')}</p>
           </div>
 
+          {coverage.error && <ApiLoadError message={copy('service_areas_could_not_be_loaded_e1539c6')} onRetry={coverage.retry} />}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {HUBS.map((hub) => (
+            {coverage.areas.map((hub) => (
               <div
-                key={hub.id}
+                key={hub._id}
                 className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-5"
               >
                 <div className="space-y-3">
@@ -257,13 +149,11 @@ const OperationalAreasPage = () => {
                   </h3>
 
                   <div className="text-xs text-slate-600 font-mono bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                    <strong>Pincode Zones:</strong> {hub.pincodeRange}
+                    <strong>{copy('pincode_zones_c22a4e6')}</strong> {hub.pincodeRange}
                   </div>
 
                   <div className="space-y-1.5 pt-1">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
-                      Prominent Service Neighborhoods:
-                    </span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">{copy('prominent_service_neighborhoods_37bd0fa')}</span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-slate-700">
                       {hub.coverage.map((area, idx) => (
                         <div key={idx} className="flex items-center gap-1.5">
@@ -278,13 +168,13 @@ const OperationalAreasPage = () => {
                 <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                   <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Fleet Active &amp; Ready</span>
+                    <span>{copy('fleet_active_ready_d0c7ff6')}</span>
                   </span>
                   <Link
                     to="/book"
                     className="inline-flex items-center gap-1 text-xs font-extrabold text-primary-600 hover:text-primary-700 hover:underline"
                   >
-                    <span>Schedule Wash</span>
+                    <span>{copy('schedule_wash_ea59b39')}</span>
                     <ArrowRight className="w-3 h-3" />
                   </Link>
                 </div>
@@ -300,8 +190,8 @@ const OperationalAreasPage = () => {
               <Truck className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="font-bold text-slate-900 text-sm">Free Doorstep Pickup</h4>
-              <p className="text-xs text-slate-500 mt-0.5">Complimentary doorstep collection on orders above ₹399 across all hubs.</p>
+              <h4 className="font-bold text-slate-900 text-sm">{copy('free_doorstep_pickup_4ce6006')}</h4>
+              <p className="text-xs text-slate-500 mt-0.5">{copy('complimentary_doorstep_collection_on_orders_above_399_across_all__f9a4ff2')}</p>
             </div>
           </div>
 
@@ -310,8 +200,8 @@ const OperationalAreasPage = () => {
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="font-bold text-slate-900 text-sm">Digital Chain of Custody</h4>
-              <p className="text-xs text-slate-500 mt-0.5">Physical tamper-proof bag tags and 4-digit customer OTP verification at your door.</p>
+              <h4 className="font-bold text-slate-900 text-sm">{copy('digital_chain_of_custody_12ed623')}</h4>
+              <p className="text-xs text-slate-500 mt-0.5">{copy('physical_tamper_proof_bag_tags_and_4_digit_customer_otp_verificat_f7879f0')}</p>
             </div>
           </div>
 
@@ -320,8 +210,8 @@ const OperationalAreasPage = () => {
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="font-bold text-slate-900 text-sm">German Steam Finishing</h4>
-              <p className="text-xs text-slate-500 mt-0.5">Professional boiler steam pressing and antiseptic garment sanitization.</p>
+              <h4 className="font-bold text-slate-900 text-sm">{copy('german_steam_finishing_c354dd5')}</h4>
+              <p className="text-xs text-slate-500 mt-0.5">{copy('professional_boiler_steam_pressing_and_antiseptic_garment_sanitiz_031999c')}</p>
             </div>
           </div>
         </div>
@@ -329,19 +219,17 @@ const OperationalAreasPage = () => {
         {/* Bottom CTA Banner */}
         <div className="rounded-3xl p-8 bg-gradient-to-r from-primary-600 to-teal-600 text-white text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl">
           <div>
-            <h3 className="text-xl sm:text-2xl font-black">Is Your Pincode in Our Fleet Zone?</h3>
-            <p className="text-xs sm:text-sm text-white/90 mt-1">Book your wash in under 60 seconds with live doorstep tracking.</p>
+            <h3 className="text-xl sm:text-2xl font-black">{copy('is_your_pincode_in_our_fleet_zone_b05c4bd')}</h3>
+            <p className="text-xs sm:text-sm text-white/90 mt-1">{copy('book_your_wash_in_under_60_seconds_with_live_doorstep_tracking_04b1c46')}</p>
           </div>
           <Link
             to="/book"
             className="px-6 py-3.5 rounded-2xl bg-white text-primary-700 font-extrabold text-xs shadow-lg hover:bg-slate-50 hover:scale-105 transition-all shrink-0"
-          >
-            Book Your Wash Now &rarr;
-          </Link>
+          >{copy('book_your_wash_now_00e01c2')}</Link>
         </div>
 
       </div>
-    </div>
+    </div></ContentState>
   );
 };
 

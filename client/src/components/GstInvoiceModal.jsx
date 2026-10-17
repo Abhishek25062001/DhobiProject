@@ -1,27 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Printer, Download, X, CheckCircle2, ShieldCheck, Shirt, AlertCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import toast from 'react-hot-toast';
-import { configService } from '../services/api';
+import { invoiceIdentity, orderServiceLabel, orderFinishLabel } from '../../../shared/orderSnapshot.mjs';
 
 const GstInvoiceModal = ({ order, isOpen = true, onClose, platformConfig }) => {
-  const [activeConfig, setActiveConfig] = useState(platformConfig || null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const receiptRef = useRef(null);
-
-  useEffect(() => {
-    if (!platformConfig) {
-      configService.getPublicConfig().then((res) => {
-        if (res.success && res.config) {
-          setActiveConfig(res.config);
-        }
-      }).catch(() => {});
-    } else {
-      setActiveConfig(platformConfig);
-    }
-  }, [platformConfig]);
 
   if (!isOpen || !order) return null;
 
@@ -101,16 +88,12 @@ const GstInvoiceModal = ({ order, isOpen = true, onClose, platformConfig }) => {
     grandTotal: 0
   };
 
-  const businessName = activeConfig?.businessName || 'IndoDhobi Laundry & Dry Cleaning Pvt. Ltd.';
-  const gstin = activeConfig?.gstin || '07AABCI1234F1Z5';
-  const sacCode = activeConfig?.sacCode || '999712';
-  const supportPhone = activeConfig?.supportPhone || '+91 98765 43210';
-  const gstPercentage = activeConfig?.gstPercentage !== undefined ? activeConfig.gstPercentage : 5;
-  const halfGst = (gstPercentage / 2).toFixed(1).replace(/\.0$/, '');
-
-  // GST split: CGST + SGST dynamically based on activeConfig.gstPercentage
-  const cgstAmount = (pb.taxAmount / 2).toFixed(2);
-  const sgstAmount = (pb.taxAmount / 2).toFixed(2);
+  const { businessName, gstin, sacCode, supportPhone, supportEmail, businessAddress, gstPercentage } = invoiceIdentity(order);
+  const halfGst = gstPercentage === null ? null : String(gstPercentage / 2);
+  const taxCents = Math.round(pb.taxAmount * 100);
+  const cgstAmount = (Math.floor(taxCents / 2) / 100).toFixed(2);
+  const sgstAmount = ((taxCents - Math.floor(taxCents / 2)) / 100).toFixed(2);
+  const customer = order.customerSnapshot || {};
 
   const orderDate = order.createdAt ? new Date(order.createdAt) : new Date();
   const invoiceNumber = `INV-${order.orderNumber}`;
@@ -174,12 +157,11 @@ const GstInvoiceModal = ({ order, isOpen = true, onClose, platformConfig }) => {
                   <Shirt className="w-4 h-4 stroke-[2.5]" />
                 </div>
                 <h1 className="text-xl font-black text-slate-900 tracking-tight">
-                  Indo<span className="text-primary-600">Dhobi</span>
+                  {businessName}
                 </h1>
               </div>
               <p className="font-semibold text-slate-700">{businessName}</p>
-              <p className="text-slate-500">Plot 42, Central Processing Hub, Okhla Phase III</p>
-              <p className="text-slate-500">New Delhi - 110020, India</p>
+              <p className="text-slate-500">{businessAddress}</p>
               <div className="mt-2 space-y-0.5 text-[11px] font-mono text-slate-600">
                 <p><strong>GSTIN:</strong> {gstin}</p>
                 <p><strong>SAC Code:</strong> {sacCode} (Laundry &amp; Cleaning Services)</p>
@@ -213,10 +195,10 @@ const GstInvoiceModal = ({ order, isOpen = true, onClose, platformConfig }) => {
                 Billed To (Customer)
               </h3>
               <p className="font-bold text-slate-900 text-sm">
-                {order.customer?.name || 'Customer'}
+                {customer.name || 'Customer'}
               </p>
-              <p className="text-slate-600">{order.customer?.phone || order.pickupAddress?.contactPhone || 'N/A'}</p>
-              {order.customer?.email && <p className="text-slate-500">{order.customer.email}</p>}
+              <p className="text-slate-600">{customer.phone || order.pickupAddress?.contactPhone || 'N/A'}</p>
+              {customer.email && <p className="text-slate-500">{customer.email}</p>}
             </div>
 
             <div>
@@ -258,10 +240,10 @@ const GstInvoiceModal = ({ order, isOpen = true, onClose, platformConfig }) => {
                       </span>
                     </td>
                     <td className="py-2.5 px-3 text-slate-600">
-                      {item.serviceType?.replace(/_/g, ' ')}
+                      {orderServiceLabel(item)}
                     </td>
                     <td className="py-2.5 px-3 text-slate-600">
-                      {item.ironingType === 'NONE' ? 'None' : item.ironingType?.replace(/_/g, ' ')}
+                      {orderFinishLabel(item)}
                     </td>
                     <td className="py-2.5 px-3 text-center font-bold text-slate-800">
                       {item.quantity}
@@ -321,8 +303,7 @@ const GstInvoiceModal = ({ order, isOpen = true, onClose, platformConfig }) => {
 
               <div className="text-[10px] text-slate-400 space-y-0.5">
                 <p>• This is a computer-generated GST tax invoice.</p>
-                <p>• IndoDhobi guarantees fabric care as per individual care labels.</p>
-                <p>• For questions, reach out to help@indodhobi.com</p>
+                {supportEmail && <p>• For questions, reach out to {supportEmail}</p>}
               </div>
             </div>
 
@@ -347,20 +328,22 @@ const GstInvoiceModal = ({ order, isOpen = true, onClose, platformConfig }) => {
                 </span>
               </div>
 
+              {pb.extraPreferenceFee > 0 && <div className="flex justify-between text-slate-600"><span>Care preferences:</span><span className="font-mono">₹{pb.extraPreferenceFee}</span></div>}
+
               {pb.expressSurcharge > 0 && (
                 <div className="flex justify-between text-amber-800 font-semibold">
-                  <span>Express 24h Turnaround Surcharge:</span>
+                  <span>Express Turnaround Surcharge:</span>
                   <span className="font-mono">+₹{pb.expressSurcharge}</span>
                 </div>
               )}
 
               <div className="border-t border-slate-200 my-1 pt-1 space-y-1">
                 <div className="flex justify-between text-[11px] text-slate-500">
-                  <span>Central GST (CGST @ {halfGst}%):</span>
+                  <span>Central GST (CGST{halfGst !== null ? ` @ ${halfGst}%` : ' — rate not recorded'}):</span>
                   <span className="font-mono">₹{cgstAmount}</span>
                 </div>
                 <div className="flex justify-between text-[11px] text-slate-500">
-                  <span>State GST (SGST @ {halfGst}%):</span>
+                  <span>State GST (SGST{halfGst !== null ? ` @ ${halfGst}%` : ' — rate not recorded'}):</span>
                   <span className="font-mono">₹{sgstAmount}</span>
                 </div>
               </div>

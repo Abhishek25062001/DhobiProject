@@ -4,6 +4,6 @@ import useApiResource from './useApiResource';
 
 export default function useGarments(category = '', search = '') {
   const load = useCallback(signal => catalogService.getGarments(category, search, false, { signal }), [category, search]);
-  const resource = useApiResource(load);
+  const resource = useApiResource(load, `garments:${category}:${search}`);
   return { ...resource, garments: resource.data?.data || [] };
 }

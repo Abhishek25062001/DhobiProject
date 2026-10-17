@@ -1,4 +1,6 @@
 import mongoose from 'mongoose';
+import Migration from '../models/Migration.js';
+import { legacyGarmentPresentation } from '../../shared/legacyCatalog.mjs';
 import User from '../models/User.js';
 import Garment from '../models/Garment.js';
 import Order from '../models/Order.js';
@@ -12,7 +14,12 @@ import { connectDB } from '../config/db.js';
 
 dotenv.config();
 
-export const seedData = async () => {
+export const seedData = async ({ demo = false } = {}) => {
+  if (demo && process.env.NODE_ENV !== 'test') throw new Error('Demo users/orders are restricted to isolated tests.');
+  if (await Migration.exists({ _id: 'initial-catalog-v1' })) return { changed: 0 };
+  for (const model of [Garment, Category, PlatformConfig, TimeSlot, Coupon]) {
+    if (await model.exists({})) throw new Error('Initial seed requires an empty catalog/configuration database. Use migrate:website for existing data.');
+  }
   try {
     const garmentCount = await Garment.countDocuments();
     let seededGarments = [];
@@ -241,33 +248,11 @@ export const seedData = async () => {
         }
       ];
 
-      seededGarments = await Garment.insertMany(garments);
+      seededGarments = await Garment.insertMany(garments.map(garment => ({ ...garment, shortName: legacyGarmentPresentation(garment).name })));
       console.log(`[Seeder] Seeded ${seededGarments.length} Indian garments.`);
-    } else {
-      // Ensure custom item exists even if database was previously seeded
-      await Garment.findOneAndUpdate(
-        { name: 'Miscellaneous / Special Item' },
-        {
-          $setOnInsert: {
-            name: 'Miscellaneous / Special Item',
-            category: 'Household',
-            iconName: 'Sparkles',
-            isCustom: true,
-            pricing: {
-              washOnly: 40,
-              standardSteamIron: 15,
-              crispStarchPress: 25,
-              delicatePress: 30,
-              dryClean: 120
-            },
-            isActive: true
-          }
-        },
-        { upsert: true, new: true }
-      );
-      seededGarments = await Garment.find();
     }
 
+    if (demo) {
     // 2. Seed Demo Users if they do not exist
     let customerUser = await User.findOne({ email: 'customer@indodhobi.com' });
     if (!customerUser) {
@@ -456,6 +441,8 @@ export const seedData = async () => {
       console.log('[Seeder] Seeded demo active order #IDB-2026-104921 in status IN_WASHING');
     }
 
+    }
+
     // 4. Seed Default Promo Coupons
     const defaultCoupons = [
       {
@@ -500,7 +487,7 @@ export const seedData = async () => {
     console.log('[Seeder] Active promo coupons verified/seeded (FIRST50, DHOBI20, FLAT75)');
 
     // 5. Seed Default Platform Configuration
-    await PlatformConfig.getOrCreateActiveConfig();
+    await PlatformConfig.create({ supportEmail: 'care@indodhobi.com', privacyEmail: 'privacy@indodhobi.com', legalEmail: 'legal@indodhobi.com', supportHours: '7 AM - 10 PM', businessAddress: 'Barakhamba Road, Connaught Place, New Delhi, Delhi 110001' });
     console.log('[Seeder] Platform configuration verified/seeded');
 
     // 5b. Seed Default Categories
@@ -524,7 +511,9 @@ export const seedData = async () => {
     }
     console.log('[Seeder] Default 4 time slots verified/seeded');
 
-    console.log('[Seeder] Seeding process completed successfully!');
+    await Migration.create({ _id: 'initial-catalog-v1' });
+    console.log('[Seeder] Initial catalog created. No startup or read-time reseeding.');
+    return { changed: 1 };
 
   } catch (error) {
     console.error('[Seeder Error]:', error);
@@ -538,6 +527,8 @@ if (process.argv[1] && process.argv[1].endsWith('seeder.js')) {
     try {
       await connectDB();
       await seedData();
+      const { migrateWebsite } = await import('../services/websiteMigration.js');
+      await migrateWebsite({ apply: true });
       process.exit(0);
     } catch (err) {
       console.error(err);

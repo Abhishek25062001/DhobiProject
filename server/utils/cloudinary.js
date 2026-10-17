@@ -3,7 +3,6 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-let isConfigured = false;
 
 /**
  * Ensures Cloudinary SDK has latest env vars even if imported before dotenv.config() in entrypoint
@@ -17,12 +16,12 @@ export const ensureCloudinaryConfigured = () => {
   const cloudinaryUrl = process.env.CLOUDINARY_URL || process.env.CLAUDINARY_URL || '';
 
   if (cloudinaryUrl) {
-    cloudinary.config({
-      cloudinary_url: cloudinaryUrl,
-      secure: true
-    });
-    isConfigured = true;
-    return true;
+    try {
+      const parsed = new URL(cloudinaryUrl);
+      if (parsed.protocol !== 'cloudinary:' || !parsed.hostname || !parsed.username || !parsed.password) return false;
+      cloudinary.config({ cloud_name: parsed.hostname, api_key: decodeURIComponent(parsed.username), api_secret: decodeURIComponent(parsed.password), secure: true });
+      return true;
+    } catch { return false; }
   }
 
   if (cloudName && apiKey && apiSecret) {
@@ -32,7 +31,6 @@ export const ensureCloudinaryConfigured = () => {
       api_secret: apiSecret,
       secure: true
     });
-    isConfigured = true;
     return true;
   }
 
@@ -42,78 +40,32 @@ export const ensureCloudinaryConfigured = () => {
 // Initial config check on file load
 ensureCloudinaryConfigured();
 
-/**
- * Uploads an image (Base64 data URI, remote URL, or local file path) to Cloudinary
- * @param {string} fileOrBase64 - The image payload (Base64 data URI, HTTP url, or file path)
- * @param {string} folder - Destination folder on Cloudinary (default 'indodhobi')
- * @returns {Promise<{ url: string, imageUrl: string, publicId: string }>}
- */
-export const uploadImageToCloudinary = async (fileOrBase64, folder = 'indodhobi') => {
-  const hasValidCreds = ensureCloudinaryConfigured();
-  const isBase64 = typeof fileOrBase64 === 'string' && fileOrBase64.startsWith('data:image/');
-  const isTest = process.env.NODE_ENV === 'test';
+// Accept uploaded raster files only; never fetch a caller-provided URL or file path.
+export function validateImageInput(input) {
+  const match = typeof input === 'string' && /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(input);
+  if (!match) throw Object.assign(new Error('Upload a PNG, JPEG or WebP image.'), { statusCode: 400 });
+  const bytes = Buffer.from(match[2], 'base64');
+  if (bytes.length > 6 * 1024 * 1024) throw Object.assign(new Error('Images must be 6 MB or smaller.'), { statusCode: 413 });
+  const valid = match[1] === 'png' ? bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) :
+    match[1] === 'jpeg' ? bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255 :
+    bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+  if (!valid || bytes.length < 20) throw Object.assign(new Error('The file does not match its image type.'), { statusCode: 400 });
+  return { bytes: bytes.length, mimeType: `image/${match[1]}` };
+}
 
-  // If in automated test environment without real credentials, return deterministic payload
-  if ((isTest || !hasValidCreds) && !isBase64) {
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.CLAUDINARY_CLOUD_NAME || 'dhobiproject';
-    const mockId = `${folder.replace(/[^a-zA-Z0-9_-]/g, '_')}_mock_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const mockUrl = `https://res.cloudinary.com/${cloudName}/image/upload/v1728900000/${folder}/${mockId}.jpg`;
-    return {
-      url: mockUrl,
-      imageUrl: mockUrl,
-      publicId: `${folder}/${mockId}`
-    };
-  }
-
-  // If credentials missing and input is a valid Base64 data URI, fallback cleanly to local Base64
-  if (!hasValidCreds && isBase64) {
-    console.warn('[Cloudinary Warning]: Cloudinary credentials not configured. Returning valid Base64 data URI for zero-broken-image display.');
-    const localId = `local_base64_${Date.now()}`;
-    return {
-      url: fileOrBase64,
-      imageUrl: fileOrBase64,
-      publicId: localId
-    };
-  }
-
+export const uploadImageToCloudinary = async (input, folder = 'indodhobi') => {
+  const metadata = validateImageInput(input);
+  if (!/^indodhobi(?:\/[a-z0-9_-]+)*$/.test(folder)) throw Object.assign(new Error('Invalid image destination.'), { statusCode: 400 });
+  if (!ensureCloudinaryConfigured()) throw Object.assign(new Error('Image storage is unavailable. Configure Cloudinary before uploading.'), { statusCode: 503 });
   try {
-    const uploadOptions = {
-      folder,
-      resource_type: 'image',
-      transformation: [{ quality: 'auto', fetch_format: 'auto' }]
-    };
-
-    const result = await cloudinary.uploader.upload(fileOrBase64, uploadOptions);
-    const uploadedUrl = result.secure_url || result.url;
-
-    return {
-      url: uploadedUrl,
-      imageUrl: uploadedUrl,
-      publicId: result.public_id
-    };
-  } catch (error) {
-    console.error('[Cloudinary Upload Error]:', error.message);
-
-    // Critical Reliability Fallback: If Cloudinary upload throws an error and input is Base64,
-    // NEVER return a fake/broken 404 URL. Return the real Base64 image payload so browser renders cleanly!
-    if (isBase64) {
-      console.warn('[Cloudinary Warning]: Cloudinary upload failed. Falling back to local Base64 data URI so browser renders cleanly without 404 broken image.');
-      const localId = `local_base64_${Date.now()}`;
-      return {
-        url: fileOrBase64,
-        imageUrl: fileOrBase64,
-        publicId: localId
-      };
-    }
-
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.CLAUDINARY_CLOUD_NAME || 'dhobiproject';
-    const fallbackId = `${folder}_fallback_${Date.now()}`;
-    const fallbackUrl = `https://res.cloudinary.com/${cloudName}/image/upload/v1728900000/${folder}/${fallbackId}.jpg`;
-    return {
-      url: fallbackUrl,
-      imageUrl: fallbackUrl,
-      publicId: `${folder}/${fallbackId}`
-    };
+    const result = await cloudinary.uploader.upload(input, {
+      folder, resource_type: 'image', transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+    });
+    if (!result.secure_url?.startsWith('https://') || !result.public_id) throw new Error('Invalid storage response');
+    return { url: result.secure_url, imageUrl: result.secure_url, publicId: result.public_id,
+      width: result.width, height: result.height, ...metadata };
+  } catch {
+    throw Object.assign(new Error('Image upload failed. The existing image has been kept. Please try again.'), { statusCode: 503 });
   }
 };
 

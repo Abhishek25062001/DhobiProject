@@ -1,0 +1,21 @@
+{
+  "100_transparent_dhobi_rate_card_fe60d40": "100% Transparent Dhobi Rate Card",
+  "clear_per_garment_pricing_with_zero_hidden_fees_dc1155c": "Clear, Per-Garment Pricing with Zero Hidden Fees",
+  "no_vague_per_kg_guesswork_where_wet_towels_inflate_your_bill_know_fef54c9": "No vague per-kg guesswork where wet towels inflate your bill. Know your exact garment washing, steam ironing, and starch pressing charges upfront.",
+  "search_price_for_saree_shirt_jeans_2697981": "Search price for saree, shirt, jeans...",
+  "we_couldn_t_load_categories_2a81ded": "We couldn’t load categories.",
+  "loading_comprehensive_garment_rate_card_9b9668a": "Loading comprehensive garment rate card...",
+  "garment_name_a3153c1": "Garment Name",
+  "category_292c06f": "Category",
+  "wash_only_099fe0a": "Wash Only",
+  "steam_iron_fe64aa5": "Steam Iron",
+  "crisp_starch_98d69e3": "Crisp Starch",
+  "delicate_press_7ed6a93": "Delicate Press",
+  "dry_clean_478a7ee": "Dry Clean",
+  "action_64cff13": "Action",
+  "book_909cb81": "Book",
+  "free_doorstep_pickup_delivery_on_orders_above_399_98c6866": "Free Doorstep Pickup & Delivery on Orders Above ₹{{config.freeDeliveryThreshold}}",
+  "for_orders_under_399_a_nominal_49_doorstep_logistics_charge_appli_ad80de1": "For orders under ₹{{config.freeDeliveryThreshold}}, a nominal ₹{{config.deliveryFee}} doorstep logistics charge applies. {{config.gstPercentage}}% GST calculated automatically at checkout.",
+  "open_booking_bag_89107ad": "Open Booking Bag",
+  "allCategories": "All"
+}

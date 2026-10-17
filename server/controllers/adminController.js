@@ -323,7 +323,7 @@ export const deleteRider = async (req, res) => {
 
     return res.json({
       success: true,
-      message: `Rider ${rider.name} deleted successfully.`
+      message: `Rider ${rider.name} archived successfully.`
     });
   } catch (error) {
     console.error('[Admin Delete Rider Error]:', error);
@@ -491,7 +491,6 @@ export const toggleUserStatus = async (req, res) => {
 // @access  Private (Admin only)
 export const getAdminCategories = async (req, res) => {
   try {
-    await Category.ensureDefaultCategories();
     const categories = await Category.find().sort({ sortOrder: 1, name: 1 });
     return res.json({
       success: true,
@@ -509,7 +508,7 @@ export const getAdminCategories = async (req, res) => {
 // @access  Private (Admin only)
 export const createAdminCategory = async (req, res) => {
   try {
-    const { name, description, icon, sortOrder, isActive } = req.body;
+    const { name, shortName, description, icon, sortOrder, isActive } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Category name is required.' });
     }
@@ -521,6 +520,7 @@ export const createAdminCategory = async (req, res) => {
 
     const category = await Category.create({
       name: name.trim(),
+      shortName: shortName?.trim() || '',
       description: description ? description.trim() : '',
       icon: icon || 'Shirt',
       sortOrder: Number(sortOrder) || 0,
@@ -548,11 +548,12 @@ export const updateAdminCategory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Category not found.' });
     }
 
-    const { name, description, icon, sortOrder, isActive } = req.body;
+    const { name, shortName, description, icon, sortOrder, isActive } = req.body;
     if (name && name.trim()) {
+      category.legacyNames = [...new Set([...category.legacyNames, category.name])];
       category.name = name.trim();
-      category.slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
     }
+    if (shortName !== undefined) category.shortName = shortName.trim();
     if (description !== undefined) category.description = description.trim();
     if (icon) category.icon = icon;
     if (sortOrder !== undefined) category.sortOrder = Number(sortOrder);
@@ -581,11 +582,12 @@ export const deleteAdminCategory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Category not found.' });
     }
 
-    await Category.deleteOne({ _id: category._id });
+    category.isActive = false;
+    await category.save();
 
     return res.json({
       success: true,
-      message: `Category "${category.name}" deleted successfully.`
+      message: `Category "${category.name}" archived successfully.`
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to delete category.' });

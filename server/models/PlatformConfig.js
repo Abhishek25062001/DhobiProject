@@ -1,11 +1,16 @@
+import { SERVICE_CODES, IRONING_CODES } from '../../shared/catalogContract.mjs';
+import { IRONING_PRICE_KEYS } from '../../shared/pricing.mjs';
+import { LEGACY_HOME_CARE_OPTIONS } from '../../shared/legacyCatalog.mjs';
 import mongoose from 'mongoose';
 
 const detergentOptionSchema = new mongoose.Schema(
   {
     code: { type: String, required: true },
     name: { type: String, required: true },
+    shortName: { type: String, default: '', maxlength: 80 },
+    sortOrder: { type: Number, default: 0, validate: Number.isInteger },
     description: { type: String, default: '' },
-    extraPricePerOrder: { type: Number, default: 0, min: 0 },
+    extraPricePerOrder: { type: Number, default: 0, min: 0, validate: Number.isFinite },
     isActive: { type: Boolean, default: true }
   },
   { _id: false }
@@ -15,8 +20,10 @@ const packagingOptionSchema = new mongoose.Schema(
   {
     code: { type: String, required: true },
     name: { type: String, required: true },
+    shortName: { type: String, default: '', maxlength: 80 },
+    sortOrder: { type: Number, default: 0, validate: Number.isInteger },
     description: { type: String, default: '' },
-    extraPricePerOrder: { type: Number, default: 0, min: 0 },
+    extraPricePerOrder: { type: Number, default: 0, min: 0, validate: Number.isFinite },
     isActive: { type: Boolean, default: true }
   },
   { _id: false }
@@ -24,8 +31,10 @@ const packagingOptionSchema = new mongoose.Schema(
 
 const serviceTypeSchema = new mongoose.Schema(
   {
-    code: { type: String, required: true },
+    code: { type: String, required: true, enum: [...SERVICE_CODES] },
     name: { type: String, required: true },
+    shortName: { type: String, default: '', maxlength: 80 },
+    sortOrder: { type: Number, default: 0, validate: Number.isInteger },
     description: { type: String, default: '' },
     isActive: { type: Boolean, default: true }
   },
@@ -34,17 +43,34 @@ const serviceTypeSchema = new mongoose.Schema(
 
 const ironingTierSchema = new mongoose.Schema(
   {
-    code: { type: String, required: true },
+    code: { type: String, required: true, enum: IRONING_CODES.filter(code => code !== 'NONE') },
     name: { type: String, required: true },
-    priceKey: { type: String, required: true },
+    shortName: { type: String, default: '', maxlength: 80 },
+    sortOrder: { type: Number, default: 0, validate: Number.isInteger },
+    priceKey: { type: String, required: true, validate: function (value) { return IRONING_PRICE_KEYS[this.code] === value; } },
     description: { type: String, default: '' },
     isActive: { type: Boolean, default: true }
   },
   { _id: false }
 );
 
+const homeCareSchema = new mongoose.Schema({
+  icon: { type: String, enum: ['wash', 'steam', 'dry', 'starch'], default: 'wash' },
+  id: { type: String, required: true }, label: { type: String, required: true },
+  shortLabel: { type: String, default: '' }, description: { type: String, default: '' },
+  service: { type: String, enum: [...SERVICE_CODES], required: true },
+  ironing: { type: String, enum: [...IRONING_CODES], required: true },
+  sortOrder: { type: Number, default: 0, validate: Number.isInteger }, isActive: { type: Boolean, default: true },
+}, { _id: false });
+
+homeCareSchema.pre('validate', function () {
+  const iron = ['WASH_AND_IRON', 'IRON_ONLY'].includes(this.service);
+  if (iron === (this.ironing === 'NONE')) this.invalidate('ironing', 'Choose an applicable finish for this service.');
+});
+
 const platformConfigSchema = new mongoose.Schema(
   {
+    homeCareOptions: { type: [homeCareSchema], default: () => LEGACY_HOME_CARE_OPTIONS.map((option, sortOrder) => ({ ...option, icon: option.id, sortOrder, isActive: true })) },
     businessName: {
       type: String,
       default: 'IndoDhobi Laundry & Dry Cleaning Pvt. Ltd.',
@@ -65,6 +91,11 @@ const platformConfigSchema = new mongoose.Schema(
       default: '+91 98765 43210',
       trim: true
     },
+    supportEmail: { type: String, trim: true, default: '', maxlength: 180, validate: value => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) },
+    privacyEmail: { type: String, trim: true, default: '', maxlength: 180, validate: value => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) },
+    legalEmail: { type: String, trim: true, default: '', maxlength: 180, validate: value => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) },
+    supportHours: { type: String, trim: true, default: '', maxlength: 180 },
+    businessAddress: { type: String, trim: true, default: '', maxlength: 1000 },
     freeDeliveryThreshold: {
       type: Number,
       default: 399,
@@ -86,6 +117,7 @@ const platformConfigSchema = new mongoose.Schema(
       min: 0,
       max: 100
     },
+    expressTurnaroundHours: { type: Number, default: 24, min: 0, validate: Number.isFinite },
     minStandardTurnaroundHours: {
       type: Number,
       default: 24,
@@ -227,18 +259,16 @@ platformConfigSchema.statics.getOrCreateActiveConfig = async function () {
   let config = await this.findOne();
   if (!config) {
     config = await this.create({});
-  } else if (!config.companyPaymentConfig || !config.companyPaymentConfig.merchantUpiId) {
-    config.companyPaymentConfig = {
-      merchantUpiId: 'indodhobi.official@icici',
-      merchantName: 'IndoDhobi Laundry Pvt Ltd',
-      officialQrImageUrl: config.companyPaymentConfig?.officialQrImageUrl || '',
-      allowCashOnDelivery: config.companyPaymentConfig?.allowCashOnDelivery !== false,
-      allowCompanyQrOnDelivery: config.companyPaymentConfig?.allowCompanyQrOnDelivery !== false
-    };
-    await config.save();
   }
   return config;
 };
+
+for (const field of ['detergentOptions', 'packagingOptions', 'serviceTypes', 'ironingTiers', 'homeCareOptions']) {
+  platformConfigSchema.path(field).validate(options => new Set(options.map(option => option.code || option.id)).size === options.length, 'Option identifiers must be unique.');
+}
+for (const field of ['freeDeliveryThreshold', 'deliveryFee', 'expressSurcharge', 'gstPercentage', 'minStandardTurnaroundHours']) {
+  platformConfigSchema.path(field).validate(Number.isFinite, 'A finite number is required.');
+}
 
 const PlatformConfig = mongoose.model('PlatformConfig', platformConfigSchema);
 export default PlatformConfig;

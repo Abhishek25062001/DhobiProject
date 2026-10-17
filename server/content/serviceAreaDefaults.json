@@ -1,0 +1,142 @@
+[
+  {
+    "name": "Delhi NCR (Central, South & West)",
+    "badge": "Flagship Hub",
+    "pincodeRange": "110001 - 110085",
+    "turnaround": "24 - 48 Hours",
+    "coverage": [
+      "Connaught Place & Barakhamba Rd (110001)",
+      "Chanakyapuri & Diplomatic Enclave (110021)",
+      "Hauz Khas, Green Park & Safdarjung (110016)",
+      "Vasant Kunj & Vasant Vihar (110070)",
+      "Greater Kailash I & II, CR Park (110048)",
+      "Saket, Malviya Nagar & Sainik Farms (110017)",
+      "Defence Colony & South Extension (110024)",
+      "Okhla Industrial & Friends Colony (110020)",
+      "Dwarka Sectors 1 to 23 (110075)",
+      "Rohini & Pitampura (110085)",
+      "Punjabi Bagh & Rajouri Garden (110027)"
+    ],
+    "pincodes": [
+      "110001",
+      "110002",
+      "110003",
+      "110016",
+      "110017",
+      "110019",
+      "110020",
+      "110021",
+      "110024",
+      "110025",
+      "110027",
+      "110048",
+      "110070",
+      "110075",
+      "110085"
+    ],
+    "slug": "delhi",
+    "shortName": "Delhi NCR Central & South",
+    "summary": "Connaught Place, Vasant Kunj, Hauz Khas, Saket, Dwarka & more.",
+    "footerLabel": "South Delhi & Connaught Place",
+    "homeBadge": "Flagship Hub",
+    "hours": "Daily · 7 AM–9 PM",
+    "sortOrder": 0,
+    "isActive": true,
+    "revision": 1
+  },
+  {
+    "name": "Gurugram (CyberCity & Golf Course Rd)",
+    "badge": "Express Hub",
+    "pincodeRange": "122001 - 122018",
+    "turnaround": "24 - 48 Hours",
+    "coverage": [
+      "DLF Phase 1, 2, 3, 4 & 5 (122002)",
+      "Cyber City & Cyber Hub Enclave (122002)",
+      "Golf Course Road & DLF Camellias (122002)",
+      "Golf Course Extension & Sector 56 (122011)",
+      "Sector 29, 43, 44 Commercial Hub (122009)",
+      "Sohna Road & Subhash Chowk (122018)",
+      "Old Gurugram & Sector 14 (122001)"
+    ],
+    "pincodes": [
+      "122001",
+      "122002",
+      "122003",
+      "122009",
+      "122011",
+      "122018"
+    ],
+    "slug": "gurugram",
+    "shortName": "Gurugram CyberCity",
+    "summary": "DLF Phases 1–5, Cyber Hub, Golf Course Road, Sohna Road & more.",
+    "footerLabel": "Gurugram (DLF Phase 1-5, Golf Course Rd)",
+    "homeBadge": "Express Hub",
+    "hours": "Daily · 7 AM–9 PM",
+    "sortOrder": 1,
+    "isActive": true,
+    "revision": 1
+  },
+  {
+    "name": "Noida & Greater Noida Expressway",
+    "badge": "High-Capacity Hub",
+    "pincodeRange": "201301 - 201310",
+    "turnaround": "24 - 48 Hours",
+    "coverage": [
+      "Sector 18 & Atta Market Commercial Hub (201301)",
+      "Sector 50 & Central Noida Residential (201301)",
+      "Sector 62 IT Parks & Fortis Corridor (201307)",
+      "Sector 74, 76, 78 High-Rise Clusters (201301)",
+      "Sector 128, 137 Noida Expressway (201304)",
+      "Greater Noida Knowledge Park & Pari Chowk (201310)"
+    ],
+    "pincodes": [
+      "201301",
+      "201303",
+      "201304",
+      "201307",
+      "201310"
+    ],
+    "slug": "noida",
+    "shortName": "Noida & Greater Noida",
+    "summary": "Sectors 18, 50, 62 & 137, Expressway high-rises, Pari Chowk & more.",
+    "footerLabel": "Noida & Greater Noida Expressway",
+    "homeBadge": "Expressway Hub",
+    "hours": "Daily · 7 AM–9 PM",
+    "sortOrder": 2,
+    "isActive": true,
+    "revision": 1
+  },
+  {
+    "name": "Bengaluru (Tech Corridors & Central)",
+    "badge": "Southern Hub",
+    "pincodeRange": "560001 - 560103",
+    "turnaround": "48 Hours",
+    "coverage": [
+      "Indiranagar & Defence Colony (560038)",
+      "Koramangala Blocks 1 through 8 (560034)",
+      "HSR Layout Sectors 1 to 7 (560102)",
+      "Whitefield & ITPL Corridor (560066)",
+      "Bellandur & Outer Ring Road (560103)",
+      "MG Road, Lavelle Road & Richmond Town (560001)"
+    ],
+    "pincodes": [
+      "560001",
+      "560008",
+      "560034",
+      "560038",
+      "560066",
+      "560100",
+      "560102",
+      "560103"
+    ],
+    "slug": "bengaluru",
+    "shortName": "Bengaluru Tech Hub",
+    "summary": "Indiranagar, Koramangala, HSR Layout, Whitefield & more.",
+    "footerLabel": "Bengaluru (Indiranagar, Koramangala)",
+    "homeBadge": "Southern Hub",
+    "hours": "Daily · 7 AM–9 PM",
+    "sortOrder": 3,
+    "isActive": true,
+    "revision": 1
+  }
+]

@@ -133,7 +133,7 @@
 .hp-journey-stages li { min-width: 0; position: relative; }
 .hp-journey-visual { width: 135px; height: 86px; margin: 0 0 8px 16px; background: radial-gradient(ellipse, #fff 50%, #fff0 73%); }
 .hp-journey-art { width: 100%; height: 100%; object-fit: contain; }
-.hp-garment-image.hp-sprite { width: 60px; height: 60px; background-image: url('/images/laundry/laundry-atlas.webp'); background-size: 300% 300%; background-repeat: no-repeat; }
+.hp-garment-image.hp-sprite { width: 60px; height: 60px; background-size: 300% 300%; background-repeat: no-repeat; }
 .hp-basket-item-list .hp-garment-image.hp-sprite { width: 27px; height: 27px; }
 .hp-journey-art.hp-sprite { width: 110px; height: 110px; transform: translateY(-9px); }
 .hp-journey-art.hp-sprite-pickup { width: 155px; height: 155px; transform: translate(-10px, -32px); background-size: 280% 300%; }

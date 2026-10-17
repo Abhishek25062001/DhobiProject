@@ -12,19 +12,22 @@ const timeSlotSchema = new mongoose.Schema(
       type: Number,
       required: [true, 'Start hour in 24h format (0-23) is required'],
       min: 0,
-      max: 23
+      max: 23,
+      validate: Number.isInteger
     },
     endHour: {
       type: Number,
       required: [true, 'End hour in 24h format (0-23) is required'],
       min: 0,
-      max: 23
+      max: 23,
+      validate: Number.isInteger
     },
     maxCapacity: {
       type: Number,
       required: [true, 'Maximum orders per slot is required'],
       default: 15,
-      min: 1
+      min: 1,
+      validate: Number.isInteger
     },
     sortOrder: {
       type: Number,
@@ -40,6 +43,10 @@ const timeSlotSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+timeSlotSchema.pre('validate', function () {
+  if (this.endHour <= this.startHour) this.invalidate('endHour', 'End hour must follow start hour.');
+});
 
 timeSlotSchema.index({ isActive: 1, sortOrder: 1, startHour: 1 });
 

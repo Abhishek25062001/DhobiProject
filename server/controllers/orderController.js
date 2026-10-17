@@ -1,5 +1,6 @@
+import mongoose from 'mongoose';
+import { quoteBooking, quoteFingerprint, validDate, slotTime, couponDiscount } from '../services/booking.js';
 import Order from '../models/Order.js';
-import Garment from '../models/Garment.js';
 import User from '../models/User.js';
 import Coupon from '../models/Coupon.js';
 import TimeSlot from '../models/TimeSlot.js';
@@ -8,84 +9,10 @@ import Notification from '../models/Notification.js';
 import { uploadImageToCloudinary } from '../utils/cloudinary.js';
 import { createRazorpayOrder, verifyRazorpaySignature } from '../utils/razorpay.js';
 
-export const MAX_ORDERS_PER_SLOT = 15;
-
-export const STANDARD_SLOTS = [
-  { slot: '08:00 AM - 10:00 AM', maxCapacity: 15, endHour: 10, endMinute: 0 },
-  { slot: '10:00 AM - 01:00 PM', maxCapacity: 15, endHour: 13, endMinute: 0 },
-  { slot: '02:00 PM - 05:00 PM', maxCapacity: 15, endHour: 17, endMinute: 0 },
-  { slot: '06:00 PM - 09:00 PM', maxCapacity: 15, endHour: 21, endMinute: 0 }
-];
-
-// Helper to determine if a slot has already passed
-export const isSlotInPast = async (dateStr, slotStr) => {
-  if (!dateStr || !slotStr) return false;
-
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const todayStr = `${year}-${month}-${day}`;
-
-  if (dateStr < todayStr) {
-    return true;
-  }
-
-  if (dateStr === todayStr) {
-    let endHour = 23;
-    const slotDoc = await TimeSlot.findOne({ label: slotStr });
-    if (slotDoc) {
-      endHour = slotDoc.endHour;
-    } else {
-      const fallback = STANDARD_SLOTS.find((s) => s.slot === slotStr);
-      if (fallback) endHour = fallback.endHour;
-    }
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    if (currentHour > endHour || (currentHour === endHour && currentMinute > 0)) {
-      return true;
-    }
-  }
-
-  return false;
-};
-
-// Helper to calculate exact item price on server side
-const calculateItemPrice = (garment, serviceType, ironingType) => {
-  let unitPrice = 0;
-
-  switch (serviceType) {
-    case 'WASH_AND_FOLD':
-      unitPrice = garment.pricing.washOnly;
-      break;
-
-    case 'WASH_AND_IRON':
-      let ironCost = garment.pricing.standardSteamIron;
-      if (ironingType === 'CRISP_STARCH') ironCost = garment.pricing.crispStarchPress;
-      if (ironingType === 'DELICATE_PRESS') ironCost = garment.pricing.delicatePress;
-      if (ironingType === 'NONE') ironCost = 0;
-      unitPrice = garment.pricing.washOnly + ironCost;
-      break;
-
-    case 'IRON_ONLY':
-      if (ironingType === 'CRISP_STARCH') {
-        unitPrice = garment.pricing.crispStarchPress;
-      } else if (ironingType === 'DELICATE_PRESS') {
-        unitPrice = garment.pricing.delicatePress;
-      } else {
-        unitPrice = garment.pricing.standardSteamIron;
-      }
-      break;
-
-    case 'DRY_CLEAN':
-      unitPrice = garment.pricing.dryClean;
-      break;
-
-    default:
-      unitPrice = garment.pricing.washOnly;
-  }
-
-  return unitPrice;
+export const isSlotInPast = async (date, label) => {
+  if (!validDate(date)) return true;
+  const slot = await TimeSlot.findOne({ label, isActive: true });
+  return !slot || slotTime(date, slot.startHour) <= new Date();
 };
 
 // @desc    Get available slots & capacity for a given date
@@ -93,9 +20,11 @@ const calculateItemPrice = (garment, serviceType, ironingType) => {
 // @access  Public
 export const getAvailableSlots = async (req, res) => {
   try {
-    const { date } = req.query;
+    const { date, leg = 'pickup' } = req.query;
+    if (!['pickup', 'delivery'].includes(leg)) return res.status(400).json({ success: false, message: 'Choose pickup or delivery availability.' });
+    const scheduleKey = `${leg}Schedule`;
 
-    if (!date) {
+    if (!validDate(date)) {
       return res.status(400).json({
         success: false,
         message: 'Query parameter "date" (YYYY-MM-DD) is required.'
@@ -104,47 +33,23 @@ export const getAvailableSlots = async (req, res) => {
 
     // Dynamic TimeSlots from MongoDB
     let activeSlots = await TimeSlot.find({ isActive: true }).sort({ sortOrder: 1, startHour: 1 });
-    if (!activeSlots || activeSlots.length === 0) {
-      activeSlots = await TimeSlot.create([
-        { label: '08:00 AM - 10:00 AM', startHour: 8, endHour: 10, maxCapacity: 15, sortOrder: 1, isActive: true },
-        { label: '10:00 AM - 01:00 PM', startHour: 10, endHour: 13, maxCapacity: 15, sortOrder: 2, isActive: true },
-        { label: '02:00 PM - 05:00 PM', startHour: 14, endHour: 17, maxCapacity: 15, sortOrder: 3, isActive: true },
-        { label: '06:00 PM - 09:00 PM', startHour: 18, endHour: 21, maxCapacity: 15, sortOrder: 4, isActive: true }
-      ]);
-    }
-
     // Count existing pickup bookings for each slot on this date
     const ordersOnDate = await Order.find({
-      'pickupSchedule.date': date,
+      [`${scheduleKey}.date`]: date,
       orderStatus: { $ne: 'CANCELLED' }
     });
-
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const todayStr = `${year}-${month}-${day}`;
 
     const slotAvailability = activeSlots.map((slotDoc) => {
       const slot = slotDoc.label;
       const maxCapacity = slotDoc.maxCapacity;
 
       const bookedCount = ordersOnDate.filter(
-        (o) => o.pickupSchedule?.date === date && o.pickupSchedule?.timeSlot === slot
+        (o) => o[scheduleKey]?.date === date && o[scheduleKey]?.timeSlot === slot
       ).length;
 
       const remaining = Math.max(0, maxCapacity - bookedCount);
 
-      let isPast = false;
-      if (date < todayStr) {
-        isPast = true;
-      } else if (date === todayStr) {
-        const currentHour = now.getHours();
-        const currentMinute = now.getMinutes();
-        if (currentHour > slotDoc.endHour || (currentHour === slotDoc.endHour && currentMinute > 0)) {
-          isPast = true;
-        }
-      }
+      const isPast = slotTime(date, slotDoc.startHour) <= new Date();
 
       return {
         slot,
@@ -173,181 +78,19 @@ export const getAvailableSlots = async (req, res) => {
 // @desc    Create a new order with server-side validation & pricing
 // @route   POST /api/orders
 // @access  Private
+export const previewOrder = async (req, res) => {
+  try {
+    const quote = await quoteBooking(req.body, req.user);
+    return res.json({ success: true, quote, fingerprint: quoteFingerprint(quote) });
+  } catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.message }); }
+};
+
 export const createOrder = async (req, res) => {
   try {
-    const {
-      items,
-      preferences,
-      pickupSchedule,
-      deliverySchedule,
-      pickupAddress,
-      paymentMethod,
-      onlineSubMethod,
-      isExpress,
-      couponCode
-    } = req.body;
-
-
-    // 1. Basic validation
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Order must contain at least one item.'
-      });
-    }
-
-    if (!pickupSchedule?.date || !pickupSchedule?.timeSlot) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please select a valid pickup date and time slot.'
-      });
-    }
-
-    if (!deliverySchedule?.date || !deliverySchedule?.timeSlot) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please select a valid delivery date and time slot.'
-      });
-    }
-
-    // 2. Validate Turnaround: Delivery must be after pickup date (minimum 24-hour turnaround required)
-    const pickupDateObj = new Date(pickupSchedule.date);
-    const deliveryDateObj = new Date(deliverySchedule.date);
-
-    if (deliveryDateObj <= pickupDateObj) {
-      return res.status(400).json({
-        success: false,
-        message: 'Delivery date must be scheduled after pickup date (minimum 24-hour turnaround required).'
-      });
-    }
-
-    // 3. Past Slot & Capacity Checks using dynamic TimeSlot
-    const isPast = await isSlotInPast(pickupSchedule.date, pickupSchedule.timeSlot);
-    if (isPast) {
-      return res.status(400).json({
-        success: false,
-        message: 'Selected pickup time slot has already passed. Please choose a future slot.'
-      });
-    }
-
-    const currentBookedCount = await Order.countDocuments({
-      'pickupSchedule.date': pickupSchedule.date,
-      'pickupSchedule.timeSlot': pickupSchedule.timeSlot,
-      orderStatus: { $ne: 'CANCELLED' }
-    });
-
-    const slotDoc = await TimeSlot.findOne({ label: pickupSchedule.timeSlot, isActive: true });
-    const slotCapacity = slotDoc ? slotDoc.maxCapacity : MAX_ORDERS_PER_SLOT;
-    const remaining = slotCapacity - currentBookedCount;
-
-    if (remaining <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Selected pickup time slot is fully booked. Please choose another slot.'
-      });
-    }
-
-    // 4. Server-side item pricing calculation
-    const processedItems = [];
-    let subtotal = 0;
-
-    for (const item of items) {
-      const garment = await Garment.findById(item.garmentId || item.garment);
-      if (!garment) {
-        return res.status(404).json({
-          success: false,
-          message: `Garment not found with ID ${item.garmentId || item.garment}`
-        });
-      }
-
-      const quantity = Math.max(1, parseInt(item.quantity, 10) || 1);
-      const serviceType = item.serviceType || 'WASH_AND_FOLD';
-      const ironingType = item.ironingType || (serviceType.includes('IRON') ? 'STANDARD_STEAM' : 'NONE');
-
-      const unitPrice = calculateItemPrice(garment, serviceType, ironingType);
-      const lineTotal = unitPrice * quantity;
-
-      subtotal += lineTotal;
-
-      processedItems.push({
-        garment: garment._id,
-        garmentName: garment.name,
-        category: garment.category,
-        quantity,
-        serviceType,
-        ironingType,
-        unitPrice,
-        lineTotal,
-        customDescription: item.customDescription || '',
-        isCustomItem: Boolean(item.isCustomItem || garment.isCustom)
-      });
-    }
-
-    // 5. Dynamic Surcharge, Preferences & Coupon Calculation from PlatformConfig
-    const platformConfig = await PlatformConfig.getOrCreateActiveConfig();
-    const expressOrder = Boolean(isExpress);
-    const expressSurcharge = expressOrder ? (platformConfig.expressSurcharge ?? 99) : 0;
-
-    let extraPreferenceFee = 0;
-    if (preferences?.detergentType && platformConfig.detergentOptions) {
-      const selectedDetergent = platformConfig.detergentOptions.find(
-        (d) => d.code === preferences.detergentType || d.name === preferences.detergentType
-      );
-      if (selectedDetergent && selectedDetergent.extraPricePerOrder > 0) {
-        extraPreferenceFee += selectedDetergent.extraPricePerOrder;
-      }
-    }
-    if (preferences?.packagingType && platformConfig.packagingOptions) {
-      const selectedPackaging = platformConfig.packagingOptions.find(
-        (p) => p.code === preferences.packagingType || p.name === preferences.packagingType
-      );
-      if (selectedPackaging && selectedPackaging.extraPricePerOrder > 0) {
-        extraPreferenceFee += selectedPackaging.extraPricePerOrder;
-      }
-    }
-
-    let discountAmount = 0;
-    let appliedCouponCode = null;
-
-    if (couponCode && typeof couponCode === 'string' && couponCode.trim()) {
-      const cleanCode = couponCode.trim().toUpperCase();
-      const coupon = await Coupon.findOne({ code: cleanCode });
-
-      if (!coupon || !coupon.isActive || new Date() > coupon.expiresAt) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid or expired coupon code.'
-        });
-      }
-
-      if (subtotal < coupon.minOrderSubtotal) {
-        return res.status(400).json({
-          success: false,
-          message: `Coupon requires a minimum subtotal of ₹${coupon.minOrderSubtotal}. Your current subtotal is ₹${subtotal}.`
-        });
-      }
-
-      if (coupon.discountType === 'PERCENTAGE') {
-        discountAmount = Math.round((subtotal * coupon.discountValue) / 100);
-        if (coupon.maxDiscountAmount) {
-          discountAmount = Math.min(discountAmount, coupon.maxDiscountAmount);
-        }
-      } else if (coupon.discountType === 'FLAT') {
-        discountAmount = coupon.discountValue;
-      }
-
-      discountAmount = Math.min(discountAmount, subtotal);
-      appliedCouponCode = coupon.code;
-    }
-
-    // Dynamic Delivery fee & Tax calculation from PlatformConfig
-    const freeThreshold = platformConfig.freeDeliveryThreshold !== undefined ? platformConfig.freeDeliveryThreshold : 399;
-    const baseDeliveryFee = platformConfig.deliveryFee !== undefined ? platformConfig.deliveryFee : 49;
-    const pickupDeliveryFee = subtotal >= freeThreshold ? 0 : baseDeliveryFee;
-    const taxableBase = Math.max(0, subtotal - discountAmount) + pickupDeliveryFee + expressSurcharge + extraPreferenceFee;
-    const gstRate = (platformConfig.gstPercentage !== undefined ? platformConfig.gstPercentage : 5) / 100;
-    const taxAmount = Math.round(taxableBase * gstRate);
-    const grandTotal = taxableBase + taxAmount;
+    const accepted = await quoteBooking(req.body, req.user);
+    if (req.body.quoteFingerprint && req.body.quoteFingerprint !== quoteFingerprint(accepted)) return res.status(409).json({ success: false, message: 'Booking details changed. Review the current quote before placing your order.', quote: accepted, fingerprint: quoteFingerprint(accepted) });
+    const { paymentMethod, onlineSubMethod } = req.body;
+    const grandTotal = accepted.pricingBreakdown.grandTotal;
 
     // 6. Generate unique Indian Order ID
     const year = new Date().getFullYear();
@@ -382,36 +125,20 @@ export const createOrder = async (req, res) => {
     const pickupOtp = Math.floor(1000 + Math.random() * 9000).toString();
     const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
 
+    let order;
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        // Touch the slot documents before counting. Concurrent transactions sharing
+        // a slot retry against committed orders before inserting another booking.
+        await TimeSlot.collection.updateMany({ label: { $in: [req.body.pickupSchedule?.timeSlot, req.body.deliverySchedule?.timeSlot] } }, { $inc: { bookingRevision: 1 } }, { session });
+        const current = await quoteBooking(req.body, req.user, { session });
+        if (quoteFingerprint(current) !== quoteFingerprint(accepted)) throw Object.assign(new Error('Booking details changed. Review the current quote before placing your order.'), { statusCode: 409, quote: current });
     // 9. Save order
-    const order = await Order.create({
+    order = (await Order.create([{
       orderNumber,
       customer: req.user._id,
-      items: processedItems,
-      preferences: {
-        detergentType: preferences?.detergentType || 'Standard',
-        packagingType: preferences?.packagingType || 'Folded',
-        specialInstructions: preferences?.specialInstructions || ''
-      },
-      isExpress: expressOrder,
-      pickupSchedule,
-      deliverySchedule,
-      pickupAddress: {
-        flatAndBuilding: pickupAddress.flatAndBuilding,
-        streetAndLandmark: pickupAddress.streetAndLandmark,
-        city: pickupAddress.city || 'New Delhi',
-        pincode: pickupAddress.pincode,
-        contactPhone: pickupAddress.contactPhone || req.user.phone
-      },
-      pricingBreakdown: {
-        subtotal,
-        discountAmount,
-        couponCode: appliedCouponCode,
-        pickupDeliveryFee,
-        expressSurcharge,
-        taxAmount,
-        grandTotal
-      },
-
+      ...current,
       payment: paymentData,
       orderStatus: 'BOOKED',
       verificationCodes: {
@@ -435,7 +162,10 @@ export const createOrder = async (req, res) => {
           note: 'Order placed by customer'
         }
       ]
-    });
+    }], { session }))[0];
+
+      }, { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } });
+    } finally { await session.endSession(); }
 
     return res.status(201).json({
       success: true,
@@ -444,10 +174,11 @@ export const createOrder = async (req, res) => {
       razorpay: razorpayPayload
     });
   } catch (error) {
-    console.error('[Create Order Error]:', error);
-    return res.status(500).json({
+    console.error('[Create Order Error]:', error.message);
+    return res.status(error.statusCode || (error.name === 'ValidationError' ? 400 : 500)).json({
       success: false,
-      message: error.message || 'Server error while creating order.'
+      message: error.message || 'Server error while creating order.',
+      ...(error.quote ? { quote: error.quote, fingerprint: quoteFingerprint(error.quote) } : {})
     });
   }
 };
@@ -483,6 +214,8 @@ export const verifyPayment = async (req, res) => {
         message: 'Not authorized to update payment for this order.'
       });
     }
+
+    if (order.payment?.method !== 'ONLINE' || order.orderStatus === 'CANCELLED' || !order.payment.razorpayOrderId || (razorpay_order_id && razorpay_order_id !== order.payment.razorpayOrderId)) return res.status(400).json({ success: false, message: 'Payment verification must match this order’s payment session.' });
 
     const orderIdToVerify = razorpay_order_id || order.payment?.razorpayOrderId;
     const paymentIdToVerify = razorpay_payment_id;
@@ -698,6 +431,8 @@ export const retryPayment = async (req, res) => {
         message: 'Not authorized to retry payment for this order.'
       });
     }
+
+    if (order.orderStatus === 'CANCELLED') return res.status(400).json({ success: false, message: 'Cancelled orders cannot start a payment session.' });
 
     if (order.payment.status === 'PAID') {
       return res.status(400).json({
@@ -1771,25 +1506,8 @@ export const validateCoupon = async (req, res) => {
       });
     }
 
-    const orderSubtotal = Number(subtotal) || 0;
-    if (orderSubtotal < coupon.minOrderSubtotal) {
-      return res.status(400).json({
-        success: false,
-        message: `Coupon requires a minimum subtotal of ₹${coupon.minOrderSubtotal}. Your current subtotal is ₹${orderSubtotal}.`
-      });
-    }
-
-    let discountAmount = 0;
-    if (coupon.discountType === 'PERCENTAGE') {
-      discountAmount = Math.round((orderSubtotal * coupon.discountValue) / 100);
-      if (coupon.maxDiscountAmount) {
-        discountAmount = Math.min(discountAmount, coupon.maxDiscountAmount);
-      }
-    } else if (coupon.discountType === 'FLAT') {
-      discountAmount = coupon.discountValue;
-    }
-
-    discountAmount = Math.min(discountAmount, orderSubtotal);
+    if (!Number.isFinite(subtotal) || subtotal < 0) return res.status(400).json({ success: false, message: 'A valid subtotal is required.' });
+    const discountAmount = couponDiscount(coupon, subtotal);
 
     return res.json({
       success: true,
@@ -1799,8 +1517,8 @@ export const validateCoupon = async (req, res) => {
       description: coupon.description
     });
   } catch (error) {
-    console.error('[Validate Coupon Error]:', error);
-    return res.status(500).json({
+    console.error('[Validate Coupon Error]:', error.message);
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: 'Failed to validate coupon code.'
     });

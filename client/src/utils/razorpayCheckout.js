@@ -34,6 +34,7 @@ export const launchRazorpayCheckout = async ({
       onFallback();
       return;
     }
+    return;
   }
 
   try {
@@ -46,10 +47,10 @@ export const launchRazorpayCheckout = async ({
       key,
       amount: razorpayPayload.amount || Math.round(order.pricingBreakdown.grandTotal * 100),
       currency: razorpayPayload.currency || 'INR',
-      name: 'IndoDhobi',
-      description: `Doorstep Laundry & Steam Ironing (Order #${order.orderNumber})`,
+      name: order.billingSnapshot?.businessName || '',
+      description: `Order #${order.orderNumber}`,
+
       order_id: razorpayPayload.id,
-      image: 'https://cdn-icons-png.flaticon.com/512/2972/2972185.png',
       prefill: {
         name: user?.name || 'Customer',
         email: user?.email || '',

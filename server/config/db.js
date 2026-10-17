@@ -8,8 +8,8 @@ export const connectDB = async () => {
   // ─────────────────────────────────────────────────────────────────────────
   if (process.env.NODE_ENV === 'test') {
     if (!memoryServer) {
-      const { MongoMemoryServer } = await import('mongodb-memory-server');
-      memoryServer = await MongoMemoryServer.create();
+      const { MongoMemoryReplSet } = await import('mongodb-memory-server');
+      memoryServer = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
     }
     const inMemoryUri = memoryServer.getUri();
     const conn = await mongoose.connect(inMemoryUri);

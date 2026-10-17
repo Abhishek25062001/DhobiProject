@@ -39,7 +39,7 @@ test('malformed or incompatible storage never prevents the page from opening', (
     sessionStorage.setItem(BOOKING_DRAFT_KEY, invalid);
     assert.deepEqual(readBookingDraft(), {});
   }
-  assert.deepEqual(readDraftCart({ cartItems: [{}, { ...shirt, quantity: -1 }, shirt] }), [shirt]);
+  assert.deepEqual(readDraftCart({ cartItems: [{}, { ...shirt, quantity: -1 }, { ...shirt, unitPrice: -1 }, { ...shirt, lineTotal: -1 }, { ...shirt, quantity: 1000 }, { ...shirt, quantity: 1.5 }, shirt] }), [shirt]);
 });
 
 test('unavailable browser storage does not prevent in-memory booking', () => {

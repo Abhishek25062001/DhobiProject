@@ -30,69 +30,23 @@ export const getRazorpayInstance = () => {
   return null;
 };
 
-export const createRazorpayOrder = async (amountInINR, receiptId) => {
-  const amountInPaise = Math.round(amountInINR * 100);
-  const rz = getRazorpayInstance();
-
-  if (isConfigured() && rz) {
-    try {
-      const order = await rz.orders.create({
-        amount: amountInPaise,
-        currency: 'INR',
-        receipt: receiptId,
-        payment_capture: 1
-      });
-      return {
-        id: order.id,
-        amount: order.amount,
-        currency: order.currency,
-        isSimulated: false,
-        keyId: process.env.RAZORPAY_KEY_ID
-      };
-    } catch (err) {
-      console.warn('[Razorpay] Live order creation failed or test network offline, falling back to simulated order:', err.message);
-    }
+export const createRazorpayOrder = async (amountInINR, receiptId, { gateway = getRazorpayInstance() } = {}) => {
+  if (!gateway) throw Object.assign(new Error('Online payment is currently unavailable. Choose an available payment method or try again later.'), { statusCode: 503 });
+  try {
+    const amount = Math.round(amountInINR * 100);
+    const order = await gateway.orders.create({ amount, currency: 'INR', receipt: receiptId, payment_capture: 1 });
+    if (!order?.id || order.amount !== amount || order.currency !== 'INR') throw new Error('Invalid gateway response');
+    return { id: order.id, amount: order.amount, currency: order.currency, isSimulated: false, keyId: process.env.RAZORPAY_KEY_ID };
+  } catch {
+    throw Object.assign(new Error('Online payment could not be started. Please try again later.'), { statusCode: 503 });
   }
-
-  // Graceful simulation fallback for testing / offline environments
-  return {
-    id: `order_sim_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-    amount: amountInPaise,
-    currency: 'INR',
-    isSimulated: true,
-    keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_simulated'
-  };
 };
 
 export const verifyRazorpaySignature = (orderId, paymentId, signature) => {
-  if (!orderId || !paymentId || !signature) {
-    return false;
-  }
-
   const secret = process.env.RAZORPAY_KEY_SECRET;
-
-  // Strict cryptographic HMAC-SHA256 signature verification
-  if (secret) {
-    try {
-      const generatedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(`${orderId}|${paymentId}`)
-        .digest('hex');
-
-      if (generatedSignature === signature) {
-        return true;
-      }
-    } catch (err) {
-      console.error('[Razorpay Signature Error]:', err);
-    }
-  }
-
-  // Support explicit valid simulation tokens only in test/simulated environment
-  if ((!isConfigured() || orderId.startsWith('order_sim_')) && signature === 'simulated_valid_signature') {
-    return true;
-  }
-
-  return false;
+  if (!secret || typeof orderId !== 'string' || typeof paymentId !== 'string' || typeof signature !== 'string' || !/^[a-f0-9]{64}$/i.test(signature)) return false;
+  const expected = crypto.createHmac('sha256', secret).update(`${orderId}|${paymentId}`).digest();
+  return crypto.timingSafeEqual(expected, Buffer.from(signature, 'hex'));
 };
 
 export default {

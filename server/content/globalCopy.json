@@ -1,0 +1,22 @@
+{
+  "in_fed1d87": "IN",
+  "view_your_profile_account_d71788f": "View your profile & account",
+  "user_b512d97": "User",
+  "u_a25513c": "U",
+  "admin_c1c224b": "Admin",
+  "rider_8eb9369": "Rider",
+  "log_out_4961614": "Log out",
+  "sign_in_bcc0bcc": "Sign In",
+  "register_bb7234e": "Register",
+  "view_booking_cart_2ed067a": "View booking cart",
+  "toggle_navigation_menu_5106483": "Toggle navigation menu",
+  "sign_out_0b184bc": "Sign Out",
+  "serving_over_45_000_happy_households_0384e42": "● Serving over 45,000+ happy households",
+  "operational_hubs_74b95fc": "Operational Hubs",
+  "view_all_serviceable_pincodes_97a5519": "View All Serviceable Pincodes →",
+  "customer_care_a5f6f28": "Customer Care",
+  "91_98765_43210_7_am_10_pm_6281f79": "{{config.supportPhone}} ({{config.supportHours}})",
+  "care_indodhobi_com_f7714c9": "{{config.supportEmail}}",
+  "gst_registered_fssai_sanitized_standards_a0f85fb": "GST Registered • FSSAI Sanitized Standards",
+  "indodhobi_technologies_pvt_ltd_all_rights_reserved_4e96ad9": " {{config.businessName}} All rights reserved."
+}

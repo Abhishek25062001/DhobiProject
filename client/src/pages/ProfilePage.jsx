@@ -1,3 +1,7 @@
+import ContentState from '../components/ContentState';
+import { useGlobalContent } from '../context/SiteContentContext';
+import { activeOptions } from '../../../shared/bookingChoices.mjs';
+import usePageCopy from '../hooks/usePageCopy';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { authService, orderService } from '../services/api';
@@ -32,6 +36,8 @@ import { Link } from 'react-router-dom';
 import GstInvoiceModal from '../components/GstInvoiceModal';
 
 const ProfilePage = () => {
+  const copy = usePageCopy('profile');
+  const { config } = useGlobalContent();
   const {
     user,
     updateUser,
@@ -60,8 +66,8 @@ const ProfilePage = () => {
   // Form State: Personal Info
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [defaultDetergent, setDefaultDetergent] = useState('Standard');
-  const [defaultPackaging, setDefaultPackaging] = useState('Folded');
+  const [defaultDetergent, setDefaultDetergent] = useState('');
+  const [defaultPackaging, setDefaultPackaging] = useState('');
 
   // Form State: Alternate Phone
   const [showAddPhone, setShowAddPhone] = useState(false);
@@ -97,8 +103,8 @@ const ProfilePage = () => {
           setName(res.user.name || '');
           setEmail(res.user.email || '');
           if (res.user.preferences) {
-            setDefaultDetergent(res.user.preferences.defaultDetergent || 'Standard');
-            setDefaultPackaging(res.user.preferences.defaultPackaging || 'Folded');
+            setDefaultDetergent(res.user.preferences.defaultDetergent || '');
+            setDefaultPackaging(res.user.preferences.defaultPackaging || '');
           }
         }
         if (res.stats) {
@@ -265,7 +271,7 @@ const ProfilePage = () => {
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-slate-500">
           <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
-          <span className="text-sm font-semibold">Loading profile...</span>
+          <span className="text-sm font-semibold">{copy('loading_profile_4a47f12')}</span>
         </div>
       </div>
     );
@@ -274,7 +280,7 @@ const ProfilePage = () => {
   const memberSince = user?.createdAt ? format(new Date(user.createdAt), 'MMMM yyyy') : 'October 2026';
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+    <ContentState resource={copy}><div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       
       {/* ──────────────── SECTION A: Profile Header & Avatar ──────────────── */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm relative overflow-hidden">
@@ -292,7 +298,7 @@ const ProfilePage = () => {
                       {avatarSrc ? (
                         <img
                           src={avatarSrc}
-                          alt={user?.name || 'User'}
+                          alt={user?.name || copy('user_b512d97')}
                           className="w-full h-full object-cover"
                           onError={(e) => {
                             e.currentTarget.style.display = 'none';
@@ -305,7 +311,7 @@ const ProfilePage = () => {
                         className="profile-avatar-fallback"
                         style={{ display: avatarSrc ? 'none' : 'inline' }}
                       >
-                        {user?.name?.charAt(0) || 'U'}
+                        {user?.name?.charAt(0) || copy('u_a25513c')}
                       </span>
                     </>
                   );
@@ -314,7 +320,7 @@ const ProfilePage = () => {
               <label
                 htmlFor="avatar-upload-input"
                 className="absolute -bottom-1.5 -right-1.5 bg-slate-900 hover:bg-primary-600 text-white p-2 rounded-xl shadow-md cursor-pointer transition-colors border-2 border-white"
-                title="Upload Profile Photo"
+                title={copy('upload_profile_photo_5532247')}
               >
                 {uploadingAvatar ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -339,17 +345,15 @@ const ProfilePage = () => {
                   {user?.name}
                 </h1>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-primary-50 text-primary-700 border border-primary-200">
-                  {user?.role || 'Customer'}
+                  {user?.role || copy('customer_bf37633')}
                 </span>
                 {user?.isPhoneVerified && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
-                    <CheckCircle2 className="w-3 h-3 text-teal-600" />
-                    Verified
-                  </span>
+                    <CheckCircle2 className="w-3 h-3 text-teal-600" />{copy('verified_4f78384')}</span>
                 )}
               </div>
               <p className="text-xs text-slate-500 flex items-center gap-2">
-                <span>Member since {memberSince}</span>
+                <span>{copy('member_since_5c4a4c9')}{memberSince}</span>
                 <span>•</span>
                 <span className="font-mono text-slate-700">+91 {user?.phone}</span>
               </p>
@@ -359,15 +363,15 @@ const ProfilePage = () => {
           {/* Quick Account Stats */}
           <div className="grid grid-cols-3 gap-3 w-full md:w-auto">
             <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 text-center min-w-[90px]">
-              <span className="text-xs text-slate-500 font-semibold block">Total Orders</span>
+              <span className="text-xs text-slate-500 font-semibold block">{copy('total_orders_8075b35')}</span>
               <span className="text-xl font-black text-slate-900">{stats.totalOrders}</span>
             </div>
             <div className="bg-teal-50/60 border border-teal-200/60 rounded-2xl p-3.5 text-center min-w-[90px]">
-              <span className="text-xs text-teal-700 font-semibold block">Active</span>
+              <span className="text-xs text-teal-700 font-semibold block">{copy('active_9234069')}</span>
               <span className="text-xl font-black text-teal-800">{stats.activeOrders}</span>
             </div>
             <div className="bg-primary-50/60 border border-primary-200/60 rounded-2xl p-3.5 text-center min-w-[90px]">
-              <span className="text-xs text-primary-700 font-semibold block">Total Spent</span>
+              <span className="text-xs text-primary-700 font-semibold block">{copy('total_spent_9439a28')}</span>
               <span className="text-xl font-black text-primary-800">₹{stats.totalSpent}</span>
             </div>
           </div>
@@ -382,9 +386,7 @@ const ProfilePage = () => {
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
-          >
-            Personal Info & Addresses
-          </button>
+          >{copy('personal_info_addresses_e2c67e4')}</button>
           <button
             onClick={() => setActiveTab('orders')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -393,7 +395,7 @@ const ProfilePage = () => {
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            <span>Recent Orders ({recentOrders.length})</span>
+            <span>{copy('recent_orders_abe336b')}{recentOrders.length})</span>
           </button>
         </div>
       </div>
@@ -409,8 +411,8 @@ const ProfilePage = () => {
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Personal Information</h2>
-                  <p className="text-xs text-slate-500">Manage your name, email, and primary contact details</p>
+                  <h2 className="text-lg font-bold text-slate-900">{copy('personal_information_c4b37e8')}</h2>
+                  <p className="text-xs text-slate-500">{copy('manage_your_name_email_and_primary_contact_details_9231207')}</p>
                 </div>
               </div>
 
@@ -418,7 +420,7 @@ const ProfilePage = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Full Name */}
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1.5">Full Name</label>
+                    <label className="block font-semibold text-slate-700 mb-1.5">{copy('full_name_8e00cdf')}</label>
                     <div className="relative">
                       <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
@@ -426,7 +428,7 @@ const ProfilePage = () => {
                         required
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder="Rohan Sharma"
+                        placeholder={copy('rohan_sharma_2a9e09d')}
                         className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium text-slate-900"
                       />
                     </div>
@@ -434,14 +436,14 @@ const ProfilePage = () => {
 
                   {/* Email */}
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1.5">Email Address</label>
+                    <label className="block font-semibold text-slate-700 mb-1.5">{copy('email_address_09bf25e')}</label>
                     <div className="relative">
                       <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="rohan@example.com"
+                        placeholder={copy('rohan_example_com_0733eda')}
                         className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium text-slate-900"
                       />
                     </div>
@@ -451,11 +453,9 @@ const ProfilePage = () => {
                 {/* Primary Phone Number (Locked & Immutable) */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block font-semibold text-slate-700">Primary Mobile Number</label>
+                    <label className="block font-semibold text-slate-700">{copy('primary_mobile_number_6139384')}</label>
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      <Lock className="w-2.5 h-2.5" />
-                      Verified Primary Identity (Locked)
-                    </span>
+                      <Lock className="w-2.5 h-2.5" />{copy('verified_primary_identity_locked_a841a6b')}</span>
                   </div>
                   <div className="relative">
                     <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -467,43 +467,40 @@ const ProfilePage = () => {
                       className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 font-mono text-slate-500 cursor-not-allowed select-none font-semibold"
                     />
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Your primary phone is linked to your OTP login and cannot be altered. You can add alternate contact numbers below.
-                  </p>
+                  <p className="text-[11px] text-slate-400 mt-1">{copy('your_primary_phone_is_linked_to_your_otp_login_and_cannot_be_alte_d8f090b')}</p>
                 </div>
 
                 {/* Wash Preferences */}
                 <div className="pt-4 border-t border-slate-100 space-y-3">
                   <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
                     <Sparkles className="w-4 h-4 text-primary-600" />
-                    <span>Default Wash Preferences</span>
+                    <span>{copy('default_wash_preferences_357976c')}</span>
                   </h3>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Preferred Detergent</label>
+                      <label className="block font-semibold text-slate-700 mb-1">{copy('preferred_detergent_00903c6')}</label>
                       <select
                         value={defaultDetergent}
                         onChange={(e) => setDefaultDetergent(e.target.value)}
                         className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium text-slate-800 bg-white"
                       >
-                        <option value="Standard">Standard Gentle Detergent</option>
-                        <option value="Hypoallergenic">Hypoallergenic (Skin-Safe)</option>
-                        <option value="Fabric Softener Plus">Fabric Softener Plus</option>
-                        <option value="Bio-Enzyme Stain Defense">Bio-Enzyme Stain Defense</option>
+                        <option value="">{copy('choosePreference')}</option>
+                        {!activeOptions(config?.detergentOptions).some(option => option.code === defaultDetergent) && defaultDetergent && <option value={defaultDetergent} disabled>{copy('unavailablePreference')}</option>}
+                        {activeOptions(config?.detergentOptions).map(option => <option key={option.code} value={option.code}>{option.name}</option>)}
                       </select>
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Preferred Packaging</label>
+                      <label className="block font-semibold text-slate-700 mb-1">{copy('preferred_packaging_76e474a')}</label>
                       <select
                         value={defaultPackaging}
                         onChange={(e) => setDefaultPackaging(e.target.value)}
                         className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium text-slate-800 bg-white"
                       >
-                        <option value="Folded">Crisp Folded in Eco Paper Wrap</option>
-                        <option value="On Hangers">On Hangers with Dust Garment Bag</option>
-                        <option value="Travel Roll">Travel Compression Roll</option>
+                        <option value="">{copy('choosePreference')}</option>
+                        {!activeOptions(config?.packagingOptions).some(option => option.code === defaultPackaging) && defaultPackaging && <option value={defaultPackaging} disabled>{copy('unavailablePreference')}</option>}
+                        {activeOptions(config?.packagingOptions).map(option => <option key={option.code} value={option.code}>{option.name}</option>)}
                       </select>
                     </div>
                   </div>
@@ -520,7 +517,7 @@ const ProfilePage = () => {
                     ) : (
                       <>
                         <Save className="w-4 h-4" />
-                        <span>Save Profile Changes</span>
+                        <span>{copy('save_profile_changes_37a7634')}</span>
                       </>
                     )}
                   </button>
@@ -532,8 +529,8 @@ const ProfilePage = () => {
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Alternate Phone Numbers</h2>
-                  <p className="text-xs text-slate-500">Secondary numbers our pickup & delivery riders can contact</p>
+                  <h2 className="text-lg font-bold text-slate-900">{copy('alternate_phone_numbers_4274962')}</h2>
+                  <p className="text-xs text-slate-500">{copy('secondary_numbers_our_pickup_delivery_riders_can_contact_3409b7b')}</p>
                 </div>
                 {!showAddPhone && (
                   <button
@@ -542,7 +539,7 @@ const ProfilePage = () => {
                     className="px-3 py-1.5 rounded-xl text-xs font-bold text-primary-700 bg-primary-50 hover:bg-primary-100 border border-primary-200 transition-colors flex items-center gap-1 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Add Phone</span>
+                    <span>{copy('add_phone_106d14a')}</span>
                   </button>
                 )}
               </div>
@@ -551,7 +548,7 @@ const ProfilePage = () => {
               {showAddPhone && (
                 <form onSubmit={handleAddAlternatePhone} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800">Add New Alternate Contact Number</span>
+                    <span className="font-bold text-slate-800">{copy('add_new_alternate_contact_number_a91487c')}</span>
                     <button
                       type="button"
                       onClick={() => setShowAddPhone(false)}
@@ -563,7 +560,7 @@ const ProfilePage = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Mobile Number (10 digits)</label>
+                      <label className="block font-semibold text-slate-700 mb-1">{copy('mobile_number_10_digits_8376c49')}</label>
                       <input
                         type="tel"
                         required
@@ -575,17 +572,17 @@ const ProfilePage = () => {
                       />
                     </div>
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Label</label>
+                      <label className="block font-semibold text-slate-700 mb-1">{copy('label_0e66373')}</label>
                       <select
                         value={newPhoneLabel}
                         onChange={(e) => setNewPhoneLabel(e.target.value)}
                         className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-800 bg-white"
                       >
-                        <option value="Spouse">Spouse</option>
-                        <option value="Home / Family">Home / Family</option>
-                        <option value="Office / Desk">Office / Desk</option>
-                        <option value="Security Guard">Security Guard</option>
-                        <option value="Alternate">Other Alternate</option>
+                        <option value="Spouse">{copy('spouse_f8930c3')}</option>
+                        <option value="Home / Family">{copy('home_family_66be73b')}</option>
+                        <option value="Office / Desk">{copy('office_desk_2908cb5')}</option>
+                        <option value="Security Guard">{copy('security_guard_2ebe3cc')}</option>
+                        <option value="Alternate">{copy('other_alternate_e219976')}</option>
                       </select>
                     </div>
                   </div>
@@ -595,16 +592,14 @@ const ProfilePage = () => {
                       type="button"
                       onClick={() => setShowAddPhone(false)}
                       className="px-3 py-1.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer"
-                    >
-                      Cancel
-                    </button>
+                    >{copy('cancel_19766ed')}</button>
                     <button
                       type="submit"
                       disabled={addingPhone || newPhoneNumber.length !== 10}
                       className="px-4 py-1.5 rounded-xl font-bold text-white bg-primary-600 hover:bg-primary-700 transition-colors flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
                     >
                       {addingPhone ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                      <span>Save Number</span>
+                      <span>{copy('save_number_ad24180')}</span>
                     </button>
                   </div>
                 </form>
@@ -613,7 +608,7 @@ const ProfilePage = () => {
               {/* Alternate Phones List */}
               <div className="space-y-2">
                 {(user?.alternatePhones || []).length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">No alternate phone numbers added yet.</p>
+                  <p className="text-xs text-slate-400 italic">{copy('no_alternate_phone_numbers_added_yet_351cfce')}</p>
                 ) : (
                   user.alternatePhones.map((phoneItem) => (
                     <div
@@ -635,7 +630,7 @@ const ProfilePage = () => {
                       <button
                         onClick={() => deleteAlternatePhone(phoneItem._id)}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                        title="Delete number"
+                        title={copy('delete_number_121dbb8')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -652,8 +647,8 @@ const ProfilePage = () => {
             <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Saved Addresses</h2>
-                  <p className="text-xs text-slate-500">{(user?.addresses || []).length} address(es) saved</p>
+                  <h2 className="text-lg font-bold text-slate-900">{copy('saved_addresses_919b4b0')}</h2>
+                  <p className="text-xs text-slate-500">{(user?.addresses || []).length}{copy('address_es_saved_b157679')}</p>
                 </div>
                 <button
                   type="button"
@@ -661,7 +656,7 @@ const ProfilePage = () => {
                   className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Add New</span>
+                  <span>{copy('add_new_c1dc92c')}</span>
                 </button>
               </div>
 
@@ -670,14 +665,12 @@ const ProfilePage = () => {
                 {(user?.addresses || []).length === 0 ? (
                   <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-2xl space-y-2">
                     <MapPin className="w-6 h-6 text-slate-400 mx-auto" />
-                    <p className="text-xs text-slate-500 font-medium">No saved addresses</p>
+                    <p className="text-xs text-slate-500 font-medium">{copy('no_saved_addresses_90b81d0')}</p>
                     <button
                       type="button"
                       onClick={() => handleOpenAddressModal(null)}
                       className="text-xs font-bold text-primary-600 hover:underline cursor-pointer"
-                    >
-                      + Add your first address
-                    </button>
+                    >{copy('add_your_first_address_da33554')}</button>
                   </div>
                 ) : (
                   user.addresses.map((addr) => (
@@ -693,9 +686,7 @@ const ProfilePage = () => {
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-xs text-slate-900">{addr.label}</span>
                           {addr.isDefault && (
-                            <span className="bg-primary-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-md">
-                              DEFAULT
-                            </span>
+                            <span className="bg-primary-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-md">{copy('default_89dbf71')}</span>
                           )}
                         </div>
                         <div className="flex items-center gap-1">
@@ -703,7 +694,7 @@ const ProfilePage = () => {
                             type="button"
                             onClick={() => handleOpenAddressModal(addr)}
                             className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                            title="Edit Address"
+                            title={copy('edit_address_6a8fa16')}
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
@@ -711,7 +702,7 @@ const ProfilePage = () => {
                             type="button"
                             onClick={() => deleteAddress(addr._id)}
                             className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                            title="Delete Address"
+                            title={copy('delete_address_646f172')}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -725,8 +716,7 @@ const ProfilePage = () => {
                         {addr.city} — {addr.pincode}
                       </p>
                       {addr.contactPhone && (
-                        <p className="text-[11px] text-slate-400 mt-1 font-mono">
-                          Phone: +91 {addr.contactPhone}
+                        <p className="text-[11px] text-slate-400 mt-1 font-mono">{copy('phone_91_466cd7f')}{addr.contactPhone}
                         </p>
                       )}
 
@@ -736,9 +726,7 @@ const ProfilePage = () => {
                             type="button"
                             onClick={() => handleSetDefaultAddress(addr._id)}
                             className="text-[11px] font-bold text-primary-600 hover:underline cursor-pointer"
-                          >
-                            Set as Default
-                          </button>
+                          >{copy('set_as_default_1088655')}</button>
                         </div>
                       )}
                     </div>
@@ -756,30 +744,24 @@ const ProfilePage = () => {
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Recent Order History</h2>
-              <p className="text-xs text-slate-500">Live order status and past invoices from IndoDhobi</p>
+              <h2 className="text-lg font-bold text-slate-900">{copy('recent_order_history_376d9ed')}</h2>
+              <p className="text-xs text-slate-500">{copy('live_order_status_and_past_invoices_from_indodhobi_729c74d')}</p>
             </div>
             <Link
               to="/book"
               className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 shadow-xs transition-colors cursor-pointer"
-            >
-              + Book New Laundry
-            </Link>
+            >{copy('book_new_laundry_ec8c651')}</Link>
           </div>
 
           {recentOrders.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-3xl space-y-3">
               <Package className="w-10 h-10 text-slate-300 mx-auto" />
-              <h3 className="font-bold text-slate-700 text-sm">No orders placed yet</h3>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Schedule your first doorstep pickup and enjoy clean, fresh, crisp clothes delivered in 48 hours.
-              </p>
+              <h3 className="font-bold text-slate-700 text-sm">{copy('no_orders_placed_yet_97a4a29')}</h3>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">{copy('schedule_your_first_doorstep_pickup_and_enjoy_clean_fresh_crisp_c_9ba0cad')}</p>
               <Link
                 to="/book"
                 className="inline-block mt-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 shadow-md shadow-primary-600/20"
-              >
-                Book Your First Wash
-              </Link>
+              >{copy('book_your_first_wash_9a6c87f')}</Link>
             </div>
           ) : (
             <div className="space-y-3">
@@ -810,28 +792,18 @@ const ProfilePage = () => {
                           {order.orderStatus?.replace(/_/g, ' ')}
                         </span>
                         {order.orderStatus === 'CANCELLED' || order.payment?.status === 'CANCELLED' ? (
-                          <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                            CANCELLED
-                          </span>
+                          <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">{copy('cancelled_8ab6812')}</span>
                         ) : order.payment?.status === 'REFUNDED' ? (
-                          <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                            REFUNDED
-                          </span>
+                          <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">{copy('refunded_6e72ba4')}</span>
                         ) : order.payment?.status === 'PAID' ? (
-                          <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                            PAID
-                          </span>
+                          <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">{copy('paid_e17956e')}</span>
                         ) : (
                           <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                            {order.payment?.method || 'COD'} (Pending)
-                          </span>
+                            {order.payment?.method || copy('cod_ca8c637')}{copy('pending_367b499')}</span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500">
-                        Placed on {orderDate} • {totalItems} Garment(s)
-                      </p>
-                      <p className="text-xs text-slate-600 font-medium">
-                        Pickup: {order.pickupSchedule?.date} ({order.pickupSchedule?.timeSlot})
+                      <p className="text-xs text-slate-500">{copy('placed_on_bbba0c2')}{orderDate} • {totalItems}{copy('garment_s_08e579c')}</p>
+                      <p className="text-xs text-slate-600 font-medium">{copy('pickup_5571c3f')}{order.pickupSchedule?.date} ({order.pickupSchedule?.timeSlot})
                       </p>
                     </div>
 
@@ -844,16 +816,16 @@ const ProfilePage = () => {
                           type="button"
                           onClick={() => setSelectedInvoiceOrder(order)}
                           className="text-xs font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1 cursor-pointer bg-teal-50 px-2.5 py-1 rounded-lg border border-teal-200 hover:bg-teal-100 transition-colors"
-                          title="View & Download PDF Invoice"
+                          title={copy('view_download_pdf_invoice_723afdb')}
                         >
                           <Receipt className="w-3 h-3" />
-                          <span>Receipt</span>
+                          <span>{copy('receipt_dad5a96')}</span>
                         </button>
                         <Link
                           to="/my-orders"
                           className="text-xs font-bold text-primary-600 hover:underline flex items-center gap-0.5"
                         >
-                          <span>Details</span>
+                          <span>{copy('details_45989de')}</span>
                           <ChevronRight className="w-3.5 h-3.5" />
                         </Link>
                       </div>
@@ -872,7 +844,7 @@ const ProfilePage = () => {
           <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-bold text-slate-900 text-base">
-                {editingAddressId ? 'Edit Address' : 'Add New Address'}
+                {editingAddressId ? copy('edit_address_6a8fa16') : copy('add_new_address_b469da3')}
               </h3>
               <button
                 type="button"
@@ -885,7 +857,7 @@ const ProfilePage = () => {
 
             <form onSubmit={handleSaveAddress} className="space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Address Label</label>
+                <label className="block font-semibold text-slate-700 mb-1">{copy('address_label_ebb25f3')}</label>
                 <div className="flex gap-2">
                   {['Home', 'Work', 'Other'].map((type) => (
                     <button
@@ -905,11 +877,11 @@ const ProfilePage = () => {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Flat / House / Floor / Building</label>
+                <label className="block font-semibold text-slate-700 mb-1">{copy('flat_house_floor_building_fa37d31')}</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Flat 402, Tower 4, Royal Palms"
+                  placeholder={copy('e_g_flat_402_tower_4_royal_palms_c2fa049')}
                   value={addressForm.flatAndBuilding}
                   onChange={(e) => setAddressForm({ ...addressForm, flatAndBuilding: e.target.value })}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-medium text-slate-900"
@@ -917,11 +889,11 @@ const ProfilePage = () => {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Street / Landmark</label>
+                <label className="block font-semibold text-slate-700 mb-1">{copy('street_landmark_d2a2589')}</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Barakhamba Road, Near Metro Gate #2"
+                  placeholder={copy('e_g_barakhamba_road_near_metro_gate_2_916b71c')}
                   value={addressForm.streetAndLandmark}
                   onChange={(e) => setAddressForm({ ...addressForm, streetAndLandmark: e.target.value })}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-medium text-slate-900"
@@ -930,7 +902,7 @@ const ProfilePage = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">City</label>
+                  <label className="block font-semibold text-slate-700 mb-1">{copy('city_fc33f73')}</label>
                   <input
                     type="text"
                     required
@@ -940,7 +912,7 @@ const ProfilePage = () => {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Pincode (6 digits)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">{copy('pincode_6_digits_a2bca2d')}</label>
                   <input
                     type="text"
                     required
@@ -954,8 +926,7 @@ const ProfilePage = () => {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Contact Phone for this Address <span className="text-slate-400 font-normal">(Optional)</span>
+                <label className="block font-semibold text-slate-700 mb-1">{copy('contact_phone_for_this_address_ce5f21d')}<span className="text-slate-400 font-normal">{copy('optional_ab05200')}</span>
                 </label>
                 <input
                   type="tel"
@@ -975,9 +946,7 @@ const ProfilePage = () => {
                   onChange={(e) => setAddressForm({ ...addressForm, isDefault: e.target.checked })}
                   className="rounded text-primary-600 focus:ring-primary-500 w-4 h-4 cursor-pointer"
                 />
-                <label htmlFor="defaultAddressCheckbox" className="font-semibold text-slate-700 cursor-pointer">
-                  Set as default delivery address
-                </label>
+                <label htmlFor="defaultAddressCheckbox" className="font-semibold text-slate-700 cursor-pointer">{copy('set_as_default_delivery_address_a3b2147')}</label>
               </div>
 
               <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
@@ -985,16 +954,14 @@ const ProfilePage = () => {
                   type="button"
                   onClick={() => setAddressModalOpen(false)}
                   className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
+                >{copy('cancel_19766ed')}</button>
                 <button
                   type="submit"
                   disabled={savingAddress}
                   className="px-5 py-2 rounded-xl font-bold text-white bg-primary-600 hover:bg-primary-700 shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
                 >
                   {savingAddress ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  <span>{editingAddressId ? 'Save Changes' : 'Add Address'}</span>
+                  <span>{editingAddressId ? copy('save_changes_35322b5') : copy('add_address_9ccfb5a')}</span>
                 </button>
               </div>
             </form>
@@ -1011,7 +978,7 @@ const ProfilePage = () => {
         />
       )}
 
-    </div>
+    </div></ContentState>
   );
 };
 

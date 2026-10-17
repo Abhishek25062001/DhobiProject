@@ -1,8 +1,10 @@
+import { publicConfig, publicSlot, publicCoupon } from '../services/publicProjection.js';
 import PlatformConfig from '../models/PlatformConfig.js';
 import TimeSlot from '../models/TimeSlot.js';
 import Garment from '../models/Garment.js';
 import Coupon from '../models/Coupon.js';
-import { uploadImageToCloudinary } from '../utils/cloudinary.js';
+import { uploadMedia } from '../services/media.js';
+import { catalogRecords } from '../services/catalog.js';
 
 // @desc    Get public bootstrap config, active slots, garments and active coupons
 // @route   GET /api/config/public
@@ -10,18 +12,20 @@ import { uploadImageToCloudinary } from '../utils/cloudinary.js';
 export const getPublicConfig = async (req, res) => {
   try {
     const [config, slots, garments, coupons] = await Promise.all([
-      PlatformConfig.getOrCreateActiveConfig(),
+      PlatformConfig.findOne(),
       TimeSlot.find({ isActive: true }).sort({ sortOrder: 1, startHour: 1 }),
-      Garment.find({ isActive: true }).sort({ category: 1, name: 1 }),
+      catalogRecords(),
       Coupon.find({ isActive: true, expiresAt: { $gt: new Date() } }).select('-__v')
     ]);
 
+    if (!config) return res.status(503).json({ success: false, message: 'Booking configuration is unavailable.' });
+
     return res.json({
       success: true,
-      config,
-      slots,
+      config: publicConfig(config),
+      slots: slots.map(publicSlot),
       garments,
-      coupons
+      coupons: coupons.map(publicCoupon)
     });
   } catch (error) {
     console.error('[Get Public Config Error]:', error);
@@ -40,15 +44,17 @@ export const updateConfigSettings = async (req, res) => {
     const config = await PlatformConfig.getOrCreateActiveConfig();
 
     const allowedFields = [
+      'homeCareOptions',
       'businessName',
       'gstin',
       'sacCode',
-      'supportPhone',
+      'supportPhone', 'supportEmail', 'privacyEmail', 'legalEmail', 'supportHours', 'businessAddress',
       'freeDeliveryThreshold',
       'deliveryFee',
       'expressSurcharge',
       'gstPercentage',
       'minStandardTurnaroundHours',
+      'expressTurnaroundHours',
       'detergentOptions',
       'packagingOptions',
       'serviceTypes',
@@ -70,8 +76,8 @@ export const updateConfigSettings = async (req, res) => {
       config
     });
   } catch (error) {
-    console.error('[Update Config Settings Error]:', error);
-    return res.status(500).json({
+    console.error('[Update Config Settings Error]:', error.message);
+    return res.status(400).json({
       success: false,
       message: error.message || 'Failed to update platform configuration.'
     });
@@ -202,18 +208,19 @@ export const uploadImage = async (req, res) => {
       });
     }
 
-    const result = await uploadImageToCloudinary(imagePayload, folder);
-    const targetUrl = result.url || result.imageUrl;
+    const result = await uploadMedia(imagePayload, { name: req.body.name || 'Uploaded image', scope: req.user.role === 'rider' ? 'inspection' : 'website' });
+    const targetUrl = result.url;
 
     return res.json({
       success: true,
       url: targetUrl,
       imageUrl: targetUrl,
-      publicId: result.publicId
+      publicId: result.publicId,
+      assetId: result._id
     });
   } catch (error) {
     console.error('[Upload Image Controller Error]:', error);
-    return res.status(500).json({
+    return res.status(error.statusCode || 400).json({
       success: false,
       message: error.message || 'Image upload failed.'
     });

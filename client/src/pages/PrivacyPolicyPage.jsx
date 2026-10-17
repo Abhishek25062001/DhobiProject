@@ -1,24 +1,30 @@
+import ContentState from '../components/ContentState';
+import ContentBlocks from '../components/ContentBlocks';
+import { useGlobalContent } from '../context/SiteContentContext';
+import usePageCopy from '../hooks/usePageCopy';
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, Lock, Eye, FileText, CheckCircle, ArrowLeft, Mail, Phone, MapPin } from 'lucide-react';
 
 const PrivacyPolicyPage = () => {
+  const { config } = useGlobalContent();
+  const copy = usePageCopy('privacy');
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
+    <ContentState resource={copy}><div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto space-y-8">
         
         {/* Navigation Breadcrumb */}
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
           <Link to="/" className="inline-flex items-center gap-1 hover:text-primary-600 transition-colors">
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back to Home</span>
+            <span>{copy('back_to_home_eec7842')}</span>
           </Link>
           <span>/</span>
-          <span className="text-slate-800">Privacy Policy</span>
+          <span className="text-slate-800">{copy('privacy_policy_506ff39')}</span>
         </div>
 
         {/* Header Hero */}
@@ -29,19 +35,15 @@ const PrivacyPolicyPage = () => {
               <Shield className="w-6 h-6 stroke-[2.2]" />
             </div>
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-primary-700">Legal &amp; Compliance</span>
-              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                Privacy Policy
-              </h1>
+              <span className="text-xs font-bold uppercase tracking-wider text-primary-700">{copy('legal_compliance_b122f3a')}</span>
+              <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{copy('privacy_policy_506ff39')}</h1>
             </div>
           </div>
-          <p className="text-sm text-slate-600 leading-relaxed max-w-2xl">
-            At IndoDhobi Technologies Pvt Ltd (&quot;IndoDhobi&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;), we value your privacy and are committed to safeguarding your personal data in strict compliance with the Digital Personal Data Protection Act, 2023 (DPDP Act) and the Information Technology Act, 2000.
-          </p>
+          <p className="text-sm text-slate-600 leading-relaxed max-w-2xl">{copy('at_indodhobi_technologies_pvt_ltd_indodhobi_we_us_or_our_we_value_3616057')}</p>
           <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-6 text-xs text-slate-500">
-            <span><strong>Effective Date:</strong> January 1, 2026</span>
-            <span><strong>Last Updated:</strong> October 15, 2026</span>
-            <span><strong>Version:</strong> 2.4.0</span>
+            <span><strong>{copy('effective_date_eef0919')}</strong>{copy('january_1_2026_9884c78')}</span>
+            <span><strong>{copy('last_updated_d621a99')}</strong>{copy('october_15_2026_f87dbde')}</span>
+            <span><strong>{copy('version_4c5726e')}</strong> {copy('policyVersion')}</span>
           </div>
         </div>
 
@@ -52,27 +54,20 @@ const PrivacyPolicyPage = () => {
           <section className="space-y-3">
             <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
               <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-800 text-xs flex items-center justify-center font-bold">1</span>
-              <span>Information We Collect</span>
+              <span>{copy('information_we_collect_a554871')}</span>
             </h2>
-            <p>
-              When you use IndoDhobi services, create an account, schedule laundry pickups, or communicate with our operations team, we collect the following types of information:
-            </p>
+            <p>{copy('when_you_use_indodhobi_services_create_an_account_schedule_laundr_171443e')}</p>
             <ul className="list-disc pl-5 space-y-2 text-slate-600">
               <li>
-                <strong>Personal Identity &amp; Contact:</strong> Full name, verified mobile phone number (via OTP), and optional email address.
-              </li>
+                <strong>{copy('personal_identity_contact_6602c2f')}</strong>{copy('full_name_verified_mobile_phone_number_via_otp_and_optional_email_a47ab15')}</li>
               <li>
-                <strong>Doorstep Logistics &amp; Address:</strong> House/flat number, apartment/building name, street, nearby landmark, city, and 6-digit postal pincode.
-              </li>
+                <strong>{copy('doorstep_logistics_address_0201b41')}</strong>{copy('house_flat_number_apartment_building_name_street_nearby_landmark__b7912b7')}</li>
               <li>
-                <strong>Order &amp; Laundry Specifications:</strong> Selected garment categories, quantities, custom fabric instructions (e.g. starch preference, delicate silk care), and pickup/delivery date-time slots.
-              </li>
+                <strong>{copy('order_laundry_specifications_c489a40')}</strong>{copy('selected_garment_categories_quantities_custom_fabric_instructions_aaf84f6')}</li>
               <li>
-                <strong>Inspection &amp; Verification Media:</strong> Photographs of pre-existing garment stains, tears, or tag markings captured by our doorstep logistics rider during bag sealing.
-              </li>
+                <strong>{copy('inspection_verification_media_e94e6c6')}</strong>{copy('photographs_of_pre_existing_garment_stains_tears_or_tag_markings__7a87849')}</li>
               <li>
-                <strong>Payment Information:</strong> Transaction identifiers, payment mode (Cash on Delivery, UPI Dynamic QR, or Razorpay card/netbanking), and bank reference UTR numbers. We do <em>not</em> store full credit/debit card numbers or UPI PINs.
-              </li>
+                <strong>{copy('payment_information_380c59b')}</strong>{copy('transaction_identifiers_payment_mode_cash_on_delivery_upi_dynamic_369b3f5')}<em>{copy('not_254bb97')}</em>{copy('store_full_credit_debit_card_numbers_or_upi_pins_54bd513')}</li>
             </ul>
           </section>
 
@@ -80,37 +75,29 @@ const PrivacyPolicyPage = () => {
           <section className="space-y-3">
             <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
               <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-800 text-xs flex items-center justify-center font-bold">2</span>
-              <span>How We Use Your Information</span>
+              <span>{copy('how_we_use_your_information_9785e87')}</span>
             </h2>
-            <p>Your data is processed strictly for legitimate operational purposes:</p>
+            <p>{copy('your_data_is_processed_strictly_for_legitimate_operational_purpos_02d04c0')}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
                 <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  Service Fulfillment
-                </span>
-                <p className="text-xs text-slate-500">Dispatching verified doorstep riders, processing laundry in temperature-controlled hub batches, and scheduling 48-hr delivery.</p>
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />{copy('service_fulfillment_1ce000c')}</span>
+                <p className="text-xs text-slate-500">{copy('dispatching_verified_doorstep_riders_processing_laundry_in_temper_1fe389c')}</p>
               </div>
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
                 <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  Real-time Notifications
-                </span>
-                <p className="text-xs text-slate-500">Transmitting 4-digit pickup and delivery verification OTPs, rider contact coordinates, and order progression alerts.</p>
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />{copy('real_time_notifications_e8f94f2')}</span>
+                <p className="text-xs text-slate-500">{copy('transmitting_4_digit_pickup_and_delivery_verification_otps_rider__0030ed3')}</p>
               </div>
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
                 <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  Quality &amp; Discrepancy Audits
-                </span>
-                <p className="text-xs text-slate-500">Resolving garment count mismatches, spot treatments, and damage claims using verified bag tags and doorstep photos.</p>
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />{copy('quality_discrepancy_audits_e937313')}</span>
+                <p className="text-xs text-slate-500">{copy('resolving_garment_count_mismatches_spot_treatments_and_damage_cla_f0cc69b')}</p>
               </div>
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
                 <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  Legal &amp; Tax Compliance
-                </span>
-                <p className="text-xs text-slate-500">Generating compliant GST Tax Invoices and maintaining audit ledgers as mandated by Indian taxation laws.</p>
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />{copy('legal_tax_compliance_3ebfb91')}</span>
+                <p className="text-xs text-slate-500">{copy('generating_compliant_gst_tax_invoices_and_maintaining_audit_ledge_5ca0cbc')}</p>
               </div>
             </div>
           </section>
@@ -119,16 +106,14 @@ const PrivacyPolicyPage = () => {
           <section className="space-y-3">
             <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
               <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-800 text-xs flex items-center justify-center font-bold">3</span>
-              <span>Data Protection &amp; Security Measures</span>
+              <span>{copy('data_protection_security_measures_26ea8b8')}</span>
             </h2>
-            <p>
-              We implement industry-standard administrative, physical, and technical controls to safeguard your data against unauthorized access, loss, or misuse:
-            </p>
+            <p>{copy('we_implement_industry_standard_administrative_physical_and_techni_568898b')}</p>
             <ul className="list-disc pl-5 space-y-1.5 text-slate-600">
-              <li>All web and API traffic is encrypted in transit using Transport Layer Security (TLS 1.3 / HTTPS).</li>
-              <li>Databases are encrypted at rest with automated daily backups and multi-region redundancy.</li>
-              <li>Doorstep riders have time-limited, role-based access strictly to orders assigned to their current delivery shift.</li>
-              <li>Payment transactions are handled through PCI-DSS Level 1 compliant gateway partners (Razorpay and NPCI Unified Payments Interface).</li>
+              <li>{copy('all_web_and_api_traffic_is_encrypted_in_transit_using_transport_l_157fff8')}</li>
+              <li>{copy('databases_are_encrypted_at_rest_with_automated_daily_backups_and__86be172')}</li>
+              <li>{copy('doorstep_riders_have_time_limited_role_based_access_strictly_to_o_261e95a')}</li>
+              <li>{copy('payment_transactions_are_handled_through_pci_dss_level_1_complian_badb230')}</li>
             </ul>
           </section>
 
@@ -136,16 +121,14 @@ const PrivacyPolicyPage = () => {
           <section className="space-y-3">
             <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
               <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-800 text-xs flex items-center justify-center font-bold">4</span>
-              <span>Third-Party Sharing &amp; Disclosures</span>
+              <span>{copy('third_party_sharing_disclosures_23291b1')}</span>
             </h2>
-            <p>
-              We do <strong>not</strong> sell, rent, or trade your personal information to third-party advertisers. Data is shared exclusively with:
-            </p>
+            <p>{copy('we_do_e9022b6')}<strong>{copy('not_254bb97')}</strong>{copy('sell_rent_or_trade_your_personal_information_to_third_party_adver_8ceee7a')}</p>
             <ul className="list-disc pl-5 space-y-1.5 text-slate-600">
-              <li><strong>Certified Logistics Personnel:</strong> Verified riders who require your delivery address and phone number for doorstep handover.</li>
-              <li><strong>Payment Service Providers:</strong> Razorpay Software Pvt Ltd and banking partners for processing digital settlements.</li>
-              <li><strong>Cloud Infrastructure Providers:</strong> ISO-27001 certified hosting and Cloudinary media storage for inspection photos.</li>
-              <li><strong>Law Enforcement Authorities:</strong> When required by binding court orders or statutory mandates under Indian law.</li>
+              <li><strong>{copy('certified_logistics_personnel_8f9bf68')}</strong>{copy('verified_riders_who_require_your_delivery_address_and_phone_numbe_c3d84c3')}</li>
+              <li><strong>{copy('payment_service_providers_2865788')}</strong>{copy('razorpay_software_pvt_ltd_and_banking_partners_for_processing_dig_b3a7677')}</li>
+              <li><strong>{copy('cloud_infrastructure_providers_8cfef5b')}</strong>{copy('iso_27001_certified_hosting_and_cloudinary_media_storage_for_insp_b6e6752')}</li>
+              <li><strong>{copy('law_enforcement_authorities_c76824d')}</strong>{copy('when_required_by_binding_court_orders_or_statutory_mandates_under_2f46662')}</li>
             </ul>
           </section>
 
@@ -153,16 +136,14 @@ const PrivacyPolicyPage = () => {
           <section className="space-y-3">
             <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
               <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-800 text-xs flex items-center justify-center font-bold">5</span>
-              <span>Your Rights Under DPDP Act</span>
+              <span>{copy('your_rights_under_dpdp_act_00a8ecc')}</span>
             </h2>
-            <p>
-              As a customer, you retain full rights to:
-            </p>
+            <p>{copy('as_a_customer_you_retain_full_rights_to_0ff927a')}</p>
             <ul className="list-disc pl-5 space-y-1.5 text-slate-600">
-              <li>Access a summary of personal data held about you and past order invoices.</li>
-              <li>Request correction or updating of inaccurate addresses or contact numbers.</li>
-              <li>Request account erasure and deletion of your profile data, subject to statutory GST retention rules.</li>
-              <li>Nominate a representative in case of incapacity.</li>
+              <li>{copy('access_a_summary_of_personal_data_held_about_you_and_past_order_i_507fcc2')}</li>
+              <li>{copy('request_correction_or_updating_of_inaccurate_addresses_or_contact_cbc5fc3')}</li>
+              <li>{copy('request_account_erasure_and_deletion_of_your_profile_data_subject_b61f781')}</li>
+              <li>{copy('nominate_a_representative_in_case_of_incapacity_9200de2')}</li>
             </ul>
           </section>
 
@@ -170,24 +151,24 @@ const PrivacyPolicyPage = () => {
           <section className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
             <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
               <Mail className="w-4 h-4 text-primary-600" />
-              <span>Grievance Officer &amp; Contact Information</span>
+              <span>{copy('grievance_officer_contact_information_923108e')}</span>
             </h2>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              In accordance with the Information Technology Act, 2000 and the Digital Personal Data Protection Act, 2023, the details of our appointed Grievance Officer are:
-            </p>
+            <p className="text-xs text-slate-600 leading-relaxed">{copy('in_accordance_with_the_information_technology_act_2000_and_the_di_3354492')}</p>
             <div className="text-xs text-slate-700 space-y-1 pt-1 font-medium">
-              <p><strong>Name:</strong> Grievance Redressal Officer, IndoDhobi</p>
-              <p><strong>Company:</strong> IndoDhobi Technologies Pvt Ltd</p>
-              <p><strong>Registered Address:</strong> Barakhamba Road, Connaught Place, New Delhi, Delhi 110001</p>
-              <p><strong>Email:</strong> <a href="mailto:privacy@indodhobi.com" className="text-primary-600 font-bold hover:underline">privacy@indodhobi.com</a> / <a href="mailto:care@indodhobi.com" className="text-primary-600 font-bold hover:underline">care@indodhobi.com</a></p>
-              <p><strong>Phone:</strong> +91 98765 43210 (Mon-Sat, 9:00 AM - 6:00 PM IST)</p>
+              <p><strong>{copy('name_2683cad')}</strong>{copy('grievance_redressal_officer_indodhobi_5ad1220')}</p>
+              <p><strong>{copy('company_a7aeec6')}</strong>{copy('indodhobi_technologies_pvt_ltd_ba18ece')}</p>
+              <p><strong>{copy('registered_address_934dcda')}</strong>{copy('barakhamba_road_connaught_place_new_delhi_delhi_110001_410b89d')}</p>
+              <p><strong>{copy('email_17507dc')}</strong> <a href={config?.privacyEmail ? `mailto:${config.privacyEmail}` : undefined} className="text-primary-600 font-bold hover:underline">{copy('privacy_indodhobi_com_45a3e9f')}</a> / <a href={config?.supportEmail ? `mailto:${config.supportEmail}` : undefined} className="text-primary-600 font-bold hover:underline">{copy('care_indodhobi_com_f7714c9')}</a></p>
+              <p><strong>{copy('phone_3305eb5')}</strong>{copy('91_98765_43210_mon_sat_9_00_am_6_00_pm_ist_6a1c80b')}</p>
             </div>
           </section>
 
         </div>
 
+        <ContentBlocks content={copy.section('blocks')} text={copy.text} />
+
       </div>
-    </div>
+    </div></ContentState>
   );
 };
 

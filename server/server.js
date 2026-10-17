@@ -1,3 +1,6 @@
+import contentRevision from './middleware/contentRevision.js';
+import { publicServiceAreaRoutes, adminServiceAreaRoutes } from './routes/serviceAreaRoutes.js';
+import { publicContentRoutes, adminContentRoutes } from './routes/contentRoutes.js';
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
@@ -8,13 +11,13 @@ import mongoose from 'mongoose';
 import { connectDB, disconnectDB } from './config/db.js';
 import { apiPort } from '../shared/runtime.mjs';
 import { startHttpService } from './utils/startHttpService.js';
-import { seedData } from './utils/seeder.js';
 import authRoutes from './routes/authRoutes.js';
 import catalogRoutes from './routes/catalogRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import configRoutes from './routes/configRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
+import mediaRoutes from './routes/mediaRoutes.js';
 import { sanitizeInput, apiLimiter } from './middleware/securityMiddleware.js';
 import errorHandler from './middleware/errorMiddleware.js';
 
@@ -119,12 +122,18 @@ app.use('/api', (req, res, next) => {
 });
 
 // API Routes
+app.use(contentRevision);
 app.use('/api/auth', authRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/media', mediaRoutes);
+app.use('/api/service-areas', publicServiceAreaRoutes);
+app.use('/api/admin/service-areas', adminServiceAreaRoutes);
+app.use('/api/content', publicContentRoutes);
+app.use('/api/admin/content', adminContentRoutes);
 
 // Production Static Asset Serving
 if (process.env.NODE_ENV === 'production') {
@@ -157,14 +166,13 @@ app.use('*', (req, res) => {
 // Centralized Global Error Handler
 app.use(errorHandler);
 
-// Start server and trigger auto-seeder
+// Startup connects only. Catalog/content defaults require an explicit migration.
 export const startServer = async () => {
   const port = apiPort(process.env.PORT);
   const server = await startHttpService(app, {
     port,
     initialize: async () => {
       await connectDB();
-      await seedData();
       await Order.backfillMissingOtps();
     },
     cleanup: disconnectDB,

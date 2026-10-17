@@ -48,7 +48,7 @@ const AdminCategoriesTab = () => {
   // Form State
   const [form, setForm] = useState({
     name: '',
-    slug: '',
+    slug: '', shortName: '',
     description: '',
     icon: 'Shirt',
     sortOrder: 1,
@@ -77,7 +77,7 @@ const AdminCategoriesTab = () => {
   const handleOpenAdd = () => {
     setForm({
       name: '',
-      slug: '',
+      slug: '', shortName: '',
       description: '',
       icon: 'Shirt',
       sortOrder: categories.length + 1,
@@ -90,7 +90,7 @@ const AdminCategoriesTab = () => {
     setSelectedCategory(cat);
     setForm({
       name: cat.name,
-      slug: cat.slug || '',
+      slug: cat.slug || '', shortName: cat.shortName || '',
       description: cat.description || '',
       icon: cat.icon || 'Shirt',
       sortOrder: cat.sortOrder || 1,
@@ -268,7 +268,7 @@ const AdminCategoriesTab = () => {
                       setShowDeleteModal(true);
                     }}
                     className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                    title="Delete Category"
+                    title="Archive Category"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -333,6 +333,7 @@ const AdminCategoriesTab = () => {
                 />
               </div>
 
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Short label</label><input value={form.shortName} onChange={e => setForm({ ...form, shortName: e.target.value })} className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl" /></div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                   Description
@@ -457,6 +458,7 @@ const AdminCategoriesTab = () => {
                 />
               </div>
 
+              <div><label className="block text-xs font-bold text-slate-700 mb-1">Short label</label><input value={form.shortName} onChange={e => setForm({ ...form, shortName: e.target.value })} className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl" /></div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                   Description
@@ -543,9 +545,9 @@ const AdminCategoriesTab = () => {
                 <AlertCircle className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 text-base">Delete Category?</h3>
+                <h3 className="font-bold text-slate-900 text-base">Archive Category?</h3>
                 <p className="text-xs text-slate-500 mt-1">
-                  Are you sure you want to delete <strong>{selectedCategory.name}</strong>?
+                  Archive <strong>{selectedCategory.name}</strong>? Products and existing orders will be retained.
                 </p>
               </div>
 
@@ -563,7 +565,7 @@ const AdminCategoriesTab = () => {
                   onClick={handleDeleteCategory}
                   className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-sm rounded-xl shadow-xs disabled:opacity-50"
                 >
-                  {actionLoading ? 'Deleting...' : 'Delete'}
+                  {actionLoading ? 'Archiving...' : 'Archive'}
                 </button>
               </div>
             </div>

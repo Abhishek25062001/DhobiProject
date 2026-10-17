@@ -1,3 +1,4 @@
+import PlatformConfig from '../models/PlatformConfig.js';
 import User, { normalizePhone } from '../models/User.js';
 import Order from '../models/Order.js';
 import jwt from 'jsonwebtoken';
@@ -256,16 +257,15 @@ export const updateProfile = async (req, res) => {
       user.email = emailToSet;
     }
 
-    // Update preferences if provided
+    // Preferences reference the active booking configuration; an empty selection clears a default.
     if (req.body.preferences) {
-      if (!user.preferences) {
-        user.preferences = { defaultDetergent: 'Standard', defaultPackaging: 'Folded' };
-      }
-      if (req.body.preferences.defaultDetergent) {
-        user.preferences.defaultDetergent = req.body.preferences.defaultDetergent.trim();
-      }
-      if (req.body.preferences.defaultPackaging) {
-        user.preferences.defaultPackaging = req.body.preferences.defaultPackaging.trim();
+      const config = await PlatformConfig.findOne();
+      if (!user.preferences) user.preferences = {};
+      for (const [key, list] of [['defaultDetergent', 'detergentOptions'], ['defaultPackaging', 'packagingOptions']]) {
+        if (req.body.preferences[key] === undefined) continue;
+        const value = req.body.preferences[key];
+        if (typeof value !== 'string' || (value && !config?.[list].some(option => option.isActive && option.code === value))) return res.status(400).json({ success: false, message: 'Choose an available care preference, or clear the saved default.' });
+        user.preferences[key] = value;
       }
     }
 

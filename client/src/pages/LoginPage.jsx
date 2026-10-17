@@ -1,3 +1,5 @@
+import ContentState from '../components/ContentState';
+import usePageCopy from '../hooks/usePageCopy';
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -19,6 +21,7 @@ import toast from 'react-hot-toast';
 import { setupRecaptcha, sendPhoneOtp } from '../config/firebase';
 
 const LoginPage = () => {
+  const copy = usePageCopy('login');
   const navigate = useNavigate();
   const location = useLocation();
   const { login, customerLoginWithFirebase, completeOnboarding } = useAuth();
@@ -209,7 +212,7 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="max-w-md mx-auto my-12 px-4 sm:px-6">
+    <ContentState resource={copy}><div className="max-w-md mx-auto my-12 px-4 sm:px-6">
       <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-xl shadow-slate-100 space-y-6">
         
         {/* Invisible reCAPTCHA container for Firebase Phone Auth */}
@@ -220,12 +223,9 @@ const LoginPage = () => {
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-primary-600 to-teal-500 text-white flex items-center justify-center mx-auto shadow-md">
             <Shirt className="w-6 h-6 stroke-[2.2]" />
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-            Sign In to Indo<span className="text-primary-600">Dhobi</span>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">{copy('sign_in_to_indo_ec99bee')}<span className="text-primary-600">{copy('dhobi_5205e15')}</span>
           </h1>
-          <p className="text-xs text-slate-500">
-            Smart Doorstep Laundry & Ironing across Delhi-NCR
-          </p>
+          <p className="text-xs text-slate-500">{copy('smart_doorstep_laundry_ironing_across_delhi_ncr_7a1f3aa')}</p>
         </div>
 
         {/* ───────────── OTP MODE ───────────── */}
@@ -235,9 +235,7 @@ const LoginPage = () => {
             {otpStep === 1 && (
               <form onSubmit={handleSendOtp} className="space-y-4">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1.5">
-                    Mobile Phone Number
-                  </label>
+                  <label className="block font-semibold text-slate-700 mb-1.5">{copy('mobile_phone_number_57c0337')}</label>
                   <div className="relative flex rounded-xl border border-slate-300 overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500 transition-all">
                     <span className="inline-flex items-center px-3.5 bg-slate-100 text-slate-700 font-bold text-xs border-r border-slate-200">
                       🇮🇳 +91
@@ -253,9 +251,7 @@ const LoginPage = () => {
                       className="w-full px-3.5 py-3 font-mono text-sm tracking-wide focus:outline-hidden text-slate-800"
                     />
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1.5">
-                    We'll send a 6-digit SMS verification code to your phone.
-                  </p>
+                  <p className="text-[11px] text-slate-400 mt-1.5">{copy('we_ll_send_a_6_digit_sms_verification_code_to_your_phone_b180fd0')}</p>
                 </div>
 
                 <button
@@ -267,7 +263,7 @@ const LoginPage = () => {
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <>
-                      <span>Continue with Mobile OTP</span>
+                      <span>{copy('continue_with_mobile_otp_3987232')}</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -280,7 +276,7 @@ const LoginPage = () => {
               <form onSubmit={handleVerifyOtp} className="space-y-4">
                 <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl flex items-center justify-between">
                   <div className="text-xs">
-                    <span className="text-slate-500 block text-[10px]">Code sent to</span>
+                    <span className="text-slate-500 block text-[10px]">{copy('code_sent_to_39ade83')}</span>
                     <span className="font-bold text-teal-800 font-mono">+91 {phone}</span>
                   </div>
                   <button
@@ -290,15 +286,11 @@ const LoginPage = () => {
                       setOtp('');
                     }}
                     className="text-xs text-primary-600 hover:underline font-semibold cursor-pointer"
-                  >
-                    Change
-                  </button>
+                  >{copy('change_c0bf75b')}</button>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1.5">
-                    Enter 6-Digit SMS Verification Code
-                  </label>
+                  <label className="block font-semibold text-slate-700 mb-1.5">{copy('enter_6_digit_sms_verification_code_6ac02ae')}</label>
                   <div className="relative">
                     <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
@@ -314,14 +306,12 @@ const LoginPage = () => {
                   </div>
                   {(confirmationResult?.isDevFallback || confirmationResult?.isSimulated) && (
                     <div className="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-center justify-between">
-                      <span>🧪 Dev Mode: Code is <strong className="font-mono bg-amber-100 px-1 py-0.5 rounded">123456</strong></span>
+                      <span>{copy('dev_mode_code_is_768506f')}<strong className="font-mono bg-amber-100 px-1 py-0.5 rounded">123456</strong></span>
                       <button
                         type="button"
                         onClick={() => setOtp('123456')}
                         className="text-amber-700 underline font-semibold cursor-pointer hover:text-amber-900"
-                      >
-                        Auto-Fill
-                      </button>
+                      >{copy('auto_fill_68631d1')}</button>
                     </div>
                   )}
                 </div>
@@ -336,7 +326,7 @@ const LoginPage = () => {
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>Verify & Continue</span>
+                      <span>{copy('verify_continue_ce8b07b')}</span>
                     </>
                   )}
                 </button>
@@ -350,11 +340,10 @@ const LoginPage = () => {
                       className="text-primary-600 hover:underline font-semibold inline-flex items-center gap-1 cursor-pointer"
                     >
                       <RotateCcw className="w-3 h-3" />
-                      <span>Resend Verification Code</span>
+                      <span>{copy('resend_verification_code_e557f7c')}</span>
                     </button>
                   ) : (
-                    <span className="text-slate-400">
-                      Resend code in <span className="font-bold text-slate-600">{countdown}s</span>
+                    <span className="text-slate-400">{copy('resend_code_in_e947053')}<span className="font-bold text-slate-600">{countdown}{copy('s_043a718')}</span>
                     </span>
                   )}
                 </div>
@@ -367,15 +356,13 @@ const LoginPage = () => {
                 <div className="p-3 bg-primary-50 border border-primary-200 rounded-xl space-y-1">
                   <div className="flex items-center gap-1.5 text-primary-800 font-bold text-xs">
                     <Sparkles className="w-3.5 h-3.5 text-primary-600" />
-                    <span>Welcome to IndoDhobi!</span>
+                    <span>{copy('welcome_to_indodhobi_5a7576e')}</span>
                   </div>
-                  <p className="text-[11px] text-primary-700">
-                    Your phone number <strong className="font-mono">+91 {phone}</strong> is verified. Please provide your full name to finish setting up your account.
-                  </p>
+                  <p className="text-[11px] text-primary-700">{copy('your_phone_number_45644e0')}<strong className="font-mono">+91 {phone}</strong>{copy('is_verified_please_provide_your_full_name_to_finish_setting_up_yo_ff603f8')}</p>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Full Name</label>
+                  <label className="block font-semibold text-slate-700 mb-1">{copy('full_name_8e00cdf')}</label>
                   <div className="relative">
                     <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
@@ -384,15 +371,14 @@ const LoginPage = () => {
                       autoFocus
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      placeholder="e.g. Priya Nair"
+                      placeholder={copy('e_g_priya_nair_0e0a164')}
                       className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium text-slate-800"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Email Address <span className="text-slate-400 font-normal">(Optional for receipts)</span>
+                  <label className="block font-semibold text-slate-700 mb-1">{copy('email_address_b85fda9')}<span className="text-slate-400 font-normal">{copy('optional_for_receipts_743b27a')}</span>
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -400,7 +386,7 @@ const LoginPage = () => {
                       type="email"
                       value={emailOptional}
                       onChange={(e) => setEmailOptional(e.target.value)}
-                      placeholder="priya@example.com"
+                      placeholder={copy('priya_example_com_6bdb7e9')}
                       className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium text-slate-800"
                     />
                   </div>
@@ -415,7 +401,7 @@ const LoginPage = () => {
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <>
-                      <span>Complete Registration</span>
+                      <span>{copy('complete_registration_965f385')}</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -429,7 +415,7 @@ const LoginPage = () => {
         {authMode === 'password' && (
           <form onSubmit={handlePasswordLogin} className="space-y-4 text-xs">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Email Address</label>
+              <label className="block font-semibold text-slate-700 mb-1">{copy('email_address_09bf25e')}</label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
@@ -438,14 +424,14 @@ const LoginPage = () => {
                   autoFocus
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
+                  placeholder={copy('name_example_com_7b17fb0')}
                   className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-medium text-slate-800"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Password</label>
+              <label className="block font-semibold text-slate-700 mb-1">{copy('password_e7cf3ef')}</label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
@@ -469,7 +455,7 @@ const LoginPage = () => {
               ) : (
                 <>
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Sign In</span>
+                  <span>{copy('sign_in_bcc0bcc')}</span>
                 </>
               )}
             </button>
@@ -486,8 +472,7 @@ const LoginPage = () => {
                 setOtpStep(1);
               }}
               className="text-slate-600 hover:text-primary-600 font-semibold transition-colors cursor-pointer"
-            >
-              Staff or prefer password? <span className="underline">Sign in with Email & Password</span>
+            >{copy('staff_or_prefer_password_aaa4661')}<span className="underline">{copy('sign_in_with_email_password_c6f4879')}</span>
             </button>
           ) : (
             <button
@@ -497,19 +482,16 @@ const LoginPage = () => {
                 setOtpStep(1);
               }}
               className="text-slate-600 hover:text-primary-600 font-semibold transition-colors cursor-pointer"
-            >
-              Customer? <span className="underline">Sign in with Mobile Number (OTP)</span>
+            >{copy('customer_7ffe79f')}<span className="underline">{copy('sign_in_with_mobile_number_otp_0e5044e')}</span>
             </button>
           )}
         </div>
 
         {/* Register Link */}
-        <div className="text-center text-[11px] text-slate-400">
-          New to IndoDhobi? Sign in with your mobile number to get started instantly.
-        </div>
+        <div className="text-center text-[11px] text-slate-400">{copy('new_to_indodhobi_sign_in_with_your_mobile_number_to_get_started_i_128a20f')}</div>
 
       </div>
-    </div>
+    </div></ContentState>
   );
 };
 

@@ -19,20 +19,20 @@ temporary catalog/configuration read failures twice, then offers a manual retry.
 It also retries failed reads when the browser regains focus or connectivity.
 Orders, payments and uploads are never automatically retried.
 
+## Administration and migrations
+
+See [the administrator guide](docs/website-administration.md) for product, image, page-content, coverage and pricing controls, migration commands and rollback instructions. The website's existing public layout is retained.
+
+For an existing installation, run `npm run migrate:website` to inspect the read-only plan, then `npm run migrate:website -- --apply` to apply with a backup. Default content is never seeded on startup or public reads. An empty installation uses the explicit `npm run seed` command; normal seeding does not create demo accounts or orders.
+
+Booking capacity is enforced using MongoDB transactions. Use MongoDB Atlas or a replica set; a standalone MongoDB server is not sufficient for order creation. The isolated test database starts its own single-member replica set.
+
 ## Verification
 
-- `npm run test:connectivity`: isolated startup, readiness, outage/recovery and booking-draft checks; no production database writes.
-- `npm run test:contracts`: shared catalog/order identifier compatibility against database schemas and website payload validation; no database connection.
+- `npm run test:acceptance`: isolated startup, API/data contracts, basket/cache, administration, migration/rollback, coverage, pricing and payment-boundary checks.
 - `npm run build:client`: production frontend build.
-- `npm test`: the existing full server verification suite (uses its test database).
+- `node server/scripts/browserAcceptance.mjs --isolated`: disposable browser fixture at ports 5101/5174, with external payment/upload credentials disabled.
 
-T01 changes startup and failure handling only. Existing page layouts, styles,
-imagery, content and normal booking calculations are retained. Content-management
-and basket reconciliation improvements are separate subsequent tasks.
+The older `npm test` command invokes legacy integration scripts with external-provider assumptions; it is separate from the isolated acceptance suite.
 
-## Content management implementation
-
-See `docs/implementation-tasks.md` for task order and completion checks, and
-`docs/content-ownership.md` for the current content inventory, canonical data
-owners, migration rules and acceptance cases. T02 introduces shared storage
-identifiers without changing customer-facing labels, rates or page design.
+[Task progress](docs/implementation-tasks.md), [content ownership](docs/content-ownership.md), and [acceptance evidence](docs/acceptance-results.md) record scope, owners and validation results.

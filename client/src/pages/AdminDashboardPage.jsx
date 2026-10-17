@@ -1,3 +1,13 @@
+import { useOrderBooking } from '../context/OrderBookingContext';
+import { MapPin } from 'lucide-react';
+import AdminServiceAreasTab from './admin/AdminServiceAreasTab';
+import AdminContentTab from './admin/AdminContentTab';
+import { orderServiceLabel, orderFinishLabel } from '../../../shared/orderSnapshot.mjs';
+import BookingOptionsEditor from '../components/BookingOptionsEditor';
+import AdminMediaTab from './admin/AdminMediaTab';
+import ProductMediaFields from '../components/ProductMediaFields';
+import ProductDetailsFields from '../components/ProductDetailsFields';
+import useCategories from '../hooks/useCategories';
 import React, { useState, useEffect } from 'react';
 import { orderService, catalogService, configService } from '../services/api';
 import GstInvoiceModal from '../components/GstInvoiceModal';
@@ -64,9 +74,10 @@ const STATUS_OPTIONS = [
   'CANCELLED'
 ];
 
-const GARMENT_CATEGORIES = ['Men', 'Women', 'Household', 'Winter & Heavy'];
+
 
 const AdminDashboardPage = () => {
+  const { platformConfig } = useOrderBooking();
   // Navigation Tabs: 'overview' | 'orders' | 'riders' | 'users' | 'products' | 'payments' | 'coupons' | 'config'
   const [activeTab, setActiveTab] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -104,6 +115,7 @@ const AdminDashboardPage = () => {
   const [garments, setGarments] = useState([]);
   const [loadingGarments, setLoadingGarments] = useState(false);
   const [garmentSearch, setGarmentSearch] = useState('');
+  const { categories: GARMENT_CATEGORIES } = useCategories(true);
   const [garmentCategoryFilter, setGarmentCategoryFilter] = useState('All');
   const [editGarmentModal, setEditGarmentModal] = useState(false);
   const [editingGarment, setEditingGarment] = useState(null);
@@ -111,7 +123,7 @@ const AdminDashboardPage = () => {
   const [uploadingGarmentImage, setUploadingGarmentImage] = useState(false);
   const [newGarmentForm, setNewGarmentForm] = useState({
     name: '',
-    category: 'Men',
+    categoryId: '',
     iconName: 'Shirt',
     imageUrl: '',
     cloudinaryPublicId: '',
@@ -158,6 +170,7 @@ const AdminDashboardPage = () => {
     packagingOptions: []
   });
   const [loadingSettings, setLoadingSettings] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
 
   const [adminSlots, setAdminSlots] = useState([]);
@@ -250,9 +263,11 @@ const AdminDashboardPage = () => {
   const fetchPlatformSettings = async () => {
     try {
       setLoadingSettings(true);
+      setSettingsLoaded(false);
       const res = await configService.getPublicConfig();
       if (res.success && res.config) {
         setPlatformSettings(res.config);
+        setSettingsLoaded(true);
       }
     } catch (err) {
       console.error('[Settings Error]:', err);
@@ -399,7 +414,7 @@ const AdminDashboardPage = () => {
         setNewGarmentModal(false);
         setNewGarmentForm({
           name: '',
-          category: 'Men',
+          categoryId: '',
           iconName: 'Shirt',
           imageUrl: '',
           cloudinaryPublicId: '',
@@ -435,12 +450,14 @@ const AdminDashboardPage = () => {
         if (isEditing) {
           setEditingGarment((prev) => ({
             ...prev,
+            primaryImage: { assetId: res.assetId },
             imageUrl: res.imageUrl,
             cloudinaryPublicId: res.publicId || ''
           }));
         } else {
           setNewGarmentForm((prev) => ({
             ...prev,
+            primaryImage: { assetId: res.assetId },
             imageUrl: res.imageUrl,
             cloudinaryPublicId: res.publicId || ''
           }));
@@ -460,9 +477,12 @@ const AdminDashboardPage = () => {
     try {
       const res = await catalogService.updateGarment(editingGarment._id, {
         name: editingGarment.name,
-        category: editingGarment.category,
+        shortName: editingGarment.shortName, description: editingGarment.description, sortOrder: editingGarment.sortOrder,
+        allowedServices: editingGarment.allowedServices, allowedIroningTiers: editingGarment.allowedIroningTiers,
+        categoryId: editingGarment.categoryId,
         pricing: editingGarment.pricing,
         isActive: editingGarment.isActive,
+        primaryImage: editingGarment.primaryImage, gallery: editingGarment.gallery,
         imageUrl: editingGarment.imageUrl,
         cloudinaryPublicId: editingGarment.cloudinaryPublicId
       });
@@ -484,6 +504,7 @@ const AdminDashboardPage = () => {
   // =========================================================================
   const handleSavePlatformSettings = async (e) => {
     e.preventDefault();
+    if (!settingsLoaded || loadingSettings) return;
     try {
       setSavingSettings(true);
       const res = await configService.updateSettings(platformSettings);
@@ -593,12 +614,14 @@ const AdminDashboardPage = () => {
 
   // Filtered Garments for Rate Card Tab
   const filteredGarments = garments.filter((g) => {
-    const matchesCat = garmentCategoryFilter === 'All' || g.category === garmentCategoryFilter;
+    const matchesCat = garmentCategoryFilter === 'All' || String(g.categoryId) === garmentCategoryFilter;
     const matchesQuery = !garmentSearch || g.name.toLowerCase().includes(garmentSearch.toLowerCase());
     return matchesCat && matchesQuery;
   });
 
   const navItems = [
+    { id: 'areas', label: 'Service Areas', icon: MapPin },
+    { id: 'content', label: 'Website Content', icon: FileText },
     { id: 'overview', label: 'Command Overview', icon: BarChart3 },
     { 
       id: 'orders', 
@@ -801,6 +824,8 @@ const AdminDashboardPage = () => {
           {/* ================================================================= */}
           {/* TAB 0: DASHBOARD OVERVIEW */}
           {/* ================================================================= */}
+          {activeTab === 'areas' && <AdminServiceAreasTab />}
+          {activeTab === 'content' && <AdminContentTab />}
           {activeTab === 'overview' && (
             <AdminOverviewTab
               analytics={analytics}
@@ -843,13 +868,13 @@ const AdminDashboardPage = () => {
 
             <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
               <div className="flex items-center justify-between text-indigo-600 text-xs font-bold">
-                <span>24h Express</span>
+                <span>{platformConfig?.expressTurnaroundHours ?? '—'}h Express</span>
                 <Zap className="w-4 h-4 text-indigo-500" />
               </div>
               <p className="text-2xl font-black text-indigo-700">
                 {analytics.expressOrdersCount || orders.filter((o) => o.isExpress).length}
               </p>
-              <span className="text-[10px] text-slate-400 block">Priority turnaround (+₹99)</span>
+              <span className="text-[10px] text-slate-400 block">Priority turnaround (+₹{platformConfig?.expressSurcharge ?? '—'})</span>
             </div>
 
             <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200/80 shadow-xs space-y-1">
@@ -1159,7 +1184,8 @@ const AdminDashboardPage = () => {
             </button>
           </div>
 
-          {productSubTab === 'categories' ? (
+          <button className="btn-secondary text-sm" onClick={() => setProductSubTab('media')}>Media library</button>
+          {productSubTab === 'media' ? <AdminMediaTab /> : productSubTab === 'categories' ? (
             <AdminCategoriesTab />
           ) : (
             <div className="space-y-6">
@@ -1183,7 +1209,7 @@ const AdminDashboardPage = () => {
               >
                 <option value="All">All Categories</option>
                 {GARMENT_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c._id} value={c._id}>{c.name}{c.isActive === false ? ' (Archived)' : ''}</option>
                 ))}
               </select>
             </div>
@@ -1447,6 +1473,8 @@ const AdminDashboardPage = () => {
                 <Loader2 className="w-8 h-8 text-primary-600 animate-spin mx-auto mb-2" />
                 <p className="text-xs text-slate-500">Loading platform configuration...</p>
               </div>
+            ) : !settingsLoaded ? (
+              <p role="alert" className="p-6 text-red-700">Platform settings could not be loaded. Use Reload to try again; no default values can be saved.</p>
             ) : (
               <form onSubmit={handleSavePlatformSettings} className="space-y-6 text-xs">
                 {/* Pricing Rules Grid */}
@@ -1461,6 +1489,7 @@ const AdminDashboardPage = () => {
                       </label>
                       <input
                         type="number"
+                        step="0.01"
                         min="0"
                         required
                         value={platformSettings.freeDeliveryThreshold}
@@ -1476,6 +1505,7 @@ const AdminDashboardPage = () => {
                       </label>
                       <input
                         type="number"
+                        step="0.01"
                         min="0"
                         required
                         value={platformSettings.deliveryFee}
@@ -1491,6 +1521,7 @@ const AdminDashboardPage = () => {
                       </label>
                       <input
                         type="number"
+                        step="0.01"
                         min="0"
                         required
                         value={platformSettings.expressSurcharge}
@@ -1506,6 +1537,7 @@ const AdminDashboardPage = () => {
                       </label>
                       <input
                         type="number"
+                        step="0.01"
                         min="0"
                         max="100"
                         required
@@ -1565,74 +1597,7 @@ const AdminDashboardPage = () => {
                   </div>
                 </div>
 
-                {/* Detergent & Packaging Options Section */}
-                <div className="space-y-4 pt-2">
-                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">
-                    3. Dynamic Detergent &amp; Packaging Options
-                  </h4>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Detergents */}
-                    <div className="p-4 rounded-2xl border border-slate-200 space-y-3 bg-slate-50/50">
-                      <span className="font-bold text-slate-800 block text-xs">Detergent Choices:</span>
-                      <div className="space-y-2">
-                        {platformSettings.detergentOptions?.map((det, dIdx) => (
-                          <div key={dIdx} className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between text-xs">
-                            <div>
-                              <span className="font-bold text-slate-900">{det.name}</span>
-                              <span className="text-[10px] text-slate-400 block font-mono">Code: {det.code} {det.extraPricePerOrder > 0 && `(+₹${det.extraPricePerOrder})`}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPlatformSettings((prev) => {
-                                  const updated = [...(prev.detergentOptions || [])];
-                                  updated[dIdx] = { ...updated[dIdx], isActive: !updated[dIdx].isActive };
-                                  return { ...prev, detergentOptions: updated };
-                                });
-                              }}
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer transition-colors ${
-                                det.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
-                              }`}
-                            >
-                              {det.isActive ? 'ACTIVE' : 'INACTIVE'}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Packaging */}
-                    <div className="p-4 rounded-2xl border border-slate-200 space-y-3 bg-slate-50/50">
-                      <span className="font-bold text-slate-800 block text-xs">Packaging Choices:</span>
-                      <div className="space-y-2">
-                        {platformSettings.packagingOptions?.map((pkg, pIdx) => (
-                          <div key={pIdx} className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between text-xs">
-                            <div>
-                              <span className="font-bold text-slate-900">{pkg.name}</span>
-                              <span className="text-[10px] text-slate-400 block font-mono">Code: {pkg.code} {pkg.extraPricePerOrder > 0 && `(+₹${pkg.extraPricePerOrder})`}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setPlatformSettings((prev) => {
-                                  const updated = [...(prev.packagingOptions || [])];
-                                  updated[pIdx] = { ...updated[pIdx], isActive: !updated[pIdx].isActive };
-                                  return { ...prev, packagingOptions: updated };
-                                });
-                              }}
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer transition-colors ${
-                                pkg.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
-                              }`}
-                            >
-                              {pkg.isActive ? 'ACTIVE' : 'INACTIVE'}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <BookingOptionsEditor value={platformSettings} onChange={setPlatformSettings} />
 
                 <div className="pt-2 flex justify-end">
                   <button
@@ -1641,7 +1606,7 @@ const AdminDashboardPage = () => {
                     className="px-6 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
                   >
                     {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                    <span>Save Platform Configuration to MongoDB</span>
+                    <span>Save platform settings</span>
                   </button>
                 </div>
               </form>
@@ -1889,14 +1854,17 @@ const AdminDashboardPage = () => {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Category</label>
+                <ProductMediaFields value={editingGarment} onChange={setEditingGarment} />
+                <ProductDetailsFields value={editingGarment} onChange={setEditingGarment} />
+                <label className="block font-bold text-slate-700 mb-1 mt-4">Category</label>
                 <select
-                  value={editingGarment.category}
-                  onChange={(e) => setEditingGarment({ ...editingGarment, category: e.target.value })}
+                  value={editingGarment.categoryId || ''}
+                  onChange={(e) => setEditingGarment({ ...editingGarment, categoryId: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 font-semibold bg-white"
                 >
+                  <option value="" disabled>Select a category</option>
                   {GARMENT_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c._id} value={c._id}>{c.name}{c.isActive === false ? ' (Archived)' : ''}</option>
                   ))}
                 </select>
               </div>
@@ -1929,7 +1897,7 @@ const AdminDashboardPage = () => {
                     {editingGarment.imageUrl && (
                       <button
                         type="button"
-                        onClick={() => setEditingGarment({ ...editingGarment, imageUrl: '', cloudinaryPublicId: '' })}
+                        onClick={() => setEditingGarment({ ...editingGarment, primaryImage: null, imageUrl: '', cloudinaryPublicId: '' })}
                         className="block text-[10px] text-rose-600 hover:underline cursor-pointer"
                       >
                         Remove Image
@@ -2069,14 +2037,17 @@ const AdminDashboardPage = () => {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Category *</label>
+                <ProductMediaFields value={newGarmentForm} onChange={setNewGarmentForm} />
+                <ProductDetailsFields value={newGarmentForm} onChange={setNewGarmentForm} />
+                <label className="block font-bold text-slate-700 mb-1 mt-4">Category *</label>
                 <select
-                  value={newGarmentForm.category}
-                  onChange={(e) => setNewGarmentForm({ ...newGarmentForm, category: e.target.value })}
+                  value={newGarmentForm.categoryId}
+                  onChange={(e) => setNewGarmentForm({ ...newGarmentForm, categoryId: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 font-semibold bg-white"
                 >
+                  <option value="" disabled>Select a category</option>
                   {GARMENT_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c._id} value={c._id}>{c.name}{c.isActive === false ? ' (Archived)' : ''}</option>
                   ))}
                 </select>
               </div>
@@ -2109,7 +2080,7 @@ const AdminDashboardPage = () => {
                     {newGarmentForm.imageUrl && (
                       <button
                         type="button"
-                        onClick={() => setNewGarmentForm({ ...newGarmentForm, imageUrl: '', cloudinaryPublicId: '' })}
+                        onClick={() => setNewGarmentForm({ ...newGarmentForm, primaryImage: null, imageUrl: '', cloudinaryPublicId: '' })}
                         className="block text-[10px] text-rose-600 hover:underline cursor-pointer"
                       >
                         Remove Image
@@ -2491,7 +2462,7 @@ const AdminDashboardPage = () => {
                       <span className="font-bold text-slate-900">{item.garmentName}</span>
                       <span className="text-slate-500 ml-1.5 font-medium">({item.quantity} pcs)</span>
                       <p className="text-[10px] text-slate-400">
-                        {item.serviceType.replace(/_/g, ' ')} • {item.ironingType.replace(/_/g, ' ')}
+                        {orderServiceLabel(item)} • {orderFinishLabel(item)}
                       </p>
                     </div>
                     <span className="font-bold text-slate-900">₹{item.lineTotal}</span>
