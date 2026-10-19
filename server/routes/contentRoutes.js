@@ -1,4 +1,5 @@
 import express from 'express';
+import { sectionTemplates } from '../services/sectionTemplates.js';
 import mongoose from 'mongoose';
 import SiteContent from '../models/SiteContent.js';
 import MediaAsset from '../models/MediaAsset.js';
@@ -27,6 +28,12 @@ publicContentRoutes.get('/:pageKey', async (req, res) => {
     const page = await SiteContent.findOne({ pageKey: req.params.pageKey }).lean();
     return res.set('Cache-Control', 'no-store').json({ success: true, page: page ? await resolvedPage(page) : null });
   } catch { return res.status(500).json({ success: false, message: 'Content could not be loaded.' }); }
+});
+adminContentRoutes.get('/:pageKey/section-templates', async (req, res, next) => {
+  try {
+    if (!PAGE_KEYS.includes(req.params.pageKey)) return res.status(404).json({ success: false, message: 'Page not found.' });
+    res.set('Cache-Control', 'no-store').json({ success: true, sections: await sectionTemplates(req.params.pageKey) });
+  } catch (error) { next(error); }
 });
 adminContentRoutes.get('/:pageKey', async (req, res) => {
   if (!PAGE_KEYS.includes(req.params.pageKey)) return res.status(404).json({ success: false, message: 'Page not found.' });

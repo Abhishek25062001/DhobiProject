@@ -1,3 +1,4 @@
+import { addressForBooking, sameAddress } from '../../../shared/addressBook.mjs';
 import BasketReview from '../components/BasketReview';
 import { saveBookingDraft } from '../utils/bookingDraft';
 import ContentAssurances from '../components/ContentAssurances';
@@ -6,7 +7,7 @@ import useSiteContent from '../hooks/useSiteContent';
 import { activeOptions, customTemplate, validPreferences, scheduleAllowed } from '../../../shared/bookingChoices.mjs';
 import { availableServices, availableFinishes, preferredFinish, selectionAvailable, IRONING_PRICE_KEYS, money } from '../../../shared/pricing.mjs';
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useOrderBooking, calculateItemUnitPrice } from '../context/OrderBookingContext';
 import { catalogService, orderService } from '../services/api';
@@ -47,7 +48,6 @@ import {
   Zap,
   Tag,
   Percent,
-  Bookmark,
   X,
   Truck,
   ChevronUp,
@@ -95,7 +95,7 @@ const getCategoryBadgeClass = (category) => {
 const BookingPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isAuthenticated, isAdmin, isRider, addAddress } = useAuth();
+  const { user, isAuthenticated, isAdmin, isRider, updateUser } = useAuth();
 
   // Redirect staff / logistics users to their dedicated operations portals
   useEffect(() => {
@@ -177,7 +177,8 @@ const BookingPage = () => {
 
   // Address book management state
   const [saveAddressLabel, setSaveAddressLabel] = useState('Home');
-  const [savingAddress, setSavingAddress] = useState(false);
+  const [saveAddressConsent, setSaveAddressConsent] = useState(false);
+  const [makeAddressDefault, setMakeAddressDefault] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState(null);
 
   // UPGRADE 1: Rehydrate draft state on mount
@@ -209,6 +210,7 @@ const BookingPage = () => {
           pickupSchedule,
           deliverySchedule,
           pickupAddress,
+          addressOwnerId: user?._id || null,
           isExpress,
           activeStep,
           appliedCoupon
@@ -220,37 +222,34 @@ const BookingPage = () => {
     }
   }, [cartItems, preferences, pickupSchedule, deliverySchedule, pickupAddress, isExpress, activeStep, appliedCoupon]);
 
-  const handleSelectSavedAddress = (addr) => {
-    setSelectedAddressId(addr._id);
-    setPickupAddress({
-      flatAndBuilding: addr.flatAndBuilding,
-      streetAndLandmark: addr.streetAndLandmark,
-      city: addr.city,
-      pincode: addr.pincode,
-      contactPhone: pickupAddress.contactPhone || user?.phone || ''
-    });
-    toast.success(`Selected ${addr.label} address`);
+  const selectedSavedAddress = user?.addresses?.find(address => address._id === selectedAddressId)
+    || user?.addresses?.find(address => sameAddress(addressForBooking(address, user.phone), pickupAddress));
+  const addressChanged = !selectedSavedAddress || !sameAddress(addressForBooking(selectedSavedAddress, user?.phone), pickupAddress);
+  const handleSelectSavedAddress = (address) => {
+    setSelectedAddressId(address._id);
+    setPickupAddress(addressForBooking(address, user?.phone));
+    setSaveAddressLabel(address.label);
+    setSaveAddressConsent(false);
+    setMakeAddressDefault(false);
   };
-
-  const handleSaveCurrentAddress = async () => {
-    if (!pickupAddress.flatAndBuilding || !pickupAddress.streetAndLandmark || !pickupAddress.pincode) {
-      toast.error('Please enter flat/building, street, and PIN code first.');
-      return;
-    }
-    setSavingAddress(true);
-    const res = await addAddress({
-      label: saveAddressLabel,
-      flatAndBuilding: pickupAddress.flatAndBuilding,
-      streetAndLandmark: pickupAddress.streetAndLandmark,
-      city: pickupAddress.city || 'New Delhi',
-      pincode: pickupAddress.pincode,
-      isDefault: true
-    });
-    setSavingAddress(false);
-    if (res?.success) {
-      toast.success('Address saved to address book!');
-    }
+  const handleNewAddress = () => {
+    setSelectedAddressId(null);
+    setPickupAddress(addressForBooking(null, user?.phone));
+    setSaveAddressLabel('Home');
+    setSaveAddressConsent(false);
+    setMakeAddressDefault(false);
+    document.getElementById('booking-flat')?.focus();
   };
+  const handleAddressChange = (field, value) => {
+    // Remember which saved address is being edited without silently changing it.
+    if (selectedSavedAddress) setSelectedAddressId(selectedSavedAddress._id);
+    setPickupAddress({ ...pickupAddress, [field]: value });
+  };
+  useEffect(() => {
+    setSelectedAddressId(null);
+    setSaveAddressConsent(false);
+    setMakeAddressDefault(false);
+  }, [user?._id]);
 
   // Promo coupon state
   const [couponInput, setCouponInput] = useState('');
@@ -297,22 +296,6 @@ const BookingPage = () => {
     }
   };
 
-
-  // Pre-fill user address if available and currently empty
-  useEffect(() => {
-    if (user && user.addresses && user.addresses.length > 0 && !pickupAddress.flatAndBuilding) {
-      const defaultAddr = user.addresses.find((a) => a.isDefault) || user.addresses[0];
-      setPickupAddress({
-        flatAndBuilding: defaultAddr.flatAndBuilding,
-        streetAndLandmark: defaultAddr.streetAndLandmark,
-        city: defaultAddr.city || 'New Delhi',
-        pincode: defaultAddr.pincode,
-        contactPhone: user.phone || ''
-      });
-    } else if (user && !pickupAddress.contactPhone) {
-      setPickupAddress((prev) => ({ ...prev, contactPhone: user.phone }));
-    }
-  }, [user]);
 
   const [slotCapacities, setSlotCapacities] = useState({});
   const [deliveryCapacities, setDeliveryCapacities] = useState({});
@@ -466,6 +449,7 @@ const BookingPage = () => {
         pickupSchedule,
         deliverySchedule,
         pickupAddress,
+        addressOwnerId: user?._id || null,
         isExpress,
         activeStep: 4,
         appliedCoupon
@@ -519,9 +503,15 @@ const BookingPage = () => {
         toast('Booking details changed. Review the updated quote before placing the order.');
         return;
       }
-      const res = await orderService.createOrder({ ...orderPayload, quoteFingerprint: preview.fingerprint });
+      const res = await orderService.createOrder({ ...orderPayload, quoteFingerprint: preview.fingerprint,
+        addressBook: { save: saveAddressConsent && addressChanged,
+          label: selectedSavedAddress?.label || saveAddressLabel,
+          isDefault: makeAddressDefault,
+          ...(selectedSavedAddress ? { addressId: selectedSavedAddress._id } : {}) }
+      });
 
       if (res.success && res.order) {
+        if (res.addresses) updateUser({ ...user, addresses: res.addresses });
         setCreatedOrder(res.order);
         sessionStorage.removeItem('indodhobi_draft_booking');
 
@@ -533,12 +523,12 @@ const BookingPage = () => {
               user,
               onSuccess: (updatedOrder) => {
                 sessionStorage.removeItem('indodhobi_draft_booking');
-                clearCart();
+                clearCart(res.addresses);
                 navigate('/my-orders', { state: { order: updatedOrder } });
               },
               onDismiss: () => {
                 sessionStorage.removeItem('indodhobi_draft_booking');
-                clearCart();
+                clearCart(res.addresses);
                 navigate('/my-orders');
               },
               onFallback: () => {
@@ -552,7 +542,7 @@ const BookingPage = () => {
           // COD Order placed instantly
           toast.success('Order booked successfully with Cash on Delivery!');
           sessionStorage.removeItem('indodhobi_draft_booking');
-          clearCart();
+          clearCart(res.addresses);
           navigate('/my-orders', { state: { order: res.order } });
         }
       } else {
@@ -1220,16 +1210,14 @@ const BookingPage = () => {
                     <span className="text-xs font-bold text-slate-700 block">{copy('choose_from_your_saved_addresses_7f7841f')}</span>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {user.addresses.map((addr) => {
-                        const isSelected =
-                          selectedAddressId === addr._id ||
-                          (pickupAddress.flatAndBuilding === addr.flatAndBuilding &&
-                            pickupAddress.pincode === addr.pincode);
+                        const isSelected = selectedSavedAddress?._id === addr._id;
 
                         return (
                           <button
                             key={addr._id}
                             type="button"
                             onClick={() => handleSelectSavedAddress(addr)}
+                            aria-pressed={isSelected}
                             className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                               isSelected
                                 ? 'border-primary-500 bg-primary-50/60 ring-2 ring-primary-500/20'
@@ -1253,41 +1241,49 @@ const BookingPage = () => {
                   </div>
                 )}
 
+                <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                  <button type="button" onClick={handleNewAddress} className="min-h-11 text-primary-700 font-semibold flex items-center gap-1"><Plus className="w-4 h-4" />Use a different address</button>
+                  {user && <Link to="/profile#manage-addresses" className="min-h-11 inline-flex items-center text-primary-700 font-semibold underline">Manage addresses</Link>}
+                </div>
+                {selectedSavedAddress && <p className="text-xs text-slate-600">Using your {selectedSavedAddress.label} address{selectedSavedAddress.isDefault ? ' (default)' : ''}. You can edit the details below for this order.</p>}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div className="sm:col-span-2">
-                    <label className="block font-semibold text-slate-700 mb-1">{copy('flat_house_no_building_tower_name_6fc717e')}</label>
+                    <label htmlFor="booking-flat" className="block font-semibold text-slate-700 mb-1">{copy('flat_house_no_building_tower_name_6fc717e')}</label>
                     <input
                       type="text"
                       placeholder={copy('e_g_flat_402_royal_palms_apartments_3147891')}
+                      id="booking-flat"
                       value={pickupAddress.flatAndBuilding}
-                      onChange={(e) => setPickupAddress({ ...pickupAddress, flatAndBuilding: e.target.value })}
+                      onChange={(e) => handleAddressChange('flatAndBuilding', e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="block font-semibold text-slate-700 mb-1">{copy('street_sector_landmark_36c3a05')}</label>
+                    <label htmlFor="booking-street" className="block font-semibold text-slate-700 mb-1">{copy('street_sector_landmark_36c3a05')}</label>
                     <input
                       type="text"
                       placeholder={copy('e_g_barakhamba_road_near_connaught_place_metro_a3a52e9')}
+                      id="booking-street"
                       value={pickupAddress.streetAndLandmark}
-                      onChange={(e) => setPickupAddress({ ...pickupAddress, streetAndLandmark: e.target.value })}
+                      onChange={(e) => handleAddressChange('streetAndLandmark', e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">{copy('city_fc33f73')}</label>
+                    <label htmlFor="booking-city" className="block font-semibold text-slate-700 mb-1">{copy('city_fc33f73')}</label>
                     <input
                       type="text"
+                      id="booking-city"
                       value={pickupAddress.city}
-                      onChange={(e) => setPickupAddress({ ...pickupAddress, city: e.target.value })}
+                      onChange={(e) => handleAddressChange('city', e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">{copy('pin_code_99d9a4a')}</label>
+                    <label htmlFor="booking-pincode" className="block font-semibold text-slate-700 mb-1">{copy('pin_code_99d9a4a')}</label>
                     <input
                       type="text"
                       placeholder={copy('e_g_110001_d1c3a44')}
@@ -1296,62 +1292,44 @@ const BookingPage = () => {
                       aria-label="Pickup pincode"
                       aria-describedby="pincode-status"
                       aria-invalid={Boolean(pickupAddress.pincode) && !coverage.loading && !activeHub}
+                      id="booking-pincode"
                       value={pickupAddress.pincode}
-                      onChange={(e) => setPickupAddress({ ...pickupAddress, pincode: e.target.value })}
+                      onChange={(e) => handleAddressChange('pincode', e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
                     />
                     {pickupAddress.pincode && <p id="pincode-status" role="status" className={`text-xs mt-1 ${activeHub ? 'text-emerald-700' : 'text-red-700'}`}>{coverage.loading ? 'Checking coverage…' : coverage.error ? <button type="button" onClick={coverage.retry}>Coverage unavailable. Retry</button> : activeHub ? `Served by ${activeHub.shortName || activeHub.name}` : 'Enter a supported six-digit pincode. Bookings are unavailable outside our active service areas.'}</p>}
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="block font-semibold text-slate-700 mb-1">{copy('rider_contact_mobile_48f4d3d')}</label>
+                    <label htmlFor="booking-phone" className="block font-semibold text-slate-700 mb-1">{copy('rider_contact_mobile_48f4d3d')}</label>
                     <input
                       type="text"
                       placeholder={copy('e_g_9876543210_c759847')}
+                      id="booking-phone"
                       value={pickupAddress.contactPhone}
-                      onChange={(e) => setPickupAddress({ ...pickupAddress, contactPhone: e.target.value })}
+                      onChange={(e) => handleAddressChange('contactPhone', e.target.value)}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
                 </div>
 
-                {/* Save Current Address to Address Book Action */}
-                {user && (
-                  <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-2">
-                      <Bookmark className="w-4 h-4 text-primary-600" />
-                      <span className="font-semibold text-slate-700">{copy('save_to_address_book_as_96af417')}</span>
-                      <div className="flex items-center gap-1.5">
-                        {['Home', 'Work', 'Other'].map((lbl) => (
-                          <button
-                            key={lbl}
-                            type="button"
-                            onClick={() => setSaveAddressLabel(lbl)}
-                            className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                              saveAddressLabel === lbl
-                                ? 'border-primary-600 bg-primary-600 text-white shadow-2xs'
-                                : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
-                            }`}
-                          >
-                            {lbl}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={savingAddress}
-                      onClick={handleSaveCurrentAddress}
-                      className="px-3.5 py-1.5 rounded-xl bg-white border border-primary-500 text-primary-700 hover:bg-primary-50 font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
-                    >
-                      {savingAddress ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Plus className="w-3.5 h-3.5" />
-                      )}
-                      <span>{copy('save_address_953a617')}</span>
-                    </button>
+                {user && addressChanged && (
+                  <div className="p-4 bg-primary-50/60 border border-primary-100 rounded-2xl space-y-3 text-sm">
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input type="checkbox" checked={saveAddressConsent} onChange={event => setSaveAddressConsent(event.target.checked)} className="mt-1 w-4 h-4 accent-primary-600" />
+                      <span><span className="font-semibold text-slate-900">{selectedSavedAddress ? `Update my saved ${selectedSavedAddress.label} address when I place this order` : 'Save this address for future orders'}</span>
+                        <span className="block text-xs text-slate-600 mt-1">{selectedSavedAddress ? 'Leave unchecked to use these changes for this order only.' : !user.addresses?.length ? 'Saved as Home by default and selected automatically next time.' : 'Saved only when your booking is placed. Your current default stays selected for future orders.'}</span>
+                      </span>
+                    </label>
+                    {saveAddressConsent && <div className="space-y-3 pl-7">
+                      {!selectedSavedAddress && <label className="flex flex-wrap items-center gap-3 font-medium">Save as
+                        <select aria-label="Saved address label" value={saveAddressLabel} onChange={event => setSaveAddressLabel(event.target.value)} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3">
+                          {['Home', 'Work', 'Other'].map(label => <option key={label}>{label}</option>)}
+                        </select>
+                      </label>}
+                      {!!user.addresses?.length && !selectedSavedAddress?.isDefault && <label className="flex items-center gap-2"><input type="checkbox" checked={makeAddressDefault} onChange={event => setMakeAddressDefault(event.target.checked)} className="w-4 h-4 accent-primary-600" />Use as my default address</label>}
+                      {!user.addresses?.length && <p className="text-xs text-primary-800">Your first saved address will be your default. You can change it in Manage Addresses.</p>}
+                    </div>}
                   </div>
                 )}
 
@@ -1382,6 +1360,10 @@ const BookingPage = () => {
             </div>
           )}
 
+          {activeStep === 4 && user && <div className="mb-4 rounded-2xl border border-primary-100 bg-primary-50/60 p-4 text-sm text-slate-700 flex flex-wrap items-center justify-between gap-2">
+            <span>{saveAddressConsent && addressChanged ? selectedSavedAddress ? `Your saved ${selectedSavedAddress.label} address will be updated with this booking.` : `This address will be saved as ${saveAddressLabel}${!user.addresses?.length || makeAddressDefault ? ' and set as your default' : ''}.` : addressChanged ? 'This address will be used for this order only.' : `Using your saved ${selectedSavedAddress?.label || ''} address.`}</span>
+            <button type="button" className="min-h-11 font-semibold text-primary-700 underline" onClick={() => setActiveStep(3)}>Change address or saving choice</button>
+          </div>}
           {/* ================= STEP 4: PAYMENT SELECTION & FINAL REVIEW ================= */}
           {activeStep === 4 && (
             <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-6">
@@ -1454,7 +1436,7 @@ const BookingPage = () => {
                 </div>
                 <div className="flex justify-between text-slate-600">
                   <span>{copy('delivery_address_50d0cb0')}</span>
-                  <span className="font-medium truncate max-w-xs">{pickupAddress.flatAndBuilding}, {pickupAddress.city}</span>
+                  <span className="font-medium text-right max-w-xs">{pickupAddress.flatAndBuilding}, {pickupAddress.streetAndLandmark}, {pickupAddress.city} {pickupAddress.pincode}<br />{pickupAddress.contactPhone}</span>
                 </div>
               </div>
 

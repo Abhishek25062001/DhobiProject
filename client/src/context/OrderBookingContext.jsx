@@ -1,7 +1,9 @@
+import { useAuth } from './AuthContext';
+import { defaultBookingAddress, restoreBookingAddress, addressForBooking, sameAddress } from '../../../shared/addressBook.mjs';
 import { reconcileBasket, pricingRulesSignature } from '../../../shared/basketReconciliation.mjs';
 import { couponQuote } from '../../../shared/coupon.mjs';
 import { calculateItemUnitPrice, calculateTotals, preferredFinish, money, selectionAvailable } from '../../../shared/pricing.mjs';
-import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect, useRef } from 'react';
 import { format, addDays } from 'date-fns';
 import { configService } from '../services/api';
 import { readBookingDraft, readDraftCart, saveBookingDraft } from '../utils/bookingDraft';
@@ -15,6 +17,10 @@ const OrderBookingContext = createContext(null);
 export { calculateItemUnitPrice } from '../../../shared/pricing.mjs';
 
 export const OrderBookingProvider = ({ children }) => {
+  const { user, loading: authLoading } = useAuth();
+  const addressOwnerId = user?._id || null;
+  const addressInitialized = useRef(false);
+  const previousAddressUser = useRef(null);
   const [initialDraft] = useState(readBookingDraft);
   const [cartItems, setCartItems] = useState(() => readDraftCart(initialDraft));
 
@@ -42,14 +48,26 @@ export const OrderBookingProvider = ({ children }) => {
     ...initialDraft.deliverySchedule
   });
 
-  const [pickupAddress, setPickupAddress] = useState({
-    flatAndBuilding: '',
-    streetAndLandmark: '',
-    city: 'New Delhi',
-    pincode: '',
-    contactPhone: '',
-    ...initialDraft.pickupAddress
-  });
+  const [addressState, setAddressState] = useState(() => ({ ownerId: addressOwnerId, value: restoreBookingAddress(initialDraft, user) }));
+  const pickupAddress = addressState.ownerId === addressOwnerId ? addressState.value : defaultBookingAddress(user);
+  const setPickupAddress = next => setAddressState(previous => ({ ownerId: addressOwnerId, value: typeof next === 'function' ? next(previous.ownerId === addressOwnerId ? previous.value : defaultBookingAddress(user)) : next }));
+  useEffect(() => {
+    if (authLoading) return;
+    if (!addressInitialized.current || addressState.ownerId !== addressOwnerId) {
+      const draft = !addressInitialized.current ? initialDraft : { addressOwnerId: addressState.ownerId, pickupAddress: addressState.value };
+      addressInitialized.current = true;
+      setAddressState({ ownerId: addressOwnerId, value: restoreBookingAddress(draft, user) });
+    } else if (previousAddressUser.current?._id === user?._id) {
+      const previousUser = previousAddressUser.current;
+      const previousSelection = previousUser?.addresses?.find(address => sameAddress(addressForBooking(address, previousUser.phone), addressState.value));
+      if (previousSelection) {
+        const current = user?.addresses?.find(address => address._id === previousSelection._id);
+        const next = previousSelection.isDefault || !current ? defaultBookingAddress(user) : addressForBooking(current, user?.phone);
+        if (!sameAddress(next, addressState.value)) setAddressState({ ownerId: addressOwnerId, value: next });
+      }
+    }
+    previousAddressUser.current = user;
+  }, [authLoading, addressOwnerId, user]);
 
   const { data: bootstrap, loading: loadingConfig, error: configError, retry: fetchPlatformConfig, fetchedAt: configCheckedAt, refreshing: refreshingConfig } = useApiResource(loadPlatformConfig, 'bootstrap');
   const platformConfig = bootstrap?.config || null;
@@ -210,12 +228,14 @@ export const OrderBookingProvider = ({ children }) => {
     );
   };
 
-  const clearCart = () => {
+  const clearCart = (addresses) => {
     setCartItems([]);
+    setPickupAddress(defaultBookingAddress(addresses ? { ...user, addresses } : user));
   };
 
   const resetBooking = () => {
     setCartItems([]);
+    setPickupAddress(defaultBookingAddress(user));
     setPreferences({
       detergentType: firstActive(platformConfig?.detergentOptions)?.code || '',
       packagingType: firstActive(platformConfig?.packagingOptions)?.code || '',
@@ -250,8 +270,9 @@ export const OrderBookingProvider = ({ children }) => {
   // Basket state belongs to the provider, including edits made on the homepage.
   // BookingPage still owns its current step; all other draft fields stay in sync here.
   useEffect(() => {
-    saveBookingDraft({ cartItems, preferences, pickupSchedule, deliverySchedule, pickupAddress, isExpress, appliedCoupon, pricingRulesSignature: acceptedRules });
-  }, [cartItems, preferences, pickupSchedule, deliverySchedule, pickupAddress, isExpress, appliedCoupon, acceptedRules]);
+    if (authLoading || addressState.ownerId !== addressOwnerId) return;
+    saveBookingDraft({ cartItems, preferences, pickupSchedule, deliverySchedule, pickupAddress, addressOwnerId, isExpress, appliedCoupon, pricingRulesSignature: acceptedRules });
+  }, [cartItems, preferences, pickupSchedule, deliverySchedule, pickupAddress, isExpress, appliedCoupon, acceptedRules, addressOwnerId, authLoading]);
 
   const applyCoupon = (couponData) => {
     setAppliedCoupon(couponData);

@@ -1,3 +1,4 @@
+import { cleanAddress } from '../../../shared/addressBook.mjs';
 import ContentState from '../components/ContentState';
 import { useGlobalContent } from '../context/SiteContentContext';
 import { activeOptions } from '../../../shared/bookingChoices.mjs';
@@ -32,11 +33,12 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import GstInvoiceModal from '../components/GstInvoiceModal';
 
 const ProfilePage = () => {
   const copy = usePageCopy('profile');
+  const location = useLocation();
   const { config } = useGlobalContent();
   const {
     user,
@@ -239,19 +241,13 @@ const ProfilePage = () => {
   // Save Address (Create or Edit)
   const handleSaveAddress = async (e) => {
     e.preventDefault();
-    if (!addressForm.flatAndBuilding || !addressForm.streetAndLandmark || !addressForm.pincode) {
-      toast.error('Please fill in Flat/Building, Street/Landmark, and Pincode.');
-      return;
-    }
+    try { cleanAddress(addressForm); }
+    catch (error) { toast.error(error.message); return; }
 
     setSavingAddress(true);
     try {
-      if (editingAddressId) {
-        await updateAddress(editingAddressId, addressForm);
-      } else {
-        await addAddress(addressForm);
-      }
-      setAddressModalOpen(false);
+      const result = editingAddressId ? await updateAddress(editingAddressId, addressForm) : await addAddress(addressForm);
+      if (result?.success) setAddressModalOpen(false);
     } finally {
       setSavingAddress(false);
     }
@@ -265,6 +261,10 @@ const ProfilePage = () => {
       toast.error('Failed to set default address.');
     }
   };
+
+  useEffect(() => {
+    if (!loading && location.hash === '#manage-addresses') document.getElementById('manage-addresses')?.scrollIntoView({ block: 'start' });
+  }, [loading, location.hash]);
 
   if (loading) {
     return (
@@ -647,7 +647,7 @@ const ProfilePage = () => {
             <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">{copy('saved_addresses_919b4b0')}</h2>
+                  <h2 id="manage-addresses" className="scroll-mt-28 text-lg font-bold text-slate-900">Manage Addresses</h2>
                   <p className="text-xs text-slate-500">{(user?.addresses || []).length}{copy('address_es_saved_b157679')}</p>
                 </div>
                 <button
@@ -693,15 +693,17 @@ const ProfilePage = () => {
                           <button
                             type="button"
                             onClick={() => handleOpenAddressModal(addr)}
-                            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                            aria-label={`Edit ${addr.label} address`}
+                            className="p-3 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
                             title={copy('edit_address_6a8fa16')}
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             type="button"
-                            onClick={() => deleteAddress(addr._id)}
-                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            onClick={() => { if (window.confirm(`Delete your ${addr.label} address? Existing orders keep their original address.`)) deleteAddress(addr._id); }}
+                            aria-label={`Delete ${addr.label} address`}
+                            className="p-3 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                             title={copy('delete_address_646f172')}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -841,7 +843,7 @@ const ProfilePage = () => {
       {/* ──────────────── Address Add/Edit Modal ──────────────── */}
       {addressModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+          <div role="dialog" aria-modal="true" aria-label={editingAddressId ? "Edit address" : "Add address"} className="bg-white max-h-[90dvh] overflow-y-auto rounded-3xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-bold text-slate-900 text-base">
                 {editingAddressId ? copy('edit_address_6a8fa16') : copy('add_new_address_b469da3')}
@@ -849,6 +851,7 @@ const ProfilePage = () => {
               <button
                 type="button"
                 onClick={() => setAddressModalOpen(false)}
+                aria-label="Close address form"
                 className="text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -864,6 +867,7 @@ const ProfilePage = () => {
                       key={type}
                       type="button"
                       onClick={() => setAddressForm({ ...addressForm, label: type })}
+                      aria-pressed={addressForm.label === type}
                       className={`flex-1 py-2 rounded-xl font-bold border transition-all cursor-pointer ${
                         addressForm.label === type
                           ? 'border-primary-600 bg-primary-50 text-primary-700'
@@ -882,6 +886,8 @@ const ProfilePage = () => {
                   type="text"
                   required
                   placeholder={copy('e_g_flat_402_tower_4_royal_palms_c2fa049')}
+                  autoFocus
+                  aria-label="Flat and building"
                   value={addressForm.flatAndBuilding}
                   onChange={(e) => setAddressForm({ ...addressForm, flatAndBuilding: e.target.value })}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-medium text-slate-900"
@@ -894,6 +900,7 @@ const ProfilePage = () => {
                   type="text"
                   required
                   placeholder={copy('e_g_barakhamba_road_near_metro_gate_2_916b71c')}
+                  aria-label="Street and landmark"
                   value={addressForm.streetAndLandmark}
                   onChange={(e) => setAddressForm({ ...addressForm, streetAndLandmark: e.target.value })}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-medium text-slate-900"
@@ -906,7 +913,8 @@ const ProfilePage = () => {
                   <input
                     type="text"
                     required
-                    value={addressForm.city}
+                    aria-label="City"
+                  value={addressForm.city}
                     onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-medium text-slate-900"
                   />
@@ -917,8 +925,11 @@ const ProfilePage = () => {
                     type="text"
                     required
                     maxLength="6"
+                    pattern="[1-9][0-9]{5}"
+                    inputMode="numeric"
                     placeholder="110001"
-                    value={addressForm.pincode}
+                    aria-label="Pincode"
+                  value={addressForm.pincode}
                     onChange={(e) => setAddressForm({ ...addressForm, pincode: e.target.value.replace(/\D/g, '') })}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono font-medium text-slate-900"
                   />
@@ -932,6 +943,7 @@ const ProfilePage = () => {
                   type="tel"
                   maxLength="10"
                   placeholder="9876543210"
+                  aria-label="Contact phone"
                   value={addressForm.contactPhone}
                   onChange={(e) => setAddressForm({ ...addressForm, contactPhone: e.target.value.replace(/\D/g, '') })}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-mono font-medium text-slate-900"
@@ -942,6 +954,7 @@ const ProfilePage = () => {
                 <input
                   type="checkbox"
                   id="defaultAddressCheckbox"
+                  disabled={!user?.addresses?.length || Boolean(user?.addresses?.find(address => address._id === editingAddressId)?.isDefault)}
                   checked={addressForm.isDefault}
                   onChange={(e) => setAddressForm({ ...addressForm, isDefault: e.target.checked })}
                   className="rounded text-primary-600 focus:ring-primary-500 w-4 h-4 cursor-pointer"
@@ -949,6 +962,7 @@ const ProfilePage = () => {
                 <label htmlFor="defaultAddressCheckbox" className="font-semibold text-slate-700 cursor-pointer">{copy('set_as_default_delivery_address_a3b2147')}</label>
               </div>
 
+              <p className="text-xs text-slate-500">Your default is selected for future bookings. Pickup and delivery availability is checked at checkout.</p>
               <div className="flex gap-2 justify-end pt-3 border-t border-slate-100">
                 <button
                   type="button"

@@ -22,7 +22,7 @@ export async function contentMigration({ apply = false } = {}) {
       if (!definition) throw new Error(`Missing migration asset: ${value.sourceKey}`);
       let asset = assets.find(asset => asset.sourceKey === value.sourceKey) || plannedAssets.get(value.sourceKey);
       if (!asset) {
-        asset = { _id: new mongoose.Types.ObjectId(), ...definition, provider: 'local', scope: 'website', status: 'ready' };
+        asset = { _id: new mongoose.Types.ObjectId(), ...definition, sourceKey: value.sourceKey, provider: 'local', scope: 'website', status: 'ready' };
         plannedAssets.set(value.sourceKey, asset);
       }
       return { assetId: String(asset._id), decorative: !definition.defaultAlt };

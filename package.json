@@ -12,11 +12,11 @@
     "build:client": "npm --prefix client run build",
     "seed": "npm --prefix server run seed",
     "test": "npm --prefix server test",
-    "test:connectivity": "node --test tests/connectivity.test.mjs client/tests/apiRecovery.test.mjs client/tests/bookingDraft.test.mjs",
+    "test:connectivity": "node --test tests/connectivity.test.mjs client/tests/apiRecovery.test.mjs client/tests/bookingDraft.test.mjs client/tests/addressBook.test.mjs",
     "test:contracts": "node --test tests/catalogContract.test.mjs",
     "test:admin-content": "node --test server/tests/*.test.mjs",
     "migrate:website": "node server/scripts/migrateWebsite.js",
-    "test:cache": "node --test client/tests/resourceCache.test.mjs client/tests/basketReconciliation.test.mjs",
+    "test:cache": "node --test client/tests/resourceCache.test.mjs client/tests/basketReconciliation.test.mjs client/tests/orderTracking.test.mjs",
     "test:acceptance": "npm run test:connectivity && npm run test:contracts && npm run test:cache && npm run test:admin-content"
   },
   "keywords": [

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { bookingAddressConsent, lockedAddressUser, saveAddressInBook } from '../services/addressBook.js';
 import ServiceArea from '../models/ServiceArea.js';
 import { quoteBooking, quoteFingerprint, validDate, slotTime, couponDiscount } from '../services/booking.js';
 import Order from '../models/Order.js';
@@ -88,6 +89,7 @@ export const previewOrder = async (req, res) => {
 
 export const createOrder = async (req, res) => {
   try {
+    const addressConsent = bookingAddressConsent(req.body.addressBook);
     const accepted = await quoteBooking(req.body, req.user);
     if (req.body.quoteFingerprint && req.body.quoteFingerprint !== quoteFingerprint(accepted)) return res.status(409).json({ success: false, message: 'Booking details changed. Review the current quote before placing your order.', quote: accepted, fingerprint: quoteFingerprint(accepted) });
     const { paymentMethod, onlineSubMethod } = req.body;
@@ -127,6 +129,7 @@ export const createOrder = async (req, res) => {
     const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
 
     let order;
+    let savedAddresses;
     const session = await mongoose.startSession();
     try {
       await session.withTransaction(async () => {
@@ -137,6 +140,12 @@ export const createOrder = async (req, res) => {
         await ServiceArea.collection.updateOne({ _id: accepted.billingSnapshot.coverage.areaId }, { $inc: { bookingRevision: 1 } }, { session });
         const current = await quoteBooking(req.body, req.user, { session });
         if (quoteFingerprint(current) !== quoteFingerprint(accepted)) throw Object.assign(new Error('Booking details changed. Review the current quote before placing your order.'), { statusCode: 409, quote: current });
+        if (addressConsent) {
+          const addressUser = await lockedAddressUser(req.user._id, session);
+          saveAddressInBook(addressUser, { ...current.pickupAddress, label: addressConsent.label, isDefault: addressConsent.isDefault }, addressConsent.addressId);
+          await addressUser.save({ session });
+          savedAddresses = addressUser.addresses.toObject();
+        }
     // 9. Save order
     order = (await Order.create([{
       orderNumber,
@@ -174,7 +183,8 @@ export const createOrder = async (req, res) => {
       success: true,
       message: 'Order placed successfully!',
       order,
-      razorpay: razorpayPayload
+      razorpay: razorpayPayload,
+      ...(savedAddresses ? { addresses: savedAddresses } : {})
     });
   } catch (error) {
     console.error('[Create Order Error]:', error.message);
@@ -563,6 +573,7 @@ export const getMyOrders = async (req, res) => {
 // @route   GET /api/orders/my-active
 // @access  Private
 export const getMyActiveOrders = async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const activeOrders = await Order.find({
       customer: req.user._id,

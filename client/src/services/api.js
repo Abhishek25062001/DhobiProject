@@ -1,4 +1,5 @@
 import { notifyContentChanged } from './resourceCache.mjs';
+import { notifyOrdersChanged } from './activeOrderFeed.mjs';
 import axios from 'axios';
 import { readWithRetry, requireCatalog, requirePublicConfig } from './readWithRetry';
 
@@ -27,6 +28,8 @@ API.interceptors.request.use((config) => {
 // Interceptor to handle unauthenticated 401s
 API.interceptors.response.use(
   (response) => {
+    if (['post', 'put', 'patch', 'delete'].includes(response.config.method) &&
+      /^\/orders(?:\/|$)/.test(response.config.url) && !['/orders/quote', '/orders/validate-coupon'].includes(response.config.url)) notifyOrdersChanged();
     if (['post', 'put', 'patch', 'delete'].includes(response.config.method) && /^\/(?:catalog|config|media|admin\/(?:content|categories|service-areas)|orders\/coupons)(?:\/|$)/.test(response.config.url)) notifyContentChanged();
     return response;
   },
@@ -163,8 +166,8 @@ export const orderService = {
     const res = await API.get('/orders/my-orders');
     return res.data;
   },
-  getMyActiveOrders: async () => {
-    const res = await API.get('/orders/my-active');
+  getMyActiveOrders: async (options = {}) => {
+    const res = await API.get('/orders/my-active', { timeout: 10000, ...options });
     return res.data;
   },
   recordPaymentFailure: async (orderId, failureData = {}) => {
@@ -377,6 +380,7 @@ export const mediaService = {
 
 export const contentService = {
   get: async (pageKey, options = {}) => (await readWithRetry(API, `/content/${pageKey}`, options)).data,
+  sectionTemplates: async (pageKey, options = {}) => (await readWithRetry(API, `/admin/content/${pageKey}/section-templates`, options)).data,
   getAdmin: async pageKey => (await API.get(`/admin/content/${pageKey}`)).data,
   save: async (pageKey, body) => (await API.put(`/admin/content/${pageKey}`, body)).data,
 };

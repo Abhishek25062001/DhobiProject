@@ -1,5 +1,5 @@
 import homeCopy from './homeCopy.json' with { type: 'json' };
-// One-time migration input only. Public rendering reads SiteContent, never these defaults.
+// Migration and explicit admin section templates. Public rendering reads SiteContent, never these defaults.
 const row = (id, fields, sortOrder = 0) => ({ id, isVisible: true, sortOrder, ...fields });
 const image = sourceKey => ({ sourceKey });
 export const HOME_MEDIA = {

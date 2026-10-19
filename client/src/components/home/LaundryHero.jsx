@@ -6,7 +6,6 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Check, Clock3, CreditCard, Leaf, MapPin, ShieldCheck, Truck } from 'lucide-react';
 import { calculateItemUnitPrice, useOrderBooking } from '../../context/OrderBookingContext';
 import useGarments from '../../hooks/useGarments';
-import ActiveOrderTracker from '../ActiveOrderTracker';
 import GarmentComparison from './GarmentComparison';
 import LaundryBasket from './LaundryBasket';
 import { CareIcon } from './LaundryArtwork';
@@ -34,7 +33,6 @@ export default function LaundryHero({ content, text, copy }) {
   const cashAvailable = platformConfig?.companyPaymentConfig?.allowCashOnDelivery !== false;
 
   return <>
-      <ActiveOrderTracker />
       <section className="hp-hero" aria-labelledby="hp-hero-title">
         <div className="hp-brand-message">
           <span className="hp-eyebrow">{text(content.eyebrow)}</span>

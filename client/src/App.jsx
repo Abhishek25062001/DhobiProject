@@ -1,5 +1,6 @@
 import { SiteContentProvider } from './context/SiteContentContext';
 import PageMetadata from './components/PageMetadata';
+import AdditionalPageSections from './components/AdditionalPageSections';
 import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
@@ -142,6 +143,7 @@ function App() {
                 <Route path="/partner" element={<PartnerRedirect />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              <AdditionalPageSections />
               </Suspense>
             </main>
 

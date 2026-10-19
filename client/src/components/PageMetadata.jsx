@@ -2,12 +2,12 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import usePageCopy from '../hooks/usePageCopy';
 import { useGlobalContent } from '../context/SiteContentContext';
+import { CONTENT_PAGE_PATHS } from '../utils/contentPages';
 
-const pages = { '/': 'home', '/book': 'book', '/pricing': 'pricing', '/operational-areas': 'areas', '/service-areas': 'areas', '/terms': 'terms', '/terms-of-service': 'terms', '/privacy': 'privacy', '/privacy-policy': 'privacy', '/login': 'login', '/register': 'register', '/profile': 'profile', '/my-orders': 'orders', '/order-success': 'order-success' };
 export default function PageMetadata() {
   const { pathname } = useLocation();
   const { global } = useGlobalContent();
-  const content = usePageCopy(pages[pathname] || 'global');
+  const content = usePageCopy(CONTENT_PAGE_PATHS[pathname.replace(/\/$/, '') || '/'] || 'global');
   useEffect(() => {
     const seo = content.page?.seo || global.page?.seo;
     document.title = content.text(seo?.title);

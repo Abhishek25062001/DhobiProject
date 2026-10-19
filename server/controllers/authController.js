@@ -1,4 +1,5 @@
 import PlatformConfig from '../models/PlatformConfig.js';
+import { changeAddressBook, saveAddressInBook } from '../services/addressBook.js';
 import User, { normalizePhone } from '../models/User.js';
 import Order from '../models/Order.js';
 import jwt from 'jsonwebtoken';
@@ -269,27 +270,8 @@ export const updateProfile = async (req, res) => {
       }
     }
 
-    // If new address is supplied
-    if (req.body.newAddress) {
-      const { label, flatAndBuilding, streetAndLandmark, city, pincode, contactPhone, isDefault } = req.body.newAddress;
-      if (isDefault) {
-        user.addresses.forEach((addr) => { addr.isDefault = false; });
-      }
-
-      user.addresses.push({
-        label: label || 'Home',
-        flatAndBuilding,
-        streetAndLandmark,
-        city: city || 'New Delhi',
-        pincode,
-        contactPhone: contactPhone ? normalizePhone(contactPhone) : '',
-        isDefault: Boolean(isDefault) || user.addresses.length === 0
-      });
-    }
-
-    // If full addresses array is updated
-    if (Array.isArray(req.body.addresses)) {
-      user.addresses = req.body.addresses;
+    if (req.body.newAddress !== undefined || req.body.addresses !== undefined) {
+      return res.status(400).json({ success: false, message: 'Use Manage Addresses to change your saved addresses.' });
     }
 
     await user.save();
@@ -465,150 +447,34 @@ export const deleteAlternatePhone = async (req, res) => {
 // @desc    Add an address to customer address book
 // @route   POST /api/auth/addresses
 // @access  Private
+const addressResponse = (res, user, message, status = 200) => res.status(status).json({ success: true, message, addresses: user.addresses, user: formatUser(user) });
+const addressFailure = (res, error) => res.status(error.statusCode || (error.name === 'ValidationError' ? 400 : 500)).json({ success: false, message: error.message || 'Could not update your address book.' });
+
 export const addAddress = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    const { label, flatAndBuilding, streetAndLandmark, city, pincode, contactPhone, isDefault } = req.body;
-
-    if (!flatAndBuilding || !streetAndLandmark || !pincode) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide flat/building, street/landmark, and pincode.'
-      });
-    }
-
-    const shouldBeDefault = Boolean(isDefault) || user.addresses.length === 0;
-
-    if (shouldBeDefault) {
-      user.addresses.forEach((addr) => {
-        addr.isDefault = false;
-      });
-    }
-
-    user.addresses.push({
-      label: label && ['Home', 'Work', 'Other'].includes(label) ? label : 'Home',
-      flatAndBuilding,
-      streetAndLandmark,
-      city: city || 'New Delhi',
-      pincode,
-      contactPhone: contactPhone ? normalizePhone(contactPhone) : '',
-      isDefault: shouldBeDefault
-    });
-
-    await user.save();
-
-    return res.status(201).json({
-      success: true,
-      message: 'Address added successfully.',
-      addresses: user.addresses,
-      user: formatUser(user)
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to add address.'
-    });
-  }
+    const user = await changeAddressBook(req.user._id, user => saveAddressInBook(user, req.body));
+    return addressResponse(res, user, 'Address saved successfully.', 201);
+  } catch (error) { return addressFailure(res, error); }
 };
 
-// @desc    Edit an existing address in customer address book
-// @route   PUT /api/auth/addresses/:addressId
-// @access  Private
 export const updateAddress = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    const { addressId } = req.params;
-    const address = user.addresses.id(addressId);
-    if (!address) {
-      return res.status(404).json({
-        success: false,
-        message: 'Address not found in address book.'
-      });
-    }
-
-    const { label, flatAndBuilding, streetAndLandmark, city, pincode, contactPhone, isDefault } = req.body;
-
-    if (flatAndBuilding !== undefined) address.flatAndBuilding = flatAndBuilding;
-    if (streetAndLandmark !== undefined) address.streetAndLandmark = streetAndLandmark;
-    if (city !== undefined) address.city = city;
-    if (pincode !== undefined) address.pincode = pincode;
-    if (contactPhone !== undefined) address.contactPhone = contactPhone ? normalizePhone(contactPhone) : '';
-    if (label && ['Home', 'Work', 'Other'].includes(label)) address.label = label;
-
-    if (isDefault) {
-      user.addresses.forEach((addr) => {
-        if (addr._id.toString() !== addressId.toString()) {
-          addr.isDefault = false;
-        }
-      });
-      address.isDefault = true;
-    }
-
-    await user.save();
-
-    return res.json({
-      success: true,
-      message: 'Address updated successfully.',
-      addresses: user.addresses,
-      user: formatUser(user)
-    });
-  } catch (error) {
-    console.error('[Update Address Error]:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to update address.'
-    });
-  }
+    const user = await changeAddressBook(req.user._id, user => saveAddressInBook(user, req.body, req.params.addressId));
+    return addressResponse(res, user, 'Address updated successfully.');
+  } catch (error) { return addressFailure(res, error); }
 };
 
-// @desc    Delete an address from customer address book
-// @route   DELETE /api/auth/addresses/:addressId
-// @access  Private
 export const deleteAddress = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    const { addressId } = req.params;
-    const initialLength = user.addresses.length;
-    user.addresses = user.addresses.filter((a) => a._id.toString() !== addressId.toString());
-
-    if (user.addresses.length === initialLength) {
-      return res.status(404).json({
-        success: false,
-        message: 'Address not found in address book.'
-      });
-    }
-
-    // If default address was deleted, set first remaining as default
-    if (user.addresses.length > 0 && !user.addresses.some((a) => a.isDefault)) {
-      user.addresses[0].isDefault = true;
-    }
-
-    await user.save();
-
-    return res.json({
-      success: true,
-      message: 'Address deleted successfully.',
-      addresses: user.addresses,
-      user: formatUser(user)
+    const user = await changeAddressBook(req.user._id, user => {
+      const address = user.addresses.id(req.params.addressId);
+      if (!address) throw Object.assign(new Error('Address not found in your address book.'), { statusCode: 404 });
+      address.deleteOne();
+      const defaultId = user.addresses.find(item => item.isDefault)?._id || user.addresses[0]?._id;
+      user.addresses.forEach(item => { item.isDefault = String(item._id) === String(defaultId); });
     });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to delete address.'
-    });
-  }
+    return addressResponse(res, user, 'Address deleted successfully.');
+  } catch (error) { return addressFailure(res, error); }
 };
 
 // @desc    Customer login / auto-onboard via Firebase Phone OTP

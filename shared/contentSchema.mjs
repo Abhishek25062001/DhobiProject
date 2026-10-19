@@ -95,7 +95,7 @@ export function validatePageContent(page) {
   for (const section of page.sections) {
     if (!identifier.test(section.key) || seen.has(section.key)) fail('Sections', 'Section keys must be unique.');
     seen.add(section.key);
-    if (PAGE_SECTIONS[page.pageKey]?.[section.key] !== section.type) fail(section.key, 'This section does not belong to this page.');
+    if (PAGE_SECTIONS[page.pageKey]?.[section.key] !== section.type && !isCustomSection(section)) fail(section.key, 'This section does not belong to this page.');
     if (!Object.hasOwn(CONTENT_SCHEMAS, section.type)) fail(section.key, 'Unsupported section type.');
     if (typeof section.isVisible !== 'boolean' || !Number.isInteger(section.sortOrder)) fail(section.key, 'Visibility and display order are required.');
     if (Object.keys(section).some(key => !['key', 'type', 'isVisible', 'sortOrder', 'content'].includes(key))) fail(section.key, 'Unknown section field.');
@@ -115,6 +115,15 @@ export function mediaReferences(value, found = []) {
   return found;
 }
 export const visibleContentItems = items => (items || []).filter(item => item.isVisible !== false).slice().sort((a, b) => a.sortOrder - b.sortOrder);
+export const isCustomSection = section => /^custom_[a-zA-Z0-9_-]+$/.test(section.key) && section.type === 'textBlocks';
+export function newCustomSection(key) {
+  return {
+    key, type: 'textBlocks', isVisible: true, sortOrder: 0,
+    content: { ...blankContentValue(CONTENT_SCHEMAS.textBlocks), plain: 'New custom section', items: [
+      { id: 'item_1', isVisible: true, sortOrder: 0, title: '', paragraphs: ['Add your text here.'], image: null },
+    ] },
+  };
+}
 export function bindContentText(value, config, bindings = {}) {
   return String(value ?? '').replace(/\{\{([^}]+)\}\}/g, (_, name) => {
     if (name === 'home.turnaroundHours') return String(bindings[name] ?? '—');
