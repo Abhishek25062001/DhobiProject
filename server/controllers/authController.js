@@ -177,7 +177,7 @@ export const getProfile = async (req, res) => {
       Order.countDocuments({ customer: user._id }),
       Order.countDocuments({
         customer: user._id,
-        orderStatus: { $in: ['BOOKED', 'PICKUP_ASSIGNED', 'PICKED_UP', 'IN_WASHING', 'IN_IRONING', 'OUT_FOR_DELIVERY'] }
+        orderStatus: { $nin: ['DELIVERED', 'CANCELLED'] }
       }),
       Order.countDocuments({ customer: user._id, orderStatus: 'DELIVERED' }),
       Order.aggregate([

@@ -1,3 +1,5 @@
+import OrderProgress, { OrderStatusBadge } from '../components/OrderProgress';
+import { useCustomerOrders } from '../context/CustomerOrdersContext';
 import ContentState from '../components/ContentState';
 import usePageCopy from '../hooks/usePageCopy';
 import React from 'react';
@@ -16,7 +18,8 @@ import {
 const OrderSuccessPage = () => {
   const copy = usePageCopy('order-success');
   const location = useLocation();
-  const order = location.state?.order;
+  const feed = useCustomerOrders();
+  const order = feed.orders.find(item => item._id === location.state?.order?._id) || location.state?.order;
 
   if (!order) {
     return <Navigate to="/my-orders" replace />;
@@ -45,8 +48,7 @@ const OrderSuccessPage = () => {
 
         {/* Status Pills */}
         <div className="pt-2 flex flex-wrap items-center justify-center gap-2 text-xs">
-          <span className="px-3 py-1 rounded-full bg-primary-50 text-primary-700 font-bold border border-primary-200">{copy('status_4889951')}{order.orderStatus.replace(/_/g, ' ')}
-          </span>
+          <OrderStatusBadge order={order} />
           <span className={`px-3 py-1 rounded-full font-bold border ${
             isPaid
               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
@@ -56,6 +58,7 @@ const OrderSuccessPage = () => {
         </div>
       </div>
 
+      <OrderProgress order={order} />
       {/* Logistics & Invoice Card */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
         

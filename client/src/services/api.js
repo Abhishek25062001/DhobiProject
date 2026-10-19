@@ -162,8 +162,8 @@ export const orderService = {
     const res = await API.post(`/orders/${orderId}/switch-to-cod`);
     return res.data;
   },
-  getMyOrders: async () => {
-    const res = await API.get('/orders/my-orders');
+  getMyOrders: async (options = {}) => {
+    const res = await API.get('/orders/my-orders', { timeout: 10000, ...options });
     return res.data;
   },
   getMyActiveOrders: async (options = {}) => {

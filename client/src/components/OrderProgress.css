@@ -1,0 +1,39 @@
+.booking-progress, .booking-status { --progress-purple: #5030ef; --progress-teal: #008778; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+.booking-progress-panel { padding: 20px; border: 1px solid #e2dcfb; border-radius: 16px; background: #fff; min-width: 0; }
+.booking-progress__labels { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.booking-progress__status { display: flex; align-items: center; gap: 7px; margin: 0; color: #4a2cd8; font-size: 13px; line-height: 1.5; font-weight: 750; }
+.booking-progress__status svg { flex-shrink: 0; }
+.booking-progress__step { color: #69748c; font-size: 11px; white-space: nowrap; }
+.booking-progress__track { display: grid; grid-template-columns: repeat(var(--stage-count), minmax(0, 1fr)); gap: 5px; height: 6px; }
+.booking-progress__track > span { border-radius: 3px; background: #e9eaf2; transition: background-color .3s ease; }
+.booking-progress__track > .is-complete { background: var(--progress-teal); }
+.booking-progress__track > .is-current { background: var(--progress-purple); box-shadow: 0 0 0 2px #5030ef12; }
+.booking-progress__caption { margin-top: 8px; color: #63708b; font-size: 11px; line-height: 1.5; }
+.booking-progress--stages { margin-top: 20px; }
+.booking-progress__heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.booking-progress__heading h3 { font-size: 13px; font-weight: 800; margin: 0; color: #080f31; }
+.booking-progress__heading > span { display: flex; align-items: center; gap: 5px; color: #63708b; font-size: 10px; }
+.booking-progress__legend { width: 6px; height: 6px; border-radius: 50%; background: var(--progress-teal); }
+.booking-progress__legend.is-current { background: var(--progress-purple); margin-left: 8px; }
+.booking-progress__stages { list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 0; margin: 0; }
+.booking-progress__stages li { min-width: 0; display: flex; align-items: center; gap: 8px; padding: 11px 10px; border: 1px solid #e9ecf3; border-radius: 10px; color: #64708a; background: #fafbfe; font-size: 12px; line-height: 1.5; }
+.booking-progress__number { width: 23px; height: 23px; display: grid; place-items: center; border-radius: 50%; flex-shrink: 0; background: #e9ecf3; color: #53617c; font-weight: 700; }
+.booking-progress__stages .is-complete { color: #006f63; border-color: #d1eae3; background: #f2faf7; }
+.booking-progress__stages .is-complete .booking-progress__number { color: #fff; background: var(--progress-teal); }
+.booking-progress__stages .is-current { color: #4a2cd8; border-color: #d8cbff; background: #f4f0ff; font-weight: 800; }
+.booking-progress__stages .is-current .booking-progress__number { color: #fff; background: var(--progress-purple); }
+.booking-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid #e1daf8; border-radius: 8px; background: #f4f0ff; color: #4a2cd8; font-size: 11px; font-weight: 700; }
+.booking-status svg { flex-shrink: 0; }
+.booking-status.is-delivered, .booking-progress.is-delivered .booking-progress__status { color: #006f63; }
+.booking-status.is-delivered { border-color: #d1eae3; background: #f2faf7; }
+.booking-status.is-cancelled, .booking-progress.is-cancelled .booking-progress__status { color: #be123c; }
+.booking-status.is-cancelled { border-color: #fecdd3; background: #fff1f2; }
+@media (max-width: 1000px) { .booking-progress__stages li { flex-direction: column; align-items: flex-start; } }
+@media (max-width: 600px) {
+  .booking-progress-panel { padding: 16px; }
+  .booking-progress__track { gap: 4px; }
+  .booking-progress__stages { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .booking-progress__stages li { flex-direction: row; align-items: center; padding: 9px 7px; gap: 6px; }
+  .booking-progress__heading { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { .booking-progress * { transition: none !important; } }

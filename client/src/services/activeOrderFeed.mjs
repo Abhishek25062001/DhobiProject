@@ -10,8 +10,9 @@ export function notifyOrdersChanged(target = window) {
 
 // One request at a time, only while visible. A stopped feed can never publish
 // a late response into another account's session.
-export function startActiveOrderFeed({
+export function startOrderFeed({
   load, onChange, target = window, document = target.document,
+  selectOrders = response => response?.orders,
   isOnline = () => target.navigator.onLine !== false,
   interval = setInterval, clear = clearInterval, now = Date.now,
 }) {
@@ -19,6 +20,7 @@ export function startActiveOrderFeed({
   let stopped = false;
   let pending = null;
   let controller;
+  let refreshQueued = false;
   const publish = patch => {
     if (stopped) return;
     state = { ...state, ...patch }; onChange(state);
@@ -33,11 +35,12 @@ export function startActiveOrderFeed({
     publish({ refreshing: true });
     pending = Promise.resolve().then(() => load({ signal })).then(response => {
       if (stopped || signal.aborted) return;
-      if (!response?.success || !Array.isArray(response.activeOrders) ||
-        response.activeOrders.some(order => !order?._id || typeof order.orderStatus !== 'string')) {
-        throw new Error('Invalid active order response');
+      const orders = selectOrders(response);
+      if (!response?.success || !Array.isArray(orders) ||
+        orders.some(order => !order?._id || typeof order.orderStatus !== 'string')) {
+        throw new Error('Invalid order response');
       }
-      publish({ orders: response.activeOrders, error: null, lastUpdated: now() });
+      publish({ orders, error: null, lastUpdated: now() });
     }).catch(error => {
       if (stopped || signal.aborted) return;
       const unauthorized = [401, 403].includes(error.response?.status);
@@ -45,13 +48,16 @@ export function startActiveOrderFeed({
     }).finally(() => {
       pending = null;
       publish({ refreshing: false });
+      if (refreshQueued && !stopped) { refreshQueued = false; refresh(); }
     });
     return pending;
   }
   const offline = () => { controller?.abort(); publish({ error: 'offline', refreshing: false }); };
   const visibility = () => { if (visible()) refresh(); };
-  const storage = event => { if (event.key === revisionKey) refresh(); };
-  for (const event of ['focus', 'online', ORDER_CHANGED_EVENT]) target.addEventListener(event, refresh);
+  const invalidate = () => { if (pending) refreshQueued = true; else refresh(); };
+  const storage = event => { if (event.key === revisionKey) invalidate(); };
+  for (const event of ['focus', 'online']) target.addEventListener(event, refresh);
+  target.addEventListener(ORDER_CHANGED_EVENT, invalidate);
   target.addEventListener('offline', offline);
   target.addEventListener('storage', storage);
   document.addEventListener('visibilitychange', visibility);
@@ -61,10 +67,14 @@ export function startActiveOrderFeed({
     refresh,
     stop() {
       stopped = true; controller?.abort(); clear(timer);
-      for (const event of ['focus', 'online', ORDER_CHANGED_EVENT]) target.removeEventListener(event, refresh);
+      for (const event of ['focus', 'online']) target.removeEventListener(event, refresh);
+      target.removeEventListener(ORDER_CHANGED_EVENT, invalidate);
       target.removeEventListener('offline', offline);
       target.removeEventListener('storage', storage);
       document.removeEventListener('visibilitychange', visibility);
     },
   };
 }
+
+// Compatibility for callers that still request only active orders.
+export const startActiveOrderFeed = options => startOrderFeed({ ...options, selectOrders: response => response?.activeOrders });

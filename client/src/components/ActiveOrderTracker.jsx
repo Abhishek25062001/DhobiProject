@@ -1,16 +1,15 @@
+import { OrderProgressBar, OrderProgressStages, OrderStageIcon } from './OrderProgress';
 import React, { useEffect, useId, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { format, isValid, parseISO } from 'date-fns';
 import {
-  Package, PackageCheck, WashingMachine, Sparkles, ShieldCheck, Truck, Calendar,
-  Check, CheckCircle2, ChevronDown, ArrowRight, RefreshCw, Phone, KeyRound, WifiOff,
+  Truck, Calendar, ChevronDown, ArrowRight, RefreshCw, Phone, KeyRound, WifiOff,
 } from 'lucide-react';
 import usePageCopy from '../hooks/usePageCopy';
 import useActiveOrders from '../hooks/useActiveOrders';
-import { TRACKING_STAGES, getTrackingState, selectTrackedOrder } from '../utils/orderTracking.mjs';
+import { getTrackingState, selectTrackedOrder } from '../utils/orderTracking.mjs';
 import './ActiveOrderTracker.css';
 
-const stageIcons = { Package, PackageCheck, WashingMachine, Sparkles, ShieldCheck, Truck, Calendar, CheckCircle2 };
 const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
 function scheduleDate(value) {
   if (!value) return 'To be confirmed';
@@ -24,10 +23,6 @@ function BookingCard({ order, orders, selectOrder, feed, copy }) {
   const detailsId = useId();
   const titleId = useId();
   const tracking = getTrackingState(order);
-  const stageLabel = stage => stage ? copy('tracker_step_' + stage.id) || stage.label : 'Status unavailable';
-  const currentLabel = stageLabel(tracking.stage);
-  const CurrentIcon = stageIcons[tracking.stage?.icon] || Package;
-  const nextStage = TRACKING_STAGES[tracking.index + 1];
   const total = order.pricingBreakdown?.grandTotal;
   const amount = Number.isFinite(total) ? currency.format(total) : 'Total pending';
   const otp = tracking.otpType ? order.verificationCodes?.[`${tracking.otpType}Otp`] || order[`${tracking.otpType}Otp`] : null;
@@ -40,7 +35,7 @@ function BookingCard({ order, orders, selectOrder, feed, copy }) {
   return <section className="order-tracker" aria-labelledby={titleId}>
     <div className={`order-tracker__header${orders.length > 1 ? ' has-multiple' : ''}`}>
       <div className="order-tracker__identity">
-        <span className="order-tracker__icon"><CurrentIcon size={22} strokeWidth={1.8} aria-hidden="true" /></span>
+        <span className="order-tracker__icon"><OrderStageIcon order={order} size={22} strokeWidth={1.8} aria-hidden="true" /></span>
         <div className="order-tracker__title">
           <div className="order-tracker__eyebrow">Your booking <span className={`order-tracker__live ${paused ? 'is-paused' : ''}`} title={feed.lastUpdated ? `Last checked at ${format(new Date(feed.lastUpdated), 'h:mm:ss a')}` : undefined}><i aria-hidden="true" />{freshness}</span></div>
           <h2 id={titleId}>{copy('order_a458d68') || 'Order #'}{order.orderNumber || order._id.slice(-6)}</h2>
@@ -54,25 +49,12 @@ function BookingCard({ order, orders, selectOrder, feed, copy }) {
         </button>
       </div>
     </div>
-    <div className="order-tracker__progress">
-      <div className="order-tracker__progress-labels">
-        <p className="order-tracker__status"><span aria-hidden="true" />{currentLabel}</p>
-        <span className="order-tracker__step">{tracking.stage ? `Step ${tracking.step} of ${TRACKING_STAGES.length}` : 'Checking booking status'}</span>
-      </div>
-      <div className="order-tracker__track" role="progressbar" aria-label="Booking progress" aria-valuemin={0} aria-valuemax={TRACKING_STAGES.length} aria-valuenow={tracking.step} aria-valuetext={tracking.stage ? `${currentLabel}, step ${tracking.step} of ${TRACKING_STAGES.length}` : currentLabel}>
-        {TRACKING_STAGES.map((stage, index) => <span key={stage.id} className={index < tracking.index ? 'is-complete' : index === tracking.index ? 'is-current' : ''} />)}
-      </div>
-      <div className="order-tracker__progress-caption"><span>{tracking.index >= 0 && nextStage ? <>Next: {stageLabel(nextStage)}</> : tracking.stage ? 'Your booking is complete' : 'We’ll update this as soon as it is available.'}</span><span className="order-tracker__destination">Fresh clothes, back to you</span></div>
-    </div>
-    <p className="sr-only" aria-live="polite" aria-atomic="true">{order.orderNumber}: {currentLabel}</p>
+    <div className="order-tracker__progress"><OrderProgressBar order={order} /></div>
     {paused && <p className="order-tracker__notice" role="status"><WifiOff size={14} aria-hidden="true" />{feed.error === 'offline' ? 'You’re offline. Updates resume when you reconnect.' : 'We couldn’t get the latest status. Your last update is shown.'}<button type="button" onClick={feed.refresh} disabled={feed.refreshing}>Retry</button></p>}
 
     <div id={detailsId} className="order-tracker__details" hidden={!expanded}>
       {expanded && <>
-        <div className="order-tracker__detail-heading"><h3>Your booking journey</h3><span><i className="order-tracker__legend" aria-hidden="true" />Completed <i className="order-tracker__legend is-current" aria-hidden="true" />Current</span></div>
-        <ol className="order-tracker__stages" aria-label="Booking stages">{TRACKING_STAGES.map((stage, index) => <li key={stage.id} className={index < tracking.index ? 'is-complete' : index === tracking.index ? 'is-current' : ''} aria-current={index === tracking.index ? 'step' : undefined}>
-          <span className="order-tracker__stage-number" aria-hidden="true">{index < tracking.index ? <Check size={13} strokeWidth={2.8} /> : index + 1}</span><span>{stageLabel(stage)}</span>{index < tracking.index && <span className="sr-only"> · Completed</span>}
-        </li>)}</ol>
+        <OrderProgressStages order={order} />
         <div className="order-tracker__info">
           {[['pickup', copy('pickup_schedule_b685a65') || 'Pickup schedule'], ['delivery', copy('delivery_schedule_38823c2') || 'Delivery schedule']].map(([leg, label]) => <div className="order-tracker__info-card" key={leg}><Calendar size={18} aria-hidden="true" /><div><h4>{label}</h4><p>{scheduleDate(order[`${leg}Schedule`]?.date)}</p><span>{order[`${leg}Schedule`]?.timeSlot || 'Time to be confirmed'}</span></div></div>)}
           <div className="order-tracker__info-card"><Truck size={18} aria-hidden="true" /><div><h4>{tracking.pickup ? 'Pickup rider' : 'Delivery rider'}</h4>{tracking.rider?.name ? <><p>{tracking.rider.name}</p>{tracking.rider.phone && <a href={`tel:${tracking.rider.phone}`} className="order-tracker__call"><Phone size={13} aria-hidden="true" />{copy('call_d6e645b') || 'Call'} {tracking.rider.name}</a>}</> : <><p>Awaiting assignment</p><span>Rider details will appear here.</span></>}</div></div>
@@ -80,7 +62,7 @@ function BookingCard({ order, orders, selectOrder, feed, copy }) {
         </div>
         <div className="order-tracker__footer">
           <div className="order-tracker__payment"><span className={order.payment?.status === 'PAID' ? 'is-paid' : ''}>{paymentLabel}</span><span>Order total <strong>{amount}</strong></span></div>
-          <div className="order-tracker__links"><button type="button" onClick={feed.refresh} disabled={feed.refreshing} className="order-tracker__refresh"><RefreshCw size={14} className={feed.refreshing ? 'is-refreshing' : ''} aria-hidden="true" />{feed.refreshing ? 'Updating…' : copy('refresh_status_442c4b8') || 'Refresh status'}</button><Link to="/my-orders">{copy('view_full_order_details_5cd2e55') || 'View full order details'}<ArrowRight size={15} aria-hidden="true" /></Link></div>
+          <div className="order-tracker__links"><button type="button" onClick={feed.refresh} disabled={feed.refreshing} className="order-tracker__refresh"><RefreshCw size={14} className={feed.refreshing ? 'is-refreshing' : ''} aria-hidden="true" />{feed.refreshing ? 'Updating…' : copy('refresh_status_442c4b8') || 'Refresh status'}</button><Link to={`/my-orders?order=${encodeURIComponent(order._id)}`}>{copy('view_full_order_details_5cd2e55') || 'View full order details'}<ArrowRight size={15} aria-hidden="true" /></Link></div>
         </div>
       </>}
     </div>

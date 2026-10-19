@@ -1,3 +1,6 @@
+import OrderProgress, { OrderStatusBadge } from '../components/OrderProgress';
+import { useCustomerOrders } from '../context/CustomerOrdersContext';
+import { isActiveOrder } from '../../../shared/orderStages.mjs';
 import { cleanAddress } from '../../../shared/addressBook.mjs';
 import ContentState from '../components/ContentState';
 import { useGlobalContent } from '../context/SiteContentContext';
@@ -56,13 +59,20 @@ const ProfilePage = () => {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   // Profile data & Stats
-  const [stats, setStats] = useState({
+  const [profileStats, setStats] = useState({
     totalOrders: 0,
     activeOrders: 0,
     completedOrders: 0,
     totalSpent: 0
   });
-  const [recentOrders, setRecentOrders] = useState([]);
+  const orderFeed = useCustomerOrders();
+  const recentOrders = orderFeed.orders.slice(0, 10);
+  const stats = orderFeed.lastUpdated ? {
+    totalOrders: orderFeed.orders.length,
+    activeOrders: orderFeed.orders.filter(isActiveOrder).length,
+    completedOrders: orderFeed.orders.filter(order => order.orderStatus === 'DELIVERED').length,
+    totalSpent: orderFeed.orders.filter(order => order.payment?.status === 'PAID' || order.orderStatus === 'DELIVERED').reduce((sum, order) => sum + (order.pricingBreakdown?.grandTotal || 0), 0),
+  } : profileStats;
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState(null);
 
   // Form State: Personal Info
@@ -111,9 +121,6 @@ const ProfilePage = () => {
         }
         if (res.stats) {
           setStats(res.stats);
-        }
-        if (res.recentOrders) {
-          setRecentOrders(res.recentOrders);
         }
       }
     } catch (err) {
@@ -755,7 +762,8 @@ const ProfilePage = () => {
             >{copy('book_new_laundry_ec8c651')}</Link>
           </div>
 
-          {recentOrders.length === 0 ? (
+          <p role="status" className={orderFeed.error ? 'text-sm text-amber-800' : 'text-sm text-teal-700'}>{orderFeed.error ? 'Order updates paused. Retrying automatically.' : 'Auto-updating · Your booking status stays in sync across pages.'}</p>
+          {orderFeed.loading ? <p role="status">Loading order history…</p> : orderFeed.error && !recentOrders.length ? <button type="button" onClick={orderFeed.refresh} className="underline text-primary-700">Retry loading order history</button> : recentOrders.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-3xl space-y-3">
               <Package className="w-10 h-10 text-slate-300 mx-auto" />
               <h3 className="font-bold text-slate-700 text-sm">{copy('no_orders_placed_yet_97a4a29')}</h3>
@@ -771,28 +779,16 @@ const ProfilePage = () => {
                 const totalItems = (order.items || []).reduce((acc, curr) => acc + (curr.quantity || 1), 0);
                 const orderDate = order.createdAt ? format(new Date(order.createdAt), 'dd MMM yyyy, hh:mm a') : '';
                 
-                const statusStyles = {
-                  BOOKED: 'bg-amber-50 text-amber-800 border-amber-200',
-                  PICKUP_ASSIGNED: 'bg-blue-50 text-blue-800 border-blue-200',
-                  PICKED_UP: 'bg-teal-50 text-teal-800 border-teal-200',
-                  IN_WASHING: 'bg-indigo-50 text-indigo-800 border-indigo-200',
-                  IN_IRONING: 'bg-purple-50 text-purple-800 border-purple-200',
-                  OUT_FOR_DELIVERY: 'bg-cyan-50 text-cyan-800 border-cyan-200',
-                  DELIVERED: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-                  CANCELLED: 'bg-rose-50 text-rose-800 border-rose-200'
-                };
-
                 return (
                   <div
                     key={order._id}
-                    className="p-4 sm:p-5 rounded-2xl border border-slate-200 hover:border-slate-300 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                    className="p-4 sm:p-5 rounded-2xl border border-slate-200 hover:border-slate-300 transition-all space-y-4"
                   >
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2.5 flex-wrap">
                         <span className="font-mono font-black text-sm text-slate-900">{order.orderNumber}</span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusStyles[order.orderStatus] || 'bg-slate-100 text-slate-700'}`}>
-                          {order.orderStatus?.replace(/_/g, ' ')}
-                        </span>
+                        <OrderStatusBadge order={order} />
                         {order.orderStatus === 'CANCELLED' || order.payment?.status === 'CANCELLED' ? (
                           <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">{copy('cancelled_8ab6812')}</span>
                         ) : order.payment?.status === 'REFUNDED' ? (
@@ -824,7 +820,7 @@ const ProfilePage = () => {
                           <span>{copy('receipt_dad5a96')}</span>
                         </button>
                         <Link
-                          to="/my-orders"
+                          to={`/my-orders?order=${encodeURIComponent(order._id)}`}
                           className="text-xs font-bold text-primary-600 hover:underline flex items-center gap-0.5"
                         >
                           <span>{copy('details_45989de')}</span>
@@ -832,6 +828,8 @@ const ProfilePage = () => {
                         </Link>
                       </div>
                     </div>
+                    </div>
+                    <OrderProgress order={order} />
                   </div>
                 );
               })}

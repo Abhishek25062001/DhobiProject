@@ -1,8 +1,11 @@
+import OrderProgress, { OrderStatusBadge } from '../components/OrderProgress';
+import { useCustomerOrders } from '../context/CustomerOrdersContext';
+import { getTrackingState } from '../utils/orderTracking.mjs';
 import ContentState from '../components/ContentState';
 import usePageCopy from '../hooks/usePageCopy';
 import { orderServiceLabel, orderFinishLabel } from '../../../shared/orderSnapshot.mjs';
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { orderService } from '../services/api';
 import PaymentModal from '../components/PaymentModal';
 import GstInvoiceModal from '../components/GstInvoiceModal';
@@ -37,26 +40,11 @@ import {
 import toast from 'react-hot-toast';
 
 
-const ORDER_STEPS = [
-  { key: 'BOOKED', label: 'Booked' },
-  { key: 'PICKED_UP', label: 'Picked Up' },
-  { key: 'IN_WASHING', label: 'Washing' },
-  { key: 'IN_IRONING', label: 'Steam Iron' },
-  { key: 'QUALITY_CHECK', label: 'Quality Check' },
-  { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery' },
-  { key: 'DELIVERED', label: 'Delivered' },
-];
-
-const getStepIndex = (status) => {
-  if (status === 'PICKUP_ASSIGNED') return 0;
-  const idx = ORDER_STEPS.findIndex((s) => s.key === status);
-  return idx >= 0 ? idx : 0;
-};
-
 const MyOrdersPage = () => {
   const copy = usePageCopy('orders');
   const { user, isAdmin, isRider } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Redirect staff / logistics users to their dedicated operations portals
   useEffect(() => {
@@ -67,9 +55,14 @@ const MyOrdersPage = () => {
     }
   }, [isAdmin, isRider, navigate]);
 
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [expandedOrderId, setExpandedOrderId] = useState(null);
+  const feed = useCustomerOrders();
+  const { orders, loading, refresh: fetchOrders } = feed;
+  const requestedOrderId = new URLSearchParams(location.search).get('order');
+  const [expandedOrderId, setExpandedOrderId] = useState(requestedOrderId || undefined);
+  useEffect(() => { if (requestedOrderId) setExpandedOrderId(requestedOrderId); }, [requestedOrderId]);
+  useEffect(() => {
+    if (expandedOrderId === undefined && orders.length) setExpandedOrderId(orders[0]._id);
+  }, [orders, expandedOrderId]);
 
   // Online payment modal for unpaid orders
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState(null);
@@ -90,9 +83,7 @@ const MyOrdersPage = () => {
       const res = await orderService.cancelOrder(orderId, 'Cancelled by customer before pickup');
       if (res.success && res.order) {
         toast.success('Order cancelled successfully.');
-        setOrders((prev) =>
-          prev.map((o) => (o._id === orderId ? res.order : o))
-        );
+        fetchOrders();
       } else {
         toast.error(res.message || 'Failed to cancel order.');
       }
@@ -103,28 +94,6 @@ const MyOrdersPage = () => {
     }
   };
 
-
-  const fetchOrders = async () => {
-    try {
-      setLoading(true);
-      const res = await orderService.getMyOrders();
-      if (res.success) {
-        setOrders(res.orders);
-        if (res.orders.length > 0 && !expandedOrderId) {
-          setExpandedOrderId(res.orders[0]._id);
-        }
-      }
-    } catch (err) {
-      console.error('[My Orders Error]:', err);
-      toast.error('Could not fetch your orders.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchOrders();
-  }, []);
 
   const toggleExpand = (id) => {
     setExpandedOrderId(expandedOrderId === id ? null : id);
@@ -142,9 +111,7 @@ const MyOrdersPage = () => {
           razorpayPayload: res.razorpay,
           user,
           onSuccess: (updatedOrder) => {
-            setOrders((prev) =>
-              prev.map((o) => (o._id === updatedOrder._id ? updatedOrder : o))
-            );
+            fetchOrders();
           },
           onDismiss: () => {},
           onFallback: () => {
@@ -169,9 +136,7 @@ const MyOrdersPage = () => {
     try {
       const res = await orderService.switchToCod(orderId);
       if (res.success && res.order) {
-        setOrders((prev) =>
-          prev.map((o) => (o._id === orderId ? res.order : o))
-        );
+        fetchOrders();
         toast.success('Successfully switched order to Cash on Delivery (COD)!');
       } else {
         toast.error(res.message || 'Failed to switch payment method.');
@@ -185,9 +150,7 @@ const MyOrdersPage = () => {
 
   const handlePaymentSuccess = (updatedOrder) => {
     setShowPaymentModal(false);
-    setOrders((prev) =>
-      prev.map((o) => (o._id === updatedOrder._id ? updatedOrder : o))
-    );
+    fetchOrders();
     toast.success('Payment updated successfully!');
   };
 
@@ -204,6 +167,7 @@ const MyOrdersPage = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={fetchOrders}
+            disabled={feed.refreshing}
             className="px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -219,12 +183,17 @@ const MyOrdersPage = () => {
         </div>
       </div>
 
+      <div className={`mb-5 rounded-xl px-4 py-3 text-sm ${feed.error ? 'bg-amber-50 text-amber-900' : 'bg-teal-50 text-teal-800'}`} role="status">
+        {feed.error ? feed.error === 'auth' ? 'Sign in again to view your orders.' : feed.error === 'offline' ? 'You’re offline. Showing the last update.' : 'Updates are paused. Showing the last update and retrying automatically.' : 'Auto-updating · Your booking status stays in sync across pages.'}
+      </div>
       {/* Main Content */}
       {loading ? (
         <div className="p-16 text-center bg-white rounded-3xl border border-slate-200">
           <Loader2 className="w-8 h-8 text-primary-600 animate-spin mx-auto mb-3" />
           <p className="text-xs text-slate-500 font-medium">{copy('retrieving_your_order_history_1db4ed3')}</p>
         </div>
+      ) : feed.error && orders.length === 0 ? (
+        <div role="alert" className="p-8 bg-white rounded-2xl border border-amber-200">We couldn’t load your orders. {feed.error === 'auth' ? <Link to="/login" className="underline">Sign in</Link> : <button type="button" onClick={fetchOrders} disabled={feed.refreshing} className="underline font-bold">Retry</button>}</div>
       ) : orders.length === 0 ? (
         <div className="p-16 text-center bg-white rounded-3xl border border-slate-200 space-y-4 max-w-lg mx-auto">
           <div className="w-16 h-16 rounded-3xl bg-primary-50 text-primary-600 flex items-center justify-center mx-auto">
@@ -246,8 +215,7 @@ const MyOrdersPage = () => {
         <div className="space-y-6">
           {orders.map((order) => {
             const isExpanded = expandedOrderId === order._id;
-            const currentStepIdx = getStepIndex(order.orderStatus);
-            const isCancelled = order.orderStatus === 'CANCELLED';
+            const tracking = getTrackingState(order);
 
             return (
               <div
@@ -256,6 +224,11 @@ const MyOrdersPage = () => {
               >
                 {/* Order Summary Top Bar */}
                 <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${isExpanded ? 'Minimize' : 'View'} details for ${order.orderNumber}`}
+                  aria-expanded={isExpanded}
+                  onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleExpand(order._id); } }}
                   onClick={() => toggleExpand(order._id)}
                   className="p-6 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4 select-none hover:bg-slate-50/50"
                 >
@@ -268,29 +241,21 @@ const MyOrdersPage = () => {
                         <span className="font-extrabold text-base text-slate-900 font-mono">
                           {order.orderNumber}
                         </span>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                          order.orderStatus === 'DELIVERED'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : isCancelled
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-primary-100 text-primary-800'
-                        }`}>
-                          {order.orderStatus.replace(/_/g, ' ')}
-                        </span>
+                        <OrderStatusBadge order={order} />
                       </div>
                       <div className="flex flex-wrap items-center gap-2 mt-1.5">
                         <p className="text-xs text-slate-500">{copy('placed_on_bbba0c2')}{new Date(order.createdAt).toLocaleDateString('en-IN', {
                             day: 'numeric',
                             month: 'short',
                             year: 'numeric'
-                          })} • {order.items?.length || 0}{copy('garments_a2c86ca')}</p>
-                        {['BOOKED', 'ORDER_PLACED', 'CONFIRMED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'OUT_FOR_PICKUP'].includes(order.orderStatus) && (order.verificationCodes?.pickupOtp || order.pickupOtp) && (
+                          })} • {tracking.totalItems}{copy('garments_a2c86ca')}</p>
+                        {tracking.otpType === 'pickup' && (order.verificationCodes?.pickupOtp || order.pickupOtp) && (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-amber-100 border border-amber-300 text-amber-950 font-mono font-black text-xs shadow-xs">
                             <KeyRound className="w-3.5 h-3.5 text-amber-700" />
                             <span>{copy('pickup_otp_dc427e5')}{order.verificationCodes?.pickupOtp || order.pickupOtp}</span>
                           </span>
                         )}
-                        {['OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(order.orderStatus) && (order.verificationCodes?.deliveryOtp || order.deliveryOtp) && (
+                        {tracking.otpType === 'delivery' && (order.verificationCodes?.deliveryOtp || order.deliveryOtp) && (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-teal-100 border border-teal-300 text-teal-950 font-mono font-black text-xs shadow-xs">
                             <ShieldCheck className="w-3.5 h-3.5 text-teal-700" />
                             <span>{copy('delivery_otp_eef1f34')}{order.verificationCodes?.deliveryOtp || order.deliveryOtp}</span>
@@ -338,12 +303,13 @@ const MyOrdersPage = () => {
                   </div>
                 </div>
 
+                {!isExpanded && <div className="px-6 pb-6"><OrderProgress order={order} showStages={false} /></div>}
                 {/* Collapsible Expanded Details */}
                 {isExpanded && (
                   <div className="border-t border-slate-100 p-6 bg-slate-50/50 space-y-6">
                     
                     {/* Doorstep OTP Verification Banners */}
-                    {['BOOKED', 'ORDER_PLACED', 'CONFIRMED', 'PICKUP_ASSIGNED', 'PICKUP_SCHEDULED', 'OUT_FOR_PICKUP'].includes(order.orderStatus) && (order.verificationCodes?.pickupOtp || order.pickupOtp) && (
+                    {tracking.otpType === 'pickup' && (order.verificationCodes?.pickupOtp || order.pickupOtp) && (
                       <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-300 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0">
@@ -360,7 +326,7 @@ const MyOrdersPage = () => {
                       </div>
                     )}
 
-                    {['OUT_FOR_DELIVERY', 'DELIVERY_ASSIGNED'].includes(order.orderStatus) && (order.verificationCodes?.deliveryOtp || order.deliveryOtp) && (
+                    {tracking.otpType === 'delivery' && (order.verificationCodes?.deliveryOtp || order.deliveryOtp) && (
                       <div className="p-4 rounded-2xl bg-teal-500/10 border border-teal-300 text-teal-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0">
@@ -377,61 +343,7 @@ const MyOrdersPage = () => {
                       </div>
                     )}
 
-                    {/* Visual Step-by-Step Progress Bar */}
-                    {!isCancelled ? (
-                      <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
-                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-6">{copy('live_order_trajectory_c88502b')}</h4>
-
-                        <div className="relative">
-                          {/* Background line */}
-                          <div className="absolute top-4 left-0 right-0 h-1 bg-slate-200 -z-0" />
-                          {/* Active filled line */}
-                          <div
-                            className="absolute top-4 left-0 h-1 bg-teal-500 transition-all duration-500 -z-0"
-                            style={{
-                              width: `${(currentStepIdx / (ORDER_STEPS.length - 1)) * 100}%`
-                            }}
-                          />
-
-                          <div className="relative z-10 flex justify-between">
-                            {ORDER_STEPS.map((st, idx) => {
-                              const isCompleted = idx <= currentStepIdx;
-                              const isCurrent = idx === currentStepIdx;
-
-                              return (
-                                <div key={st.key} className="flex flex-col items-center text-center">
-                                  <div
-                                    className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                                      isCompleted
-                                        ? 'bg-teal-600 text-white ring-4 ring-teal-100'
-                                        : 'bg-white border-2 border-slate-300 text-slate-400'
-                                    }`}
-                                  >
-                                    {isCompleted ? '✓' : idx + 1}
-                                  </div>
-                                  <span
-                                    className={`mt-2 text-[10px] font-bold max-w-[65px] leading-tight ${
-                                      isCurrent
-                                        ? 'text-teal-700 font-extrabold'
-                                        : isCompleted
-                                        ? 'text-slate-800'
-                                        : 'text-slate-400'
-                                    }`}
-                                  >
-                                    {copy('order_step_' + st.key)}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 shrink-0" />
-                        <span>{copy('this_order_was_cancelled_no_charges_were_made_601d4f5')}</span>
-                      </div>
-                    )}
+                    <OrderProgress order={order} />
 
                     {/* Order Details & Receipt Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -673,7 +585,7 @@ const MyOrdersPage = () => {
                             <div key={idx} className="relative text-xs">
                               <div className="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-teal-600 ring-4 ring-teal-100" />
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                                <span className="font-bold text-slate-900">{hist.status.replace(/_/g, ' ')}</span>
+                                <OrderStatusBadge order={{ orderStatus: hist.status }} />
                                 <span className="text-[10px] text-slate-400">
                                   {new Date(hist.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} • {new Date(hist.timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                                 </span>

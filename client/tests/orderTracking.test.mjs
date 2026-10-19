@@ -1,17 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TRACKING_STAGES, getTrackingState, selectTrackedOrder } from '../src/utils/orderTracking.mjs';
-import { ORDER_POLL_INTERVAL_MS, ORDER_CHANGED_EVENT, startActiveOrderFeed, notifyOrdersChanged } from '../src/services/activeOrderFeed.mjs';
+import { ORDER_POLL_INTERVAL_MS, ORDER_CHANGED_EVENT, startActiveOrderFeed, startOrderFeed, notifyOrdersChanged } from '../src/services/activeOrderFeed.mjs';
 
 const order = (id = 'one', orderStatus = 'BOOKED') => ({ _id: id, orderStatus });
 const payload = (...orders) => ({ success: true, activeOrders: orders });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
-function fixture(t, load) {
+function fixture(t, load, { allOrders = false } = {}) {
   const target = new EventTarget();
   const document = new EventTarget(); document.visibilityState = 'visible';
   let online = true, tick, cleared = false;
   const states = [];
-  const feed = startActiveOrderFeed({
+  const feed = (allOrders ? startOrderFeed : startActiveOrderFeed)({
     load, target, document, isOnline: () => online, now: () => 12345,
     onChange: state => states.push(state),
     interval: (callback, ms) => { assert.equal(ms, ORDER_POLL_INTERVAL_MS); tick = callback; return 1; },
@@ -131,4 +131,32 @@ test('mutation notifications contain no booking/customer data and tolerate block
   assert.doesNotThrow(() => notifyOrdersChanged(target)); assert.equal(events, 1);
   assert.equal(written.key, 'indodhobi:orders-revision');
   assert.match(written.value, /^[0-9]+-0[.]/);
+});
+
+test('the common customer feed retains delivered/cancelled history and maps every page to the same stage', async t => {
+  let status = 'PICKUP_ASSIGNED';
+  const f = fixture(t, async () => ({ success: true, orders: [order('one', status)] }), { allOrders: true });
+  await f.feed.refresh();
+  assert.equal(getTrackingState(f.state.orders[0]).step, 3);
+  for (const next of ['CONFIRMED', 'OUT_FOR_PICKUP', 'IN_WASH', 'QUALITY_CHECK', 'DELIVERED', 'CANCELLED']) {
+    status = next; await f.tick();
+    assert.equal(f.state.orders.length, 1);
+    assert.equal(f.state.orders[0].orderStatus, next);
+  }
+  assert.equal(getTrackingState(f.state.orders[0]).cancelled, true);
+  assert.equal(getTrackingState(order('one', 'DELIVERED')).delivered, true);
+  assert.equal(getTrackingState(order('one', 'DELIVERED')).step, 10);
+});
+
+test('an order mutation during a pending read queues a fresh read rather than losing the update', async t => {
+  const old = deferred(); let calls = 0;
+  const f = fixture(t, async () => { calls++; return calls === 1 ? old.promise : { success: true, orders: [order('one', 'OUT_FOR_PICKUP')] }; }, { allOrders: true });
+  const pending = f.feed.refresh();
+  await Promise.resolve();
+  f.target.dispatchEvent(new Event(ORDER_CHANGED_EVENT));
+  old.resolve({ success: true, orders: [order()] });
+  await pending;
+  await f.feed.refresh();
+  assert.equal(calls, 2);
+  assert.equal(f.state.orders[0].orderStatus, 'OUT_FOR_PICKUP');
 });

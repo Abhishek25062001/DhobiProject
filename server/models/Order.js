@@ -1,3 +1,4 @@
+import { ORDER_STATUS_VALUES } from '../../shared/orderStages.mjs';
 import mongoose from 'mongoose';
 import { SERVICE_CODES, IRONING_CODES } from '../../shared/catalogContract.mjs';
 
@@ -250,23 +251,7 @@ const orderSchema = new mongoose.Schema({
   },
   orderStatus: {
     type: String,
-    enum: [
-      'ORDER_PLACED',
-      'BOOKED',
-      'CONFIRMED',
-      'PICKUP_SCHEDULED',
-      'PICKUP_ASSIGNED',
-      'OUT_FOR_PICKUP',
-      'PICKED_UP',
-      'IN_WASH',
-      'IN_WASHING',
-      'IN_IRONING',
-      'READY',
-      'QUALITY_CHECK',
-      'OUT_FOR_DELIVERY',
-      'DELIVERED',
-      'CANCELLED'
-    ],
+    enum: ORDER_STATUS_VALUES,
     default: 'BOOKED',
     index: true
   },

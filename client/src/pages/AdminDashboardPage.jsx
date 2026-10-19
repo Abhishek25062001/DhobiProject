@@ -1,3 +1,4 @@
+import { ORDER_STATUS_OPTIONS, orderStatusLabel, preferredOrderStatus } from '../../../shared/orderStages.mjs';
 import { useOrderBooking } from '../context/OrderBookingContext';
 import { MapPin } from 'lucide-react';
 import AdminServiceAreasTab from './admin/AdminServiceAreasTab';
@@ -62,17 +63,7 @@ import AdminCategoriesTab from './admin/AdminCategoriesTab';
 import AdminPaymentsTab from './admin/AdminPaymentsTab';
 import AdminNotificationsTab from './admin/AdminNotificationsTab';
 
-const STATUS_OPTIONS = [
-  'BOOKED',
-  'PICKUP_ASSIGNED',
-  'PICKED_UP',
-  'IN_WASHING',
-  'IN_IRONING',
-  'QUALITY_CHECK',
-  'OUT_FOR_DELIVERY',
-  'DELIVERED',
-  'CANCELLED'
-];
+const STATUS_OPTIONS = ORDER_STATUS_OPTIONS;
 
 
 
@@ -350,7 +341,7 @@ const AdminDashboardPage = () => {
         setOrders((prev) =>
           prev.map((o) => (o._id === orderId ? { ...o, orderStatus: newStatus } : o))
         );
-        toast.success(`Order status updated to ${newStatus.replace(/_/g, ' ')}`);
+        toast.success(`Order status updated to ${orderStatusLabel(newStatus)}`);
         fetchAnalytics();
       }
     } catch (err) {
@@ -884,7 +875,7 @@ const AdminDashboardPage = () => {
                 >
                   <option value="ALL">All Statuses</option>
                   {STATUS_OPTIONS.map((st) => (
-                    <option key={st} value={st}>{st.replace(/_/g, ' ')}</option>
+                    <option key={st} value={st}>{orderStatusLabel(st)}</option>
                   ))}
                 </select>
               </div>
@@ -1038,7 +1029,7 @@ const AdminDashboardPage = () => {
                           {/* Order Status Dropdown */}
                           <td className="py-4 px-5">
                             <select
-                              value={order.orderStatus}
+                              value={preferredOrderStatus(order.orderStatus)}
                               onChange={(e) => handleStatusChange(order._id, e.target.value)}
                               disabled={isUpdating || order.orderStatus === 'CANCELLED'}
                               className={`px-2.5 py-1.5 rounded-xl font-bold text-xs border focus:outline-hidden ${
@@ -1053,7 +1044,7 @@ const AdminDashboardPage = () => {
                             >
                               {STATUS_OPTIONS.map((st) => (
                                 <option key={st} value={st}>
-                                  {st.replace(/_/g, ' ')}
+                                  {orderStatusLabel(st)}
                                 </option>
                               ))}
                             </select>
@@ -2366,7 +2357,7 @@ const AdminDashboardPage = () => {
                   {inspectOrder.statusHistory.map((hist, idx) => (
                     <div key={idx} className="flex items-start justify-between gap-2 border-b border-slate-100 pb-1.5 last:border-b-0 last:pb-0">
                       <div>
-                        <span className="font-bold text-slate-900">{hist.status.replace(/_/g, ' ')}</span>
+                        <span className="font-bold text-slate-900">{orderStatusLabel(hist.status)}</span>
                         {hist.note && <p className="text-slate-500 text-[10px]">{hist.note}</p>}
                       </div>
                       <span className="text-[10px] text-slate-400 shrink-0">

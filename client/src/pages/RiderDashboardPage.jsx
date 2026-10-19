@@ -1,3 +1,4 @@
+import { orderStage, orderStatusLabel } from '../../../shared/orderStages.mjs';
 import React, { useState, useEffect, useRef } from 'react';
 import { orderService, configService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -97,13 +98,13 @@ const RiderDashboardPage = () => {
     }
 
     if (activeTab === 'pickups') {
-      return ['BOOKED', 'ORDER_PLACED', 'CONFIRMED', 'PICKUP_ASSIGNED', 'OUT_FOR_PICKUP'].includes(task.orderStatus) || task.currentRiderLeg === 'PICKUP';
+      return ['ORDER_PLACED', 'CONFIRMED', 'PICKUP_SCHEDULED', 'OUT_FOR_PICKUP'].includes(orderStage(task.orderStatus)?.id) || task.currentRiderLeg === 'PICKUP';
     }
     if (activeTab === 'in_plant') {
-      return ['PICKED_UP', 'IN_WASHING', 'IN_IRONING', 'QUALITY_CHECK'].includes(task.orderStatus);
+      return ['PICKED_UP', 'IN_WASH', 'IN_IRONING'].includes(orderStage(task.orderStatus)?.id);
     }
     if (activeTab === 'deliveries') {
-      return ['READY', 'OUT_FOR_DELIVERY'].includes(task.orderStatus) || (task.currentRiderLeg === 'DELIVERY' && task.orderStatus !== 'DELIVERED');
+      return ['READY', 'OUT_FOR_DELIVERY'].includes(orderStage(task.orderStatus)?.id) || (task.currentRiderLeg === 'DELIVERY' && task.orderStatus !== 'DELIVERED');
     }
     if (activeTab === 'completed') {
       return task.orderStatus === 'DELIVERED';
@@ -112,9 +113,9 @@ const RiderDashboardPage = () => {
   });
 
   // Aggregates
-  const pickupCount = tasks.filter((t) => ['BOOKED', 'ORDER_PLACED', 'CONFIRMED', 'PICKUP_ASSIGNED', 'OUT_FOR_PICKUP'].includes(t.orderStatus)).length;
-  const inPlantCount = tasks.filter((t) => ['PICKED_UP', 'IN_WASHING', 'IN_IRONING', 'QUALITY_CHECK'].includes(t.orderStatus)).length;
-  const deliveryCount = tasks.filter((t) => ['READY', 'OUT_FOR_DELIVERY'].includes(t.orderStatus)).length;
+  const pickupCount = tasks.filter((t) => ['ORDER_PLACED', 'CONFIRMED', 'PICKUP_SCHEDULED', 'OUT_FOR_PICKUP'].includes(orderStage(t.orderStatus)?.id)).length;
+  const inPlantCount = tasks.filter((t) => ['PICKED_UP', 'IN_WASH', 'IN_IRONING'].includes(orderStage(t.orderStatus)?.id)).length;
+  const deliveryCount = tasks.filter((t) => ['READY', 'OUT_FOR_DELIVERY'].includes(orderStage(t.orderStatus)?.id)).length;
   const deliveredCount = tasks.filter((t) => t.orderStatus === 'DELIVERED').length;
 
   // Open Pickup Modal
@@ -540,9 +541,9 @@ const RiderDashboardPage = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {filteredTasks.map((task) => {
-            const isPickup = ['BOOKED', 'ORDER_PLACED', 'CONFIRMED', 'PICKUP_ASSIGNED', 'OUT_FOR_PICKUP'].includes(task.orderStatus);
-            const isInPlant = ['PICKED_UP', 'IN_WASHING', 'IN_IRONING', 'QUALITY_CHECK'].includes(task.orderStatus);
-            const isReadyForDelivery = task.orderStatus === 'READY';
+            const isPickup = ['ORDER_PLACED', 'CONFIRMED', 'PICKUP_SCHEDULED', 'OUT_FOR_PICKUP'].includes(orderStage(task.orderStatus)?.id);
+            const isInPlant = ['PICKED_UP', 'IN_WASH', 'IN_IRONING'].includes(orderStage(task.orderStatus)?.id);
+            const isReadyForDelivery = orderStage(task.orderStatus)?.id === 'READY';
             const isDelivery = task.orderStatus === 'OUT_FOR_DELIVERY';
             const isDelivered = task.orderStatus === 'DELIVERED';
             const totalGarments = task.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
@@ -584,7 +585,7 @@ const RiderDashboardPage = () => {
                           ? 'bg-amber-100 text-amber-800'
                           : 'bg-primary-100 text-primary-800'
                       }`}>
-                        {task.orderStatus.replace(/_/g, ' ')}
+                        {orderStatusLabel(task.orderStatus)}
                       </span>
                     </div>
 

@@ -1,3 +1,4 @@
+import { orderStage, orderStatusLabel } from '../../shared/orderStages.mjs';
 import mongoose from 'mongoose';
 import { bookingAddressConsent, lockedAddressUser, saveAddressInBook } from '../services/addressBook.js';
 import ServiceArea from '../models/ServiceArea.js';
@@ -528,6 +529,7 @@ export const switchToCod = async (req, res) => {
 // @route   GET /api/orders/my-orders
 // @access  Private
 export const getMyOrders = async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const orders = await Order.find({ customer: req.user._id })
       .populate('items.garment', 'name category iconName')
@@ -622,6 +624,7 @@ export const getMyActiveOrders = async (req, res) => {
 // @route   GET /api/orders/:id
 // @access  Private
 export const getOrderById = async (req, res) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const order = await Order.findById(req.params.id)
       .populate('customer', 'name email phone')
@@ -668,7 +671,7 @@ export const getAllOrders = async (req, res) => {
     const filter = {};
 
     if (status && status !== 'ALL') {
-      filter.orderStatus = status;
+      filter.orderStatus = orderStage(status) ? { $in: orderStage(status).aliases } : status;
     }
 
     if (paymentStatus && paymentStatus !== 'ALL') {
@@ -782,7 +785,7 @@ export const updateOrderStatus = async (req, res) => {
       timestamp: new Date(),
       updatedBy: req.user._id,
       updaterRole: req.user.role,
-      note: note || `Order status updated to ${orderStatus || order.orderStatus}`
+      note: note || `Order status updated to ${orderStatusLabel(orderStatus || order.orderStatus)}`
     });
 
     await order.save();
@@ -791,7 +794,7 @@ export const updateOrderStatus = async (req, res) => {
     Notification.createNotification({
       recipient: order.customer,
       title: 'Order Status Updated',
-      message: `Your Order #${order.orderNumber} is now ${String(orderStatus || order.orderStatus).replace(/_/g, ' ')}.`,
+      message: `Your Order #${order.orderNumber} is now ${orderStatusLabel(orderStatus || order.orderStatus)}.`,
       type: 'ORDER_UPDATE',
       orderId: order._id,
       orderNumber: order.orderNumber

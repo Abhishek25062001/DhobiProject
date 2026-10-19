@@ -1,3 +1,4 @@
+import { CustomerOrdersProvider } from './context/CustomerOrdersContext';
 import { SiteContentProvider } from './context/SiteContentContext';
 import PageMetadata from './components/PageMetadata';
 import AdditionalPageSections from './components/AdditionalPageSections';
@@ -49,6 +50,7 @@ function App() {
   return (
     <Router>
       <AuthProvider>
+        <CustomerOrdersProvider>
         <OrderBookingProvider>
           <SiteContentProvider>
           <PageMetadata />
@@ -152,6 +154,7 @@ function App() {
           </div>
         </SiteContentProvider>
         </OrderBookingProvider>
+      </CustomerOrdersProvider>
       </AuthProvider>
     </Router>
   );
