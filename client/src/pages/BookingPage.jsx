@@ -1,7 +1,7 @@
 import BasketReview from '../components/BasketReview';
 import { saveBookingDraft } from '../utils/bookingDraft';
 import ContentAssurances from '../components/ContentAssurances';
-import useServiceAreas from '../hooks/useServiceAreas';
+import usePincodeCoverage from '../hooks/usePincodeCoverage';
 import useSiteContent from '../hooks/useSiteContent';
 import { activeOptions, customTemplate, validPreferences, scheduleAllowed } from '../../../shared/bookingChoices.mjs';
 import { availableServices, availableFinishes, preferredFinish, selectionAvailable, IRONING_PRICE_KEYS, money } from '../../../shared/pricing.mjs';
@@ -142,8 +142,9 @@ const BookingPage = () => {
     extraPreferenceFee, reviewRequired, bookingBlocked, fetchPlatformConfig, configCheckedAt, availableCoupons, acknowledgeReview
   } = useOrderBooking();
 
-  const coverage = useServiceAreas();
-  const activeHub = coverage.areas.find(area => area.pincodes.includes(pickupAddress.pincode?.trim()));
+  const coverage = usePincodeCoverage(pickupAddress.pincode);
+  const activeHub = coverage.area;
+  const coverageBlocked = !coverage.supported || coverage.refreshing;
   const pageContent = useSiteContent('book', platformConfig);
   const copy = pageContent.t;
   const categoryResource = useCategories();
@@ -410,7 +411,7 @@ const BookingPage = () => {
   };
 
   // Validation before advancing to next step
-  const handleNextStep = () => {
+  const handleNextStep = async () => {
     if (bookingBlocked || reviewRequired) { toast.error('Review the updated laundry bag before continuing.'); return; }
     if (activeStep === 1) {
       if (cartItems.length === 0) {
@@ -442,6 +443,7 @@ const BookingPage = () => {
         return;
       }
       if (!slotCapacities[pickupSchedule.timeSlot]?.isAvailable || !deliveryCapacities[deliverySchedule.timeSlot]?.isAvailable) { toast.error('Choose available pickup and delivery slots.'); return; }
+      if (!(await coverage.verify())) { toast.error('Pickup is not available for this pincode, or coverage could not be checked. Please review your address.'); return; }
       setActiveStep(4);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -486,6 +488,7 @@ const BookingPage = () => {
     setPlacingOrder(true);
 
     try {
+      if (!(await coverage.verify())) { toast.error('Pickup is not available for this pincode, or coverage could not be checked.'); setActiveStep(3); return; }
       const orderPayload = {
         items: cartItems.map((item) => ({
           garmentId: item.garment._id,
@@ -581,6 +584,7 @@ const BookingPage = () => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10 pb-28 lg:pb-12">
       
       <BasketReview />
+      {activeStep === 4 && coverageBlocked && <div role="alert" className="my-4 p-4 rounded-xl bg-red-50 text-red-800 text-sm">{coverage.loading || coverage.refreshing ? 'Checking pickup coverage…' : 'This pickup pincode is unavailable or coverage could not be verified. Update your address before placing an order.'} <button type="button" className="underline font-bold" onClick={() => setActiveStep(3)}>Review pickup address</button></div>}
       {serverQuote && !serverQuote.reviewed && <section role="status" className="my-4 p-4 rounded-2xl border border-amber-200 bg-amber-50 text-sm space-y-3"><h3 className="font-bold">Updated booking quote</h3><p>The current total is ₹{serverQuote.quote.pricingBreakdown.grandTotal}. Review the refreshed bag and booking details.</p><button type="button" className="btn-primary" disabled={bookingBlocked} onClick={() => { acknowledgeReview(); setServerQuote({ ...serverQuote, reviewed: true }); }}>Review and accept updated quote</button></section>}
       <ContentAssurances content={pageContent.section('assurances')} text={pageContent.text} />
       {/* ================= STEP PROGRESS WIZARD ================= */}
@@ -824,7 +828,8 @@ const BookingPage = () => {
                 <button
                   type="button"
                   onClick={handleNextStep}
-                  className="px-6 py-3.5 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-primary-600/30 flex items-center gap-2"
+                  disabled={activeStep === 3 && coverageBlocked}
+                  className="disabled:opacity-50 disabled:cursor-not-allowed px-6 py-3.5 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-primary-600/30 flex items-center gap-2"
                 >
                   <span>{copy('continue_to_wash_care_preferences_993a5fe')}</span>
                   <ChevronRight className="w-4 h-4" />
@@ -986,7 +991,8 @@ const BookingPage = () => {
                 <button
                   type="button"
                   onClick={handleNextStep}
-                  className="px-6 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-primary-600/30 flex items-center gap-2"
+                  disabled={activeStep === 3 && coverageBlocked}
+                  className="disabled:opacity-50 disabled:cursor-not-allowed px-6 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-primary-600/30 flex items-center gap-2"
                 >
                   <span>{copy('continue_to_schedule_address_4484d25')}</span>
                   <ChevronRight className="w-4 h-4" />
@@ -1287,11 +1293,14 @@ const BookingPage = () => {
                       placeholder={copy('e_g_110001_d1c3a44')}
                       inputMode="numeric"
                       maxLength={6}
+                      aria-label="Pickup pincode"
+                      aria-describedby="pincode-status"
+                      aria-invalid={Boolean(pickupAddress.pincode) && !coverage.loading && !activeHub}
                       value={pickupAddress.pincode}
                       onChange={(e) => setPickupAddress({ ...pickupAddress, pincode: e.target.value })}
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500"
                     />
-                    {pickupAddress.pincode?.length === 6 && <p role="status" className="text-xs mt-1 text-slate-500">{coverage.loading ? 'Checking coverage…' : coverage.error ? <button type="button" onClick={coverage.retry}>Coverage unavailable. Retry</button> : activeHub ? `Served by ${activeHub.shortName || activeHub.name}` : 'This pincode is outside our current service areas.'}</p>}
+                    {pickupAddress.pincode && <p id="pincode-status" role="status" className={`text-xs mt-1 ${activeHub ? 'text-emerald-700' : 'text-red-700'}`}>{coverage.loading ? 'Checking coverage…' : coverage.error ? <button type="button" onClick={coverage.retry}>Coverage unavailable. Retry</button> : activeHub ? `Served by ${activeHub.shortName || activeHub.name}` : 'Enter a supported six-digit pincode. Bookings are unavailable outside our active service areas.'}</p>}
                   </div>
 
                   <div className="sm:col-span-2">
@@ -1360,7 +1369,8 @@ const BookingPage = () => {
                   <button
                     type="button"
                     onClick={handleNextStep}
-                    className="px-6 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-primary-600/30 flex items-center gap-2"
+                    disabled={activeStep === 3 && coverageBlocked}
+                    className="disabled:opacity-50 disabled:cursor-not-allowed px-6 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-primary-600/30 flex items-center gap-2"
                   >
                     <span>{copy('proceed_to_review_payment_809373d')}</span>
                     <ChevronRight className="w-4 h-4" />
@@ -1462,7 +1472,7 @@ const BookingPage = () => {
                 <button
                   type="button"
                   onClick={handlePlaceOrder}
-                  disabled={placingOrder || bookingBlocked || reviewRequired}
+                  disabled={placingOrder || bookingBlocked || reviewRequired || coverageBlocked}
                   className="px-8 py-4 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-extrabold text-sm shadow-xl shadow-primary-600/30 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
                   {placingOrder ? (
@@ -1795,7 +1805,8 @@ const BookingPage = () => {
               <button
                 type="button"
                 onClick={handleNextStep}
-                className="w-full mt-4 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 flex items-center justify-center gap-1.5"
+                disabled={activeStep === 3 && coverageBlocked}
+                className="disabled:opacity-50 disabled:cursor-not-allowed w-full mt-4 py-3 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 flex items-center justify-center gap-1.5"
               >
                 <span>{copy('proceed_to_step_78af469')}{activeStep + 1}</span>
                 <ChevronRight className="w-4 h-4" />
@@ -2008,7 +2019,8 @@ const BookingPage = () => {
               <button
                 type="button"
                 onClick={handleNextStep}
-                className="px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 active:scale-95 text-white font-extrabold text-xs shadow-md shadow-primary-600/30 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
+                disabled={activeStep === 3 && coverageBlocked}
+                className="disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 active:scale-95 text-white font-extrabold text-xs shadow-md shadow-primary-600/30 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all"
               >
                 <span>{copy('step_474a987')}{activeStep + 1}</span>
                 <ChevronRight className="w-4 h-4" />
@@ -2017,7 +2029,7 @@ const BookingPage = () => {
               <button
                 type="button"
                 onClick={handlePlaceOrder}
-                disabled={placingOrder || bookingBlocked || reviewRequired}
+                disabled={placingOrder || bookingBlocked || reviewRequired || coverageBlocked}
                 className="px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 active:scale-95 text-white font-extrabold text-xs shadow-md shadow-primary-600/30 flex items-center gap-1.5 shrink-0 cursor-pointer transition-all disabled:opacity-50"
               >
                 {placingOrder ? (
@@ -2221,7 +2233,8 @@ const BookingPage = () => {
                   setShowMobileCart(false);
                   if (activeStep < 4) handleNextStep();
                 }}
-                className="w-full py-3.5 rounded-2xl bg-primary-600 hover:bg-primary-700 active:scale-98 text-white font-extrabold text-sm shadow-md shadow-primary-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all"
+                disabled={activeStep === 3 && coverageBlocked}
+                className="disabled:opacity-50 disabled:cursor-not-allowed w-full py-3.5 rounded-2xl bg-primary-600 hover:bg-primary-700 active:scale-98 text-white font-extrabold text-sm shadow-md shadow-primary-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all"
               >
                 <span>{activeStep < 4 ? `Proceed to Step ${activeStep + 1}` : copy('review_order_1f1edc7')}</span>
                 <ChevronRight className="w-4 h-4" />

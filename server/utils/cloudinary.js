@@ -54,18 +54,22 @@ export function validateImageInput(input) {
 }
 
 export const uploadImageToCloudinary = async (input, folder = 'indodhobi') => {
-  const metadata = validateImageInput(input);
+  validateImageInput(input);
   if (!/^indodhobi(?:\/[a-z0-9_-]+)*$/.test(folder)) throw Object.assign(new Error('Invalid image destination.'), { statusCode: 400 });
   if (!ensureCloudinaryConfigured()) throw Object.assign(new Error('Image storage is unavailable. Configure Cloudinary before uploading.'), { statusCode: 503 });
   try {
     const result = await cloudinary.uploader.upload(input, {
-      folder, resource_type: 'image', transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+      folder, resource_type: 'image', format: 'webp',
+      transformation: [{ width: 2400, height: 2400, crop: 'limit' }, { quality: 'auto:good' }],
     });
-    if (!result.secure_url?.startsWith('https://') || !result.public_id) throw new Error('Invalid storage response');
+    if (!result.secure_url?.startsWith('https://') || !result.public_id || result.format !== 'webp' || !Number.isFinite(result.bytes)) throw new Error('Invalid storage response');
     return { url: result.secure_url, imageUrl: result.secure_url, publicId: result.public_id,
-      width: result.width, height: result.height, ...metadata };
-  } catch {
-    throw Object.assign(new Error('Image upload failed. The existing image has been kept. Please try again.'), { statusCode: 503 });
+      width: result.width, height: result.height, bytes: result.bytes, mimeType: 'image/webp' };
+  } catch (error) {
+    const message = [401, 403].includes(error.http_code)
+      ? 'Image storage credentials were rejected. Update the Cloudinary configuration, then retry. The existing image has been kept.'
+      : 'Image upload failed. The existing image has been kept. Please try again.';
+    throw Object.assign(new Error(message), { statusCode: 503 });
   }
 };
 

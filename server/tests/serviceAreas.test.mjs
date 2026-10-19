@@ -54,4 +54,20 @@ test('T11 coverage ownership, administration and migration', async t => {
     const results = await Promise.all(['a', 'b'].map(slug => request('/admin/service-areas', { method: 'POST', role: 'admin', body: { slug: `race-${slug}`, name: 'Race hub', pincodes: ['123456'] } })));
     assert.deepEqual(results.map(result => result.status).sort(), [201, 409]);
   });
+  await t.test('delete requires admin and current revision, removes coverage and is not recreated by migration', async () => {
+    const current = await ServiceArea.findById(delhi._id);
+    const path = `/admin/service-areas/${current._id}`;
+    const body = { revision: current.revision };
+    assert.equal((await request(path, { method: 'DELETE', body })).status, 401);
+    assert.equal((await request(path, { method: 'DELETE', role: 'customer', body })).status, 403);
+    assert.equal((await request(path, { method: 'DELETE', role: 'admin', body: {} })).status, 400);
+    assert.equal((await request(path, { method: 'DELETE', role: 'admin', body: { revision: current.revision - 1 } })).status, 409);
+    assert.equal((await request('/service-areas/check?pincode=110099')).body.serviceable, true);
+    assert.equal((await request(path, { method: 'DELETE', role: 'admin', body })).status, 200);
+    assert.equal((await request('/service-areas/check?pincode=110099')).body.serviceable, false);
+    assert.equal(await ServiceArea.findById(current._id), null);
+    assert.equal((await serviceAreaMigration({ apply: true })).changed, 0);
+    assert.equal((await request(path, { method: 'DELETE', role: 'admin', body })).status, 404);
+  });
+
 });

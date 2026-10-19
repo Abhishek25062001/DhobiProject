@@ -45,3 +45,15 @@ adminServiceAreaRoutes.put('/:id', async (req, res) => {
     res.json({ success: true, area });
   } catch (error) { fail(res, error); }
 });
+
+adminServiceAreaRoutes.delete('/:id', async (req, res) => {
+  try {
+    if (!mongoose.isObjectIdOrHexString(req.params.id) || !Number.isInteger(req.body.revision)) throw new Error('A valid hub and revision are required.');
+    const area = await ServiceArea.findOneAndDelete({ _id: req.params.id, revision: req.body.revision });
+    if (!area) {
+      const exists = await ServiceArea.exists({ _id: req.params.id });
+      return res.status(exists ? 409 : 404).json({ success: false, message: exists ? 'This hub changed. Reload and review it before deleting.' : 'Hub not found.' });
+    }
+    res.json({ success: true, message: 'Service area deleted. Existing orders keep their recorded pickup details.' });
+  } catch (error) { fail(res, error); }
+});

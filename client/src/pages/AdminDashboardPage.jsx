@@ -120,7 +120,6 @@ const AdminDashboardPage = () => {
   const [editGarmentModal, setEditGarmentModal] = useState(false);
   const [editingGarment, setEditingGarment] = useState(null);
   const [newGarmentModal, setNewGarmentModal] = useState(false);
-  const [uploadingGarmentImage, setUploadingGarmentImage] = useState(false);
   const [newGarmentForm, setNewGarmentForm] = useState({
     name: '',
     categoryId: '',
@@ -434,42 +433,6 @@ const AdminDashboardPage = () => {
     }
   };
 
-  const handleUploadGarmentImage = async (file, isEditing = false) => {
-    if (!file) return;
-    setUploadingGarmentImage(true);
-    try {
-      const reader = new FileReader();
-      const base64Promise = new Promise((resolve, reject) => {
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-      });
-      reader.readAsDataURL(file);
-      const base64 = await base64Promise;
-      const res = await configService.uploadImage(base64, 'indodhobi/garments');
-      if (res.success && res.imageUrl) {
-        if (isEditing) {
-          setEditingGarment((prev) => ({
-            ...prev,
-            primaryImage: { assetId: res.assetId },
-            imageUrl: res.imageUrl,
-            cloudinaryPublicId: res.publicId || ''
-          }));
-        } else {
-          setNewGarmentForm((prev) => ({
-            ...prev,
-            primaryImage: { assetId: res.assetId },
-            imageUrl: res.imageUrl,
-            cloudinaryPublicId: res.publicId || ''
-          }));
-        }
-        toast.success('Garment photo uploaded to Cloudinary!');
-      }
-    } catch (err) {
-      toast.error('Failed to upload garment photo.');
-    } finally {
-      setUploadingGarmentImage(false);
-    }
-  };
 
   const handleUpdateGarmentPricing = async (e) => {
     e.preventDefault();
@@ -1869,44 +1832,6 @@ const AdminDashboardPage = () => {
                 </select>
               </div>
 
-              {/* Garment Image Upload (Cloudinary) */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Garment Photo (Live Cloudinary Media)
-                </label>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden border border-slate-200">
-                    {editingGarment.imageUrl ? (
-                      <img src={editingGarment.imageUrl} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <Upload className="w-4 h-4 text-slate-400" />
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <label className="px-3 py-1.5 rounded-xl bg-primary-50 text-primary-700 hover:bg-primary-100 font-bold text-xs cursor-pointer inline-flex items-center gap-1.5 border border-primary-200 transition-colors">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>{uploadingGarmentImage ? 'Uploading...' : 'Choose Image File'}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        disabled={uploadingGarmentImage}
-                        onChange={(e) => handleUploadGarmentImage(e.target.files?.[0], true)}
-                        className="hidden"
-                      />
-                    </label>
-                    {editingGarment.imageUrl && (
-                      <button
-                        type="button"
-                        onClick={() => setEditingGarment({ ...editingGarment, primaryImage: null, imageUrl: '', cloudinaryPublicId: '' })}
-                        className="block text-[10px] text-rose-600 hover:underline cursor-pointer"
-                      >
-                        Remove Image
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Wash Only (₹)</label>
@@ -2050,44 +1975,6 @@ const AdminDashboardPage = () => {
                     <option key={c._id} value={c._id}>{c.name}{c.isActive === false ? ' (Archived)' : ''}</option>
                   ))}
                 </select>
-              </div>
-
-              {/* Garment Image Upload (Cloudinary) */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Garment Photo (Live Cloudinary Media)
-                </label>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden border border-slate-200">
-                    {newGarmentForm.imageUrl ? (
-                      <img src={newGarmentForm.imageUrl} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <Upload className="w-4 h-4 text-slate-400" />
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <label className="px-3 py-1.5 rounded-xl bg-primary-50 text-primary-700 hover:bg-primary-100 font-bold text-xs cursor-pointer inline-flex items-center gap-1.5 border border-primary-200 transition-colors">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>{uploadingGarmentImage ? 'Uploading...' : 'Choose Image File'}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        disabled={uploadingGarmentImage}
-                        onChange={(e) => handleUploadGarmentImage(e.target.files?.[0], false)}
-                        className="hidden"
-                      />
-                    </label>
-                    {newGarmentForm.imageUrl && (
-                      <button
-                        type="button"
-                        onClick={() => setNewGarmentForm({ ...newGarmentForm, primaryImage: null, imageUrl: '', cloudinaryPublicId: '' })}
-                        className="block text-[10px] text-rose-600 hover:underline cursor-pointer"
-                      >
-                        Remove Image
-                      </button>
-                    )}
-                  </div>
-                </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

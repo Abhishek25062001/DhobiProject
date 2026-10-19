@@ -110,4 +110,21 @@ test('T07 authoritative booking and immutable invoice snapshots', async t => {
     assert.equal((await submit(valid())).status, 201);
   });
 
+  await t.test('unsupported pins and withdrawn coverage reject both quote and direct submission with no new orders', async () => {
+    const initialCount = await Order.countDocuments();
+    for (const pincode of ['110000', '110002', '110084', '1100011', 'Delhi', '000000']) {
+      const body = { ...valid(), pickupAddress: { ...valid().pickupAddress, pincode } };
+      assert.equal((await request('/orders/quote', { method: 'POST', role: 'customer', body })).status, 400);
+      assert.equal((await submit(body)).status, 400);
+    }
+    const preview = await request('/orders/quote', { method: 'POST', role: 'customer', body: valid() });
+    assert.equal(preview.status, 200);
+    const area = await ServiceArea.findOne({ slug: 'test-hub' });
+    assert.equal((await request(`/admin/service-areas/${area._id}`, { method: 'DELETE', role: 'admin', body: { revision: area.revision } })).status, 200);
+    assert.equal((await submit({ ...valid(), quoteFingerprint: preview.body.fingerprint })).status, 400);
+    assert.equal(await Order.countDocuments(), initialCount);
+    const historical = (await request(`/orders/${accepted._id}`, { role: 'customer' })).body.order;
+    assert.equal(historical.billingSnapshot.coverage.name, 'Test hub');
+  });
+
 });

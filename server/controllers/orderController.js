@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import ServiceArea from '../models/ServiceArea.js';
 import { quoteBooking, quoteFingerprint, validDate, slotTime, couponDiscount } from '../services/booking.js';
 import Order from '../models/Order.js';
 import User from '../models/User.js';
@@ -132,6 +133,8 @@ export const createOrder = async (req, res) => {
         // Touch the slot documents before counting. Concurrent transactions sharing
         // a slot retry against committed orders before inserting another booking.
         await TimeSlot.collection.updateMany({ label: { $in: [req.body.pickupSchedule?.timeSlot, req.body.deliverySchedule?.timeSlot] } }, { $inc: { bookingRevision: 1 } }, { session });
+        // Serialize booking acceptance with coverage edits/deletions as well as slot reservations.
+        await ServiceArea.collection.updateOne({ _id: accepted.billingSnapshot.coverage.areaId }, { $inc: { bookingRevision: 1 } }, { session });
         const current = await quoteBooking(req.body, req.user, { session });
         if (quoteFingerprint(current) !== quoteFingerprint(accepted)) throw Object.assign(new Error('Booking details changed. Review the current quote before placing your order.'), { statusCode: 409, quote: current });
     // 9. Save order

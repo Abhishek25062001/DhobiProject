@@ -387,4 +387,5 @@ export const serviceAreaService = {
   listAdmin: async () => (await API.get('/admin/service-areas')).data,
   create: async body => (await API.post('/admin/service-areas', body)).data,
   save: async (id, body) => (await API.put(`/admin/service-areas/${id}`, body)).data,
+  remove: async (id, revision) => (await API.delete(`/admin/service-areas/${id}`, { data: { revision } })).data,
 };

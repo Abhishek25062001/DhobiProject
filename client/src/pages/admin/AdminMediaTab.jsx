@@ -5,11 +5,9 @@ import { mediaService } from '../../services/api';
 import ApiLoadError from '../../components/ApiLoadError';
 import ManagedImage from '../../components/ManagedImage';
 
-export function imageFileData(file) {
-  if (!file || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) return Promise.reject(new Error('Choose a PNG, JPEG or WebP image.'));
-  if (file.size > 6 * 1024 * 1024) return Promise.reject(new Error('Images must be 6 MB or smaller.'));
-  return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('The file could not be read.')); reader.readAsDataURL(file); });
-}
+import { imageFileData } from '../../utils/imageFileData';
+import ImageUpload from '../../components/ImageUpload';
+
 function MediaCard({ asset }) {
   const [name, setName] = useState(asset.name);
   const [alt, setAlt] = useState(asset.defaultAlt || '');
@@ -34,16 +32,9 @@ function MediaCard({ asset }) {
 }
 export default function AdminMediaTab() {
   const [archived, setArchived] = useState(false);
-  const [busy, setBusy] = useState(false);
   const load = useCallback(signal => mediaService.list(archived, { signal }), [archived]);
   const resource = useApiResource(load);
-  async function upload(file) {
-    setBusy(true);
-    try { await mediaService.upload({ name: file.name, imageBase64: await imageFileData(file) }); toast.success('Image uploaded.'); }
-    catch (error) { toast.error(error.response?.data?.message || error.message); }
-    finally { setBusy(false); }
-  }
-  return <div className="space-y-4"><h2 className="text-xl font-bold">Media library</h2><div className="flex flex-wrap gap-4 items-center"><label className="text-sm font-bold">Upload an image<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={e => { const file = e.target.files[0]; e.target.value = ''; if (file) upload(file); }} /></label><label className="text-sm"><input type="checkbox" checked={archived} onChange={e => setArchived(e.target.checked)} /> Include archived images</label></div>
+  return <div className="space-y-4"><h2 className="text-xl font-bold">Media library</h2><div className="flex flex-wrap gap-4 items-center"><ImageUpload /><label className="text-sm"><input type="checkbox" checked={archived} onChange={e => setArchived(e.target.checked)} /> Include archived images</label></div>
     {resource.error ? <ApiLoadError message="The media library could not be loaded." onRetry={resource.retry} /> : resource.loading ? <p>Loading images…</p> : <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{resource.data.data.map(asset => <MediaCard key={asset._id} asset={asset} />)}</div>}
   </div>;
 }

@@ -13,20 +13,20 @@ const list = item => ({ kind: 'list', item, max: 100 });
 const repeated = fields => object({ id: short, isVisible: bool, sortOrder: number(-10000), ...fields });
 const heading = { eyebrow: short, plain: short, accent: short, intro: text };
 export const CONTENT_BINDINGS = Object.freeze(['freeDeliveryThreshold', 'deliveryFee', 'expressSurcharge', 'gstPercentage', 'minStandardTurnaroundHours', 'expressTurnaroundHours', 'businessName', 'supportPhone', 'gstin', 'sacCode', 'supportEmail', 'businessAddress', 'supportHours', 'privacyEmail', 'legalEmail']);
-export const CONTENT_ICONS = Object.freeze(['Shirt', 'Wind', 'Truck', 'Smartphone', 'Package', 'Clock3', 'ShieldCheck', 'Leaf', 'Sparkles', 'MapPin', 'CreditCard', 'Building2', 'CheckCircle2', 'HeartHandshake']);
+export const CONTENT_ICONS = Object.freeze(['Shirt', 'Wind', 'Truck', 'Smartphone', 'Package', 'Clock3', 'ShieldCheck', 'Leaf', 'Sparkles', 'MapPin', 'CreditCard', 'Building2', 'CheckCircle2', 'HeartHandshake', 'Droplets', 'WashingMachine', 'BadgeCheck', 'Award', 'Heart', 'Star', 'Sun', 'Zap', 'Timer', 'CalendarCheck', 'CircleCheck', 'CircleHelp', 'Recycle', 'Sprout', 'Flower2', 'Wallet', 'Banknote', 'ShoppingBag', 'Gift', 'Home', 'Phone', 'Mail', 'Headphones', 'Smile', 'ThumbsUp', 'Shield', 'Gem', 'Hand', 'Coffee', 'Scissors']);
 export const CONTENT_SCHEMAS = {
   hero: object({ eyebrow: short, plain: short, accent: short, description: text, notePlain: short, noteAccent: short, actionLabel: short, actionHref: link, pickupText: text, turnaroundHours: number(1, 720), paymentText: short, coverageLabel: short, coverageHref: link, beforeLabel: short, afterLabel: short, compareLabel: short, compareHelp: text, beforeImage: media, afterImage: media,
-    benefits: list(repeated({ icon: choice(CONTENT_ICONS), title: short, subtitle: text })) }),
+    benefits: list(repeated({ icon: { kind: 'icon' }, title: short, subtitle: text })) }),
   journey: object({ eyebrow: short, plain: short, accent: short, suffix: short, intro: text, stages: list(repeated({ title: short, description: text, image: media })) }),
   services: object({ ...heading, actionLabel: short, pricePrefix: short, priceUnit: short, unavailableText: text, items: list(repeated({ title: short, description: text, badge: short, image: media, service: choice(SERVICE_CODES), ironing: choice(IRONING_CODES) })) }),
-  comparison: object({ ...heading, firstColumn: short, ownColumn: short, otherColumn: short, scrollHint: text, caption: text, actionLabel: short, actionHref: link, items: list(repeated({ feature: short, icon: choice(CONTENT_ICONS), own: text, other: text })) }),
+  comparison: object({ ...heading, firstColumn: short, ownColumn: short, otherColumn: short, scrollHint: text, caption: text, actionLabel: short, actionHref: link, items: list(repeated({ feature: short, icon: { kind: 'icon' }, own: text, other: text })) }),
   testimonials: object({ ...heading, items: list(repeated({ name: short, role: short, comment: text, rating: number(0, 5), avatar: media })) }),
   areaHeading: object({ ...heading, actionLabel: short, actionHref: link }),
   copy: object({ entries: { ...list(object({ id: short, value: text })), max: 1000 } }),
   navigation: object({ title: short, items: list(repeated({ label: short, href: link, audience: choice(['all', 'guest', 'customer']), highlight: bool })) }),
   links: object({ title: short, items: list(repeated({ label: short, href: link })) }),
   branding: object({ name: short, accent: short, tagline: text, description: text, logo: media, favicon: media }),
-  assurances: object({ items: list(repeated({ title: short, description: text, icon: choice(CONTENT_ICONS), image: media })) }),
+  assurances: object({ items: list(repeated({ title: short, description: text, icon: { kind: 'icon' }, image: media })) }),
   textBlocks: object({ ...heading, items: list(repeated({ title: short, paragraphs: list(text), image: media })) }),
 };
 export const PAGE_KEYS = Object.freeze(['home', 'book', 'pricing', 'global', 'terms', 'privacy', 'areas', 'login', 'register', 'profile', 'orders', 'order-success']);
@@ -52,6 +52,10 @@ export function validateContentValue(schema, value, path = 'Content') {
     case 'boolean': if (typeof value !== 'boolean') fail(path, 'Choose true or false.'); return value;
     case 'number': if (!Number.isFinite(value) || !Number.isInteger(value) || value < schema.min || value > schema.max) fail(path, `Enter a whole number from ${schema.min} to ${schema.max}.`); return value;
     case 'choice': if (!schema.values.includes(value)) fail(path, 'Choose a supported value.'); return value;
+    case 'icon':
+      if (typeof value === 'string') { if (!CONTENT_ICONS.includes(value)) fail(path, 'Choose a supported icon.'); return value; }
+      if (!value) fail(path, 'Choose an icon or upload a custom icon.');
+      return validateContentValue(media, value, path);
     case 'media':
       if (value === null) return null;
       if (!value || !/^[a-f\d]{24}$/i.test(String(value.assetId)) || typeof value.decorative !== 'boolean' || (value.alt !== undefined && (typeof value.alt !== 'string' || value.alt.length > 500))) fail(path, 'Choose an image from the media library.');
@@ -75,6 +79,7 @@ export function validateContentValue(schema, value, path = 'Content') {
 export function blankContentValue(schema) {
   if (schema.kind === 'object') return Object.fromEntries(Object.entries(schema.fields).map(([key, field]) => [key, blankContentValue(field)]));
   if (schema.kind === 'list') return [];
+  if (schema.kind === 'icon') return CONTENT_ICONS[0];
   if (schema.kind === 'media') return null;
   if (schema.kind === 'boolean') return true;
   if (schema.kind === 'number') return Math.max(0, schema.min);

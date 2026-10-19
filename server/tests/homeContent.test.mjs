@@ -49,6 +49,38 @@ test('T09 homepage migration, editing and live promotional prices', async t => {
     assert.equal(published.sections.find(section => section.key === 'hero').content.beforeImage, null);
     assert.equal(bindContentText('Back in {{home.turnaroundHours}} hours', config, { 'home.turnaroundHours': 48 }), 'Back in 48 hours');
   });
+
+  await t.test('expanded and custom icons publish, resolve their image and protect it from archiving', async () => {
+    let page = (await request('/admin/content/home', { role: 'admin' })).body.page;
+    const asset = await MediaAsset.create({ name: 'Custom benefit icon', url: '/images/test-icon.webp', mimeType: 'image/webp', provider: 'local' });
+    const hero = page.sections.find(section => section.key === 'hero').content;
+    hero.benefits[0].icon = { assetId: String(asset._id), decorative: true };
+    hero.benefits[1].icon = 'WashingMachine';
+    const saved = await request('/admin/content/home', { method: 'PUT', role: 'admin', body: page });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    const published = (await request('/content/home')).body.page.sections.find(section => section.key === 'hero').content;
+    assert.equal(published.benefits[0].icon.asset.url, asset.url);
+    assert.equal(published.benefits[1].icon, 'WashingMachine');
+    assert.equal((await request(`/media/${asset._id}`, { method: 'DELETE', role: 'admin' })).status, 409);
+    page = saved.body.page;
+    page.sections.find(section => section.key === 'hero').content.benefits[0].icon = { assetId: '000000000000000000000000', decorative: true };
+    assert.equal((await request('/admin/content/home', { method: 'PUT', role: 'admin', body: page })).status, 400);
+    page.sections.find(section => section.key === 'hero').content.benefits[0].icon = 'ArbitraryUnknownIcon';
+    assert.equal((await request('/admin/content/home', { method: 'PUT', role: 'admin', body: page })).status, 400);
+    await MediaAsset.deleteOne({ _id: asset._id });
+  });
+  await t.test('delivery pricing updates live copy and threshold boundaries, including zero', async () => {
+    for (const threshold of [550.5, 0]) {
+      const saved = await request('/config/settings', { method: 'PUT', role: 'admin', body: { freeDeliveryThreshold: threshold, deliveryFee: 35 } });
+      assert.equal(saved.status, 200);
+      const current = (await request('/config/public')).body.config;
+      assert.equal(current.freeDeliveryThreshold, threshold);
+      assert.equal(bindContentText('Free pickup from ₹{{config.freeDeliveryThreshold}}', current), `Free pickup from ₹${threshold}`);
+      const { calculateTotals } = await import('../../shared/pricing.mjs');
+      assert.equal(calculateTotals({ items: [{ unitPrice: threshold, quantity: 1 }], config: current }).pickupDeliveryFee, 0);
+      if (threshold) assert.equal(calculateTotals({ items: [{ unitPrice: threshold - 0.01, quantity: 1 }], config: current }).pickupDeliveryFee, 35);
+    }
+  });
   await t.test('From pricing uses current eligible products, preserves zero and disappears when unavailable', async () => {
     let catalog = (await request('/catalog/garments')).body.data;
     assert.equal(serviceFromPrice(catalog, config, 'WASH_AND_FOLD', 'NONE'), 35);

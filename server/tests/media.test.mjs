@@ -13,11 +13,14 @@ test('T05 media replacement, removal, failure and permissions', async t => {
   process.env.CLOUDINARY_API_KEY = 'test-only';
   process.env.CLOUDINARY_API_SECRET = 'test-only';
   const original = cloudinary.uploader.upload;
-  let uploads = 0, fail = false;
-  cloudinary.uploader.upload = async () => {
+  let uploads = 0, fail = false, unauthorized = false;
+  cloudinary.uploader.upload = async (input, options) => {
+    assert.equal(options.format, 'webp');
+    assert.deepEqual(options.transformation, [{ width: 2400, height: 2400, crop: 'limit' }, { quality: 'auto:good' }]);
     uploads++;
     if (fail) throw new Error('Simulated storage outage');
-    return { secure_url: `https://example.test/image-${uploads}.png`, public_id: `test-${uploads}`, width: 1, height: 1 };
+    if (unauthorized) throw Object.assign(new Error('Invalid cloud_name private-value'), { http_code: 401 });
+    return { secure_url: `https://example.test/image-${uploads}.webp`, public_id: `test-${uploads}`, width: 1, height: 1, format: 'webp', bytes: 42 };
   };
   t.after(() => { cloudinary.uploader.upload = original; });
   const { request } = await contentTestHarness(t);
@@ -29,6 +32,9 @@ test('T05 media replacement, removal, failure and permissions', async t => {
     asset = response.body.data;
     assert.equal(asset.provider, 'cloudinary');
     assert.equal(asset.width, 1);
+    assert.equal(asset.mimeType, 'image/webp');
+    assert.equal(asset.bytes, 42);
+    assert.match(asset.url, /\.webp$/);
     assert.equal(asset.version, 1);
     for (const name of ['Towel', 'Matching towel']) {
       const response = await request('/catalog/garments', { method: 'POST', role: 'admin', body: { name, categoryId: category._id, pricing: testPrices, primaryImage: { assetId: asset._id } } });
@@ -51,6 +57,8 @@ test('T05 media replacement, removal, failure and permissions', async t => {
     const catalog = await request('/catalog/garments');
     assert.ok(catalog.body.data.every(g => g.imageUrl === asset.url));
     assert.equal(asset.version, 2);
+    assert.equal(asset.mimeType, 'image/webp');
+    assert.equal(asset.bytes, 42);
     assert.equal(asset.history.length, 1);
     assert.equal((await request(`/media/${asset._id}`, { method: 'DELETE', role: 'admin' })).status, 409);
   });
@@ -63,6 +71,15 @@ test('T05 media replacement, removal, failure and permissions', async t => {
     assert.equal(uploads, before);
     assert.equal((await MediaAsset.findById(asset._id)).url, asset.url);
     assert.equal((await MediaAsset.findById(asset._id)).version, 2);
+  });
+  await t.test('rejected storage credentials give a clear error without leaking configuration or changing images', async () => {
+    unauthorized = true;
+    const response = await request(`/media/${asset._id}`, { method: 'PUT', role: 'admin', body: { version: asset.version, imageBase64: png } });
+    unauthorized = false;
+    assert.equal(response.status, 503);
+    assert.match(response.body.message, /Update the Cloudinary configuration/);
+    assert.ok(!response.body.message.includes('private-value'));
+    assert.equal((await MediaAsset.findById(asset._id)).url, asset.url);
   });
   await t.test('clearing one placement does not affect another; gallery references prevent archive', async () => {
     const response = await request(`/catalog/garments/${first._id}`, { method: 'PUT', role: 'admin', body: { primaryImage: null, gallery: [{ assetId: asset._id }] } });
