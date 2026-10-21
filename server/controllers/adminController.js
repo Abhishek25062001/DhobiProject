@@ -775,6 +775,7 @@ export const updateAdminPaymentStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found.' });
     }
 
+    if (order.payment.method === 'ONLINE' || order.payment.razorpayOrderId) return res.status(400).json({ success: false, message: 'Online payment status must be verified with the provider. Manual overrides are not allowed.' });
     const { paymentStatus, transactionId, transactionReferenceId, reconciliationStatus, note } = req.body;
     const now = new Date();
 

@@ -1,3 +1,7 @@
+import { verifyTransactionDatabase } from './services/databaseReadiness.js';
+import { sessionTransport, sessionCookie } from './middleware/sessionMiddleware.js';
+import { startPaymentMaintenance } from './services/paymentMaintenance.js';
+import { randomUUID } from 'node:crypto';
 import contentRevision from './middleware/contentRevision.js';
 import { publicServiceAreaRoutes, adminServiceAreaRoutes } from './routes/serviceAreaRoutes.js';
 import { publicContentRoutes, adminContentRoutes } from './routes/contentRoutes.js';
@@ -29,6 +33,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.use((req, res, next) => { req.requestId = randomUUID(); res.set('X-Request-Id', req.requestId); next(); });
 
 // Production HTTP security headers via Helmet
 app.use(
@@ -38,7 +43,7 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://*.cloudinary.com", "https:*"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "https://checkout.razorpay.com", "https://apis.google.com", "https://www.gstatic.com"],
+        scriptSrc: ["'self'", "https://checkout.razorpay.com", "https://apis.google.com", "https://www.gstatic.com"],
         frameSrc: ["'self'", "https://api.razorpay.com", "https://checkout.razorpay.com", "https://*.firebaseapp.com", "https://www.google.com"],
         connectSrc: ["'self'", "https://api.razorpay.com", "https://lumberjack.razorpay.com", "https://*.googleapis.com", "https://*.firebaseio.com", "https://res.cloudinary.com", "http://localhost:*", "ws://localhost:*"]
       }
@@ -71,8 +76,13 @@ app.use(cors({
   credentials: true
 }));
 
+app.use('/api', sessionTransport(allowedOrigins));
+app.post('/api/auth/logout', (req, res) => { res.clearCookie(sessionCookie, { path: '/api', httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' }); res.json({ success: true }); });
+
 // Body parser with 25mb limit for Base64 image uploads
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json({ limit: '25mb', verify(req, res, buffer) {
+  if (req.originalUrl.split('?')[0] === '/api/orders/webhook/razorpay') req.rawBody = Buffer.from(buffer);
+} }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // NoSQL Injection input sanitization (strips '$' and '.' operators)
@@ -84,7 +94,7 @@ app.use('/api', apiLimiter);
 // Request logging middleware
 app.use((req, res, next) => {
   if (process.env.NODE_ENV !== 'test') {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} requestId=${req.requestId}`);
   }
   next();
 });
@@ -99,8 +109,6 @@ app.get('/api/health', (req, res) => {
     service: 'IndoDhobi API',
     uptime: process.uptime(),
     dbState: conn.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED',
-    dbHost: conn.host || null,
-    dbName: conn.name || null,
     timestamp: new Date().toISOString(),
     razorpayConfigured: Boolean(
       process.env.RAZORPAY_KEY_ID &&
@@ -168,15 +176,20 @@ app.use(errorHandler);
 
 // Startup connects only. Catalog/content defaults require an explicit migration.
 export const startServer = async () => {
+  if (!process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' && process.env.JWT_SECRET.length < 32)) throw new Error('Configure a strong JWT_SECRET before starting the API.');
+  if (process.env.NODE_ENV === 'production' && process.env.RAZORPAY_KEY_ID && !process.env.RAZORPAY_WEBHOOK_SECRET) throw new Error('Configure RAZORPAY_WEBHOOK_SECRET before enabling production online payments.');
   const port = apiPort(process.env.PORT);
   const server = await startHttpService(app, {
     port,
     initialize: async () => {
       await connectDB();
+      await verifyTransactionDatabase();
       await Order.backfillMissingOtps();
     },
     cleanup: disconnectDB,
   });
+  const stopMaintenance = startPaymentMaintenance();
+  server.once('close', stopMaintenance);
   console.log(`IndoDhobi API ready at http://localhost:${port}/api`);
   return server;
 };

@@ -102,6 +102,7 @@ const MyOrdersPage = () => {
   const [actionLoadingId, setActionLoadingId] = useState(null);
 
   const handleRetryOnlinePayment = async (order) => {
+    if (actionLoadingId) return;
     setActionLoadingId(order._id);
     try {
       const res = await orderService.retryPayment(order._id);
@@ -120,12 +121,11 @@ const MyOrdersPage = () => {
           }
         });
       } else {
-        setSelectedOrderForPayment(order);
-        setShowPaymentModal(true);
+        await fetchOrders();
+        toast('Payment status updated.');
       }
     } catch (err) {
-      setSelectedOrderForPayment(order);
-      setShowPaymentModal(true);
+      toast.error(err.response?.data?.message || 'Unable to verify payment. Check again later; do not pay again.');
     } finally {
       setActionLoadingId(null);
     }
@@ -213,6 +213,7 @@ const MyOrdersPage = () => {
         </div>
       ) : (
         <div className="space-y-6">
+          {feed.hasMore && <button className="btn-secondary" disabled={feed.loadingMore} onClick={feed.loadMore}>{feed.loadingMore ? 'Loading…' : 'Load older orders'}</button>}
           {orders.map((order) => {
             const isExpanded = expandedOrderId === order._id;
             const tracking = getTrackingState(order);
@@ -266,10 +267,17 @@ const MyOrdersPage = () => {
                   </div>
 
                   <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100">
+                    {order.payment?.method === 'ONLINE' && order.payment?.status !== 'REFUNDED' && (order.payment?.status !== 'PAID' || order.payment?.refundRequired) && <button type="button" disabled={actionLoadingId === order._id} className="text-xs font-bold text-primary-700 underline disabled:opacity-50" onClick={async event => {
+                      event.stopPropagation(); setActionLoadingId(order._id);
+                      try { const result = await orderService.checkPaymentStatus(order._id); await fetchOrders(); toast(result.order?.payment?.refundRequired ? 'Refund is awaiting provider confirmation.' : result.order?.payment?.status === 'PAID' ? 'Payment confirmed.' : 'Status checked. If money was debited, wait for verification before paying again.'); }
+                      catch (error) { toast.error(error.response?.data?.message || 'Verification unavailable. Please check again later.'); }
+                      finally { setActionLoadingId(null); }
+                    }}>{actionLoadingId === order._id ? 'Checking…' : 'Check payment status'}</button>}
+                    {order.payment?.method === 'ONLINE' && !['PAID', 'REFUNDED'].includes(order.payment?.status) && order.orderStatus !== 'CANCELLED' && order.holdExpiresAt && <p className="text-xs text-amber-800">Payment reservation expires at {new Date(order.holdExpiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Any payment captured after cancellation will be refunded.</p>}
                     {/* Payment Badge */}
                     <div className="text-right">
                       <div className="flex items-center gap-1.5 sm:justify-end">
-                        {order.orderStatus === 'CANCELLED' || order.payment?.status === 'CANCELLED' ? (
+                        {order.payment?.refundRequired ? <span className="text-xs font-bold text-amber-800">Refund awaiting confirmation</span> : order.payment?.status === 'REFUNDED' ? <span className="text-xs font-bold text-indigo-700">Refund confirmed</span> : order.orderStatus === 'CANCELLED' || order.payment?.status === 'CANCELLED' ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-slate-400" />
                             <span className="text-xs font-bold text-slate-500">{copy('cancelled_8ab6812')}</span>
@@ -559,7 +567,7 @@ const MyOrdersPage = () => {
                               className="flex-1 py-2.5 px-3 rounded-xl font-bold text-white bg-primary-600 hover:bg-primary-700 shadow-sm flex items-center justify-center gap-1.5 text-xs transition-colors cursor-pointer"
                             >
                               <CreditCard className="w-3.5 h-3.5" />
-                              <span>{actionLoadingId === order._id ? copy('opening_gateway_fd005d6') : copy('retry_online_payment_2902f50')}</span>
+                              <span>{actionLoadingId === order._id ? 'Processing…' : copy('retry_online_payment_2902f50')}</span>
                             </button>
                             <button
                               type="button"

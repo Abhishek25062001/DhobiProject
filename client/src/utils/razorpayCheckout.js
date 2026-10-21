@@ -109,7 +109,8 @@ export const launchRazorpayCheckout = async ({
           }
         } catch (err) {
           console.error('[Razorpay Verify Error]:', err);
-          toast.error(err.response?.data?.message || 'Server error while verifying payment.');
+          toast.error(err.response?.data?.message || 'Payment is awaiting verification. Check My Orders before paying again.');
+          if (onDismiss) onDismiss();
         }
       },
       modal: {
@@ -120,7 +121,7 @@ export const launchRazorpayCheckout = async ({
               errorCode: 'MODAL_DISMISSED'
             });
           } catch {}
-          toast('Payment dismissed. You can retry payment anytime from My Orders.', { icon: 'ℹ️' });
+          toast('Checkout closed. Check payment status in My Orders before paying again.', { icon: 'ℹ️' });
           if (onDismiss) {
             onDismiss();
           }

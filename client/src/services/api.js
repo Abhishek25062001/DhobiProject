@@ -9,21 +9,16 @@ const API = axios.create({
   // Dev calls go through the Vite proxy so the browser stays same-origin.
   // Production has no proxy, so it calls VITE_API_URL directly.
   baseURL: import.meta.env.DEV || !apiOrigin ? '/api' : `${apiOrigin}/api`,
+  withCredentials: true,
   headers: {
+    'X-Session-Mode': 'cookie',
+    'X-CSRF-Protection': '1',
     'Content-Type': 'application/json',
   },
 });
 
-// Interceptor to inject JWT from localStorage
-API.interceptors.request.use((config) => {
-  const token = localStorage.getItem('indodhobi_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-}, (error) => {
-  return Promise.reject(error);
-});
+// Remove credentials retained by older app versions. Sessions now use HttpOnly cookies.
+localStorage.removeItem('indodhobi_token');
 
 // Interceptor to handle unauthenticated 401s
 API.interceptors.response.use(
@@ -45,6 +40,7 @@ API.interceptors.response.use(
 );
 
 export const authService = {
+  logout: async () => (await API.post('/auth/logout')).data,
   login: async (email, password) => {
     const res = await API.post('/auth/login', { email, password });
     return res.data;
@@ -143,7 +139,12 @@ export const orderService = {
     return res.data;
   },
   createOrder: async (orderPayload) => {
-    const res = await API.post('/orders', orderPayload);
+    const { quoteFingerprint, ...intent } = orderPayload;
+    const serialized = JSON.stringify(intent);
+    const saved = JSON.parse(sessionStorage.getItem('indodhobi_checkout_attempt') || 'null');
+    const attempt = saved?.intent === serialized ? saved : { intent: serialized, key: crypto.randomUUID() };
+    sessionStorage.setItem('indodhobi_checkout_attempt', JSON.stringify(attempt));
+    const res = await API.post('/orders', { ...orderPayload, idempotencyKey: attempt.key });
     return res.data;
   },
   payOnline: async (orderId, paymentData) => {
@@ -154,6 +155,7 @@ export const orderService = {
     const res = await API.post('/orders/verify-payment', paymentData);
     return res.data;
   },
+  checkPaymentStatus: async orderId => (await API.post(`/orders/${orderId}/payment-status`)).data,
   retryPayment: async (orderId) => {
     const res = await API.post(`/orders/${orderId}/retry-payment`);
     return res.data;

@@ -70,11 +70,11 @@ test('T15 cross-owner acceptance and checkout regressions', async t => {
   await t.test('COD, cancelled and mismatched payment sessions are rejected before gateway verification', async () => {
     accepted ||= (await Order.findOne()).toObject();
     const verify = data => request('/orders/verify-payment', { method: 'POST', role: 'customer', body: { orderId: String(accepted._id), razorpay_order_id: 'different-session', razorpay_payment_id: 'fake', razorpay_signature: 'fake', ...data } });
-    assert.match((await verify()).body.message, /must match/);
+    assert.match((await verify()).body.message, /invalid/);
     await Order.updateOne({ _id: accepted._id }, { 'payment.method': 'ONLINE', 'payment.razorpayOrderId': 'correct-session' });
-    assert.match((await verify()).body.message, /must match/);
+    assert.match((await verify()).body.message, /invalid/);
     await Order.updateOne({ _id: accepted._id }, { orderStatus: 'CANCELLED' });
-    assert.match((await verify({ razorpay_order_id: 'correct-session' })).body.message, /must match/);
+    assert.match((await verify({ razorpay_order_id: 'correct-session' })).body.message, /invalid/);
     assert.equal((await Order.findById(accepted._id)).payment.status, 'PENDING');
   });
 });

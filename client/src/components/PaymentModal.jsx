@@ -11,9 +11,11 @@ export default function PaymentModal({ isOpen, onClose, order, onSuccess }) {
   const [error, setError] = useState('');
   if (!isOpen || !order) return null;
   async function retry() {
+    if (processing) return;
     setProcessing(true); setError('');
     try {
       const response = await orderService.retryPayment(order._id);
+      if (!response.razorpay) { if (response.order?.payment?.status === 'PAID') onSuccess?.(response.order); else setError('Check payment status in My Orders before paying again.'); return; }
       await launchRazorpayCheckout({ order: response.order, razorpayPayload: response.razorpay,
         user: response.order.customerSnapshot,
         onSuccess, onDismiss: () => {}, onFallback: () => setError(copy('gateway_unavailable')) });

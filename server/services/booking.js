@@ -46,7 +46,7 @@ export async function quoteBooking(body, user, { now = new Date(), session = nul
     contactPhone: requiredText(address.contactPhone || user.phone, 'Contact phone', 20),
   };
   if (!/^[1-9]\d{5}$/.test(pickupAddress.pincode)) throw bookingError('Enter a valid six-digit pincode.');
-  if (!/^\+?[\d\s()-]{10,20}$/.test(pickupAddress.contactPhone)) throw bookingError('Enter a valid contact phone.');
+  if (!/^\+?[\d\s()-]{10,20}$/.test(pickupAddress.contactPhone) || !/^(91)?[6-9]\d{9}$/.test(pickupAddress.contactPhone.replace(/\D/g, ''))) throw bookingError('Enter a valid contact phone.');
   const coverage = await ServiceArea.findOne({ isActive: true, pincodes: pickupAddress.pincode }).session(session).lean();
   if (!coverage) throw bookingError('Pickup is not currently available for this pincode. Check service areas or choose another address.');
   const preferences = { specialInstructions: body.preferences?.specialInstructions ?? '' };
@@ -75,12 +75,15 @@ export async function quoteBooking(body, user, { now = new Date(), session = nul
   const interval = slotTime(schedules.deliverySchedule.date, slotSnapshots.deliverySchedule.startHour) - slotTime(schedules.pickupSchedule.date, slotSnapshots.pickupSchedule.endHour);
   if (interval < minimumHours * 3600000 || interval <= 0) throw bookingError(`Delivery must be at least ${minimumHours} hours after the pickup window ends.`);
   const categories = await Category.find().session(session).lean();
+  const ids = body.items.map(item => item?.garmentId || item?.garment);
+  if (ids.some(id => typeof id !== 'string' || !mongoose.isObjectIdOrHexString(id))) throw bookingError('Choose a valid garment.');
+  const garments = new Map((await Garment.find({ _id: { $in: ids } }).session(session)).map(item => [String(item._id), item]));
   const items = [];
   for (const item of body.items) {
     const id = item?.garmentId || item?.garment;
     if (typeof id !== 'string' || !mongoose.isObjectIdOrHexString(id)) throw bookingError('Choose a valid garment.');
     if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 999) throw bookingError('Quantity must be a whole number between 1 and 999.');
-    const garment = await Garment.findById(id).session(session);
+    const garment = garments.get(id);
     const category = garment && categoryForGarment(garment, categories);
     if (!garment?.isActive || !category?.isActive) throw bookingError('This garment or category is no longer available. Refresh your basket.');
     if (!selectionAvailable(garment, config, item.serviceType, item.ironingType)) throw bookingError('The selected service or finish is unavailable for this garment.');

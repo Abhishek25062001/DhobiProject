@@ -200,17 +200,19 @@ const AdminDashboardPage = () => {
     }
   };
 
-  const fetchAllOrders = async () => {
+  const [ordersCursor, setOrdersCursor] = useState(null);
+  const fetchAllOrders = async (append = false) => {
     try {
       setLoadingOrders(true);
-      const filters = {};
+      const filters = append === true && ordersCursor ? { cursor: ordersCursor } : {};
       if (selectedStatusFilter !== 'ALL') filters.status = selectedStatusFilter;
       if (selectedPaymentFilter !== 'ALL') filters.paymentStatus = selectedPaymentFilter;
       if (searchQuery) filters.search = searchQuery;
 
       const res = await orderService.getAllOrders(filters);
       if (res.success) {
-        setOrders(res.orders);
+        setOrders(previous => append === true ? [...previous, ...res.orders] : res.orders);
+        setOrdersCursor(res.nextCursor);
       }
     } catch (err) {
       console.error('[Admin Orders Error]:', err);
@@ -932,6 +934,7 @@ const AdminDashboardPage = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
+                    {ordersCursor && <tr><td colSpan={10}><button className="btn-secondary" disabled={loadingOrders} onClick={() => fetchAllOrders(true)}>Load more orders</button></td></tr>}
                     {orders.map((order) => {
                       const isUpdating = updatingId === order._id;
 

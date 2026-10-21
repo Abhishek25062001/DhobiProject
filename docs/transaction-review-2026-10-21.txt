@@ -1,0 +1,259 @@
+INDODHOBI — TRANSACTION, SECURITY AND RELIABILITY REVIEW
+21 October 2026
+
+Scope and evidence
+Repository: /Users/shivamchowdhry/Desktop/Abhishek/indodhobi/DhobiProject
+Reviewed checkout, quoting, booking capacity, payment initiation/verification/webhooks,
+refunds, cancellation, COD collection, rider fulfillment, auth, admin payment routes,
+models/indexes, frontend checkout recovery, existing test suites and dependency audits.
+Changes are local. No deployment, real charge/refund, or production database mutation
+was performed. Provider calls in automated tests use controlled fakes; MongoDB tests
+use a real isolated replica-set process. This is not a production certification.
+
+Priorities: P0 = critical security/financial exposure; P1 = correctness/reliability;
+P2 = performance, usability or operational hardening.
+
+VERIFIED DEFECTS AND IMPLEMENTED FIXES
+
+1. P0 — Production authentication bypass
+Files: server/utils/firebaseVerify.js; server/tests/authIntegrity.test.mjs.
+Root cause: test_/mock_ tokens were accepted outside tests; a fallback trusted decoded
+JWT claims without signature verification after normal verification failed.
+Impact: fabricated identities could authenticate as another phone/UID.
+Fix: simulation is confined to NODE_ENV=test; remove unsigned fallback; production
+requires the provider's verification response, with a 10-second request timeout.
+Evidence: production rejects simulated tokens even with MOCK_FIREBASE=true and rejects
+an unexpired forged JWT. Test-mode fixtures still work.
+Operational follow-up: audit historic accounts/access and rotate existing JWT signing
+keys before release. Removing a bypass does not invalidate already issued tokens.
+
+2. P0 — Public registration could create administrators
+Files: server/controllers/authController.js register/generateToken;
+server/middleware/authMiddleware.js protect; server/server.js startServer.
+Root cause: registration trusted the submitted role; JWT signing/verification had a
+known hard-coded fallback secret.
+Impact: privilege escalation and forged sessions when JWT_SECRET was missing.
+Fix: public registration always creates customers; remove fallback; fail startup
+without a secret, and require at least 32 characters in production.
+Evidence: registration submitting role=admin returns a customer. Staff provisioning
+remains an authenticated admin operation.
+
+3. P0 — Payment retries created additional independently payable sessions
+Files: server/controllers/orderController.js createOrder/retryPayment;
+server/services/payments.js preparePayment/reconcilePayment; server/models/Order.js.
+Root cause: retry created a new Razorpay order and overwrote the previous ID.
+Impact: older checkout sessions could still accept money, causing duplicate charges
+and lost linkage for delayed callbacks.
+Fix: one durable session-initialization claim per order; persist the booking first;
+reuse the original provider order; check provider status and its payments before
+reopening checkout. Authorized/uncertain results block payment attempts. A timeout or
+persistence failure leaves CREATING/UNKNOWN requiring reconciliation, never an automatic
+second provider creation. Add unique partial indexes for provider order/payment IDs.
+Evidence: eight simultaneous starts call provider creation once; retry reuses its ID;
+timeouts and successful provider creation followed by database failure do not permit
+another creation. The provider's own one-successful-payment-per-order rule is essential.
+
+4. P1 — Checkout lacked server idempotency
+Files: server/controllers/orderController.js createOrder; server/models/Order.js;
+client/src/services/api.js createOrder; client/src/pages/BookingPage.jsx.
+Root cause: repeated HTTP POSTs each created a booking; short random order numbers
+could also collide as volume grew.
+Fix: require a checkout key, bind it to customer plus submitted intent, enforce unique
+index, recover the existing order for replay, reject changed details with the same key.
+Frontend preserves its key through refresh/timeouts; a synchronous guard prevents
+rapid repeat clicks. Order references now use UUIDs.
+Evidence: six concurrent identical submissions persist one booking; replay recovers it;
+changed details and malformed keys fail. Conflicting in-flight requests may return 409;
+retry the SAME payload/key or inspect My Orders. Never silently generate a new key
+when an outcome is uncertain. Separate browser sessions/new keys denote separate intents.
+
+5. P0 — Signature alone marked a payment captured
+Files: server/controllers/orderController.js verifyPayment/handleRazorpayWebhook;
+server/services/payments.js validatePayment/applyCapturedPayment.
+Root cause: HMAC verification was treated as proof of captured funds; amount/currency
+and provider capture state were not checked.
+Fix: browser verification fetches the payment server-side; compare provider order ID,
+amount in paise and INR currency and require captured status/flag. Signed capture
+webhooks use the same transaction-bound transition. Clients cannot set financial state.
+Evidence: wrong amount, currency, order, authorized-only payment and unavailable provider
+all fail closed. Concurrent duplicate captures create one history/payment transition.
+
+6. P1 — Webhooks verified reconstructed JSON and callback writes raced
+Files: server/server.js JSON parser; server/controllers/orderController.js webhook,
+recordPaymentFailure; server/services/payments.js.
+Root cause: JSON.stringify(parsedBody) differs from original signed bytes; callbacks
+and client failure notices used read-modify-save and could overwrite paid status.
+Fix: retain original bytes, use dedicated webhook secret and constant-time HMAC;
+transactional, idempotent capture; browser dismissal and failed attempts do not
+downgrade order-level financial state. Unknown provider sessions return a retryable
+error rather than silently discarding capture evidence.
+Evidence: whitespace-formatted signed callbacks succeed; byte tampering fails;
+repeated callbacks do not append history; browser failures cannot overwrite payment ID.
+
+7. P0 — Cancellation falsely asserted a refund
+Files: server/controllers/orderController.js cancelOrder/checkPaymentStatus;
+server/models/Order.js pre-validation; server/services/payments.js refundCancelledOrder,
+applyRefund; server/scripts/reconcilePayments.js.
+Root cause: cancellation changed PAID to REFUNDED without contacting the provider;
+the model also erased payment evidence for cancelled orders.
+Fix: preserve paid financial truth, record refundRequired, claim at most one refund
+request and verify the provider payment is fully refunded before marking REFUNDED.
+Handle refund.processed callbacks through a provider fetch. Late capture on a cancelled
+booking records funds and a refund obligation without restoring the booking/capacity.
+Unknown refund outcomes remain locked pending verification. No blind refund retries.
+Evidence: five concurrent refund workers issue one request; pending refund remains
+PAID/refundRequired; full provider confirmation clears obligation; delayed capture
+cannot overwrite REFUNDED. Capture after unpaid cancellation leaves capacity released.
+
+8. P0 — Alternate staff routes could bypass payment verification
+Files: server/controllers/orderController.js updateOrderStatus/reconcileCodPayment;
+server/controllers/adminController.js updateAdminPaymentStatus.
+Root cause: general status/admin endpoints accepted arbitrary paymentStatus, including
+online PAID/REFUNDED, without provider evidence.
+Fix: general status route refuses financial changes; online admin override is blocked;
+COD reconciliation cannot change online payments. Doorstep QR collection remains PENDING
+until an authorized reconciliation, rather than treating a supplied UTR as proof.
+Evidence: general status route cannot mark payment paid; provider tests cover the only
+new online capture transition. COD bank verification remains an operator responsibility.
+
+9. P1 — Rider access and fulfillment transitions were too broad
+Files: server/routes/orderRoutes.js; server/controllers/orderController.js
+getOrderById/getAllOrders/acceptRiderTask/verifyPickup/verifyDelivery/updateOrderStatus;
+server/models/Order.js; server/middleware/securityMiddleware.js.
+Root cause: rider role gave broad order access; OTPs leaked on alternate responses;
+accept-task could replace another rider; delivery had no valid-state/assignment gate;
+generic status updates could skip doorstep verification or overwrite concurrent state.
+Fix: scope reads to assigned riders, strip OTP objects AND virtual aliases from rider
+responses, restrict claims/doorstep actions to eligible assignment/state, require online
+payment before fulfillment, require next processing stage, route pickup/delivery through
+OTP endpoints, enable optimistic concurrency and return refresh/retry conflicts.
+Generate OTPs with cryptographic randomness; add per-account/order attempt limiting.
+Evidence: stage integration tests now use real pickup/delivery endpoints and confirm
+delivered orders cannot be cancelled. All applicable regression tests pass.
+Limit: limiter storage is process-local; use shared storage before horizontal scaling.
+
+10. P1 — Unsafe recovery and misleading frontend payment feedback
+Files: client/src/pages/BookingPage.jsx, MyOrdersPage.jsx;
+client/src/components/PaymentModal.jsx; client/src/utils/razorpayCheckout.js;
+client/src/services/api.js.
+Root cause: retry/verification errors could open another payment UI; cancellation UI
+hid refund obligations; callback verification failure left little recovery guidance.
+Fix: keep backend error messages visible, show explicit status-check action/loading,
+route uncertain results to My Orders, handle already-paid response without reopening
+checkout, distinguish refund awaiting confirmation from confirmed refund, persist the
+checkout retry identity and guard repeated submit calls.
+Evidence: production build passes. No browser visual/responsive acceptance run or live
+provider popup test was performed in this review; those remain release checks.
+
+11. P2 — Availability and quote reads did unnecessary work
+Files: server/controllers/orderController.js getAvailableSlots;
+server/services/booking.js quoteBooking; server/models/Order.js indexes.
+Root cause: availability loaded full orders and scanned them once per slot; quotes
+fetched each garment serially (up to 100 catalogue queries).
+Fix: grouped database slot counts and a map lookup; one batched garment query within
+the same transaction snapshot; compound date/slot/status indexes for both booking legs.
+Evidence: existing exact-pricing/validation/slot tests pass. No throughput or p95 latency
+claim is made; actual improvement needs representative production-like measurement.
+
+12. P2 — Diagnostic leakage, unbounded calls and weak recovery observability
+Files: server/server.js; server/middleware/errorMiddleware.js;
+server/controllers/orderController.js; server/utils/razorpay.js;
+server/scripts/reconcilePayments.js.
+Fix: remove public database host/name, add request IDs, omit query strings from access
+logs, sanitize order errors, remove OTP mismatch logging, set 15-second gateway timeout,
+log structured payment/refund reconciliation events, provide bounded reconciliation
+batches ordered by last-check time. Search input is bounded and regex-escaped.
+No external monitoring system or scheduled production worker was configured here.
+
+CONFIRMED EXISTING SAFEGUARDS
+
+- Booking transactions touch the relevant TimeSlot documents before re-counting both
+  pickup and delivery bookings. Contending transactions retry against committed orders.
+  ServiceArea is also touched, serializing coverage edits with booking acceptance.
+- Competing authenticated buyers: eight requests for one pickup place accept one;
+  different pickup dates competing for one delivery place accept one.
+- Failed database insertion rolls back the transaction and consumes no slot.
+- Server quote recalculates catalogue prices, quantities, fees, tax, discounts and
+  snapshots; forged totals/labels are ignored. Inactive catalogue/options, invalid
+  quantities, unsupported pincodes, past/full slots and insufficient turnaround fail.
+- This is a laundry SERVICE catalogue. Garments do not have stock-on-hand, and their
+  quantities are garments to process, not items sold from inventory. A finite-stock
+  “last physical item” purchase is therefore NOT implemented or tested. Introducing
+  retail stock requires an atomic conditional stock decrement/reservation ledger in
+  the same transaction and corresponding multi-buyer tests.
+
+REMAINING VERIFIED LIMITATIONS / RISKS AND SPECIFIC FOLLOW-UP
+
+A. P1, verified operational gap: unknown provider-create outcomes intentionally stop
+   automatic progress. Reconcile provider orders by receipt/account, verify amount and
+   currency, then attach the unique correct provider ID through a reviewed admin repair.
+   Do not clear sessionState and blindly retry. Legacy overwritten gateway IDs must
+   also be recovered from provider history before asserting duplicate-payment safety
+   for OLD orders. No automatic attachment/repair UI was added.
+
+B. P1, verified availability limitation: unpaid online bookings have no expiry worker
+   and continue reserving slots. Add explicit hold expiry/cancellation with the same
+   late-capture refund handling. Do not TTL-delete financial order records. Decide the
+   business hold duration; test expiry/capture races before enabling automatic release.
+
+C. P1, deployment risk (not reproduced against production): transactions require a
+   replica set and new unique indexes must exist. Review legacy duplicate provider IDs
+   before index creation. Startup now awaits Order.init(); index errors must block
+   release rather than be ignored. Confirm production autoIndex/migration policy.
+
+D. P1/P2, verified dependency advisories, exploitability not demonstrated: npm audit
+   reported 3 high server dependency findings (nodemon/chokidar/braces), and 15 client
+   findings (10 high, 5 moderate), including Firebase/Firestore/gRPC, Tailwind/globbing,
+   Vite/esbuild and router chains. Counts include transitive and development packages,
+   not distinct proven production exploits. Several proposed fixes involve major
+   upgrades or downgrades; none were blindly applied. Upgrade supported compatible
+   versions in a separate dependency migration and rerun auth/build/browser tests.
+
+E. P2, verified scalability limits: getMyOrders/getMyActiveOrders/getAllOrders and some
+   analytics still load unbounded collections; startup OTP backfill is also unbounded.
+   Add cursor pagination with UI support, database aggregation for analytics and batched
+   migration/backfill. Slot/coverage document locks serialize unrelated dates in the
+   same template/area. For higher throughput introduce date/leg/slot reservation documents
+   with conditional counters; benchmark before replacing the proven transaction guard.
+
+F. P2, potential security risk: browser auth tokens remain in localStorage, CSP permits
+   inline scripts, and limiters use memory per process. No XSS exploit was demonstrated.
+   Move toward HttpOnly session cookies with CSRF controls, tighter CSP and a shared
+   limiter store, preserving payment-provider integration tests.
+
+G. P1, live verification outstanding: test real Razorpay test-mode capture, cancellation,
+   refund, delayed webhooks, disconnect/reconnect, and Firebase project verification.
+   Verify webhook secret, capture settings, provider account/currency and deployed indexes.
+   No production charging/refunding, stress test, multi-region failover or browser
+   accessibility/visual certification was performed.
+
+H. P2, observability deployment: ship payment_setup_requires_reconciliation,
+   refund_requires_reconciliation and payment_webhook_failed logs to monitoring; alert
+   on oldest unresolved payments/refunds and repeated provider failures. Configure an
+   infrastructure schedule for server's payments:reconcile command. It checks at most
+   100 records/run, rotates by lastCheckedAt, never creates new payment sessions, and
+   may initiate an owed full refund. It was syntax-checked, NOT run on live data.
+
+VERIFICATION
+- npm test / test:acceptance: 180 tests passed (23 connectivity, 6 contracts,
+  20 cache/draft/tracking, 131 server tests), zero failures. Subsequent focused
+  transaction/stage regressions also passed after the final hardening edits.
+- Expanded transactionIntegrity suite: 15 scenarios plus parent test; isolated replica
+  set and fake provider. Includes different buyers, final pickup/delivery capacity,
+  duplicate submission/replay, unauthorized access, concurrent session creation,
+  retries, amount/currency/capture validation, duplicate callbacks, raw-body signatures,
+  tampering, client failure, database rollback, provider-success/database-failure,
+  late capture after cancellation, and idempotent refund confirmation.
+- authIntegrity rejects production simulated/forged identities.
+- Production frontend build passed; existing deferred invoice chunk warning (~606 KB)
+  remains. git diff --check passed.
+- Existing tests expecting direct admin delivery/cancellation were updated to exercise
+  the dedicated protected endpoints, rather than weakening the new safeguards.
+- Standard npm test now runs maintained acceptance tests; obsolete scripts that relied
+  on insecure public staff registration are no longer the default test command.
+
+Provider contract used:
+https://razorpay.com/docs/api/orders/fetch-with-id/
+The paid provider order rejects subsequent payment requests; reusing its identity is
+fundamental to duplicate-charge prevention. Application tests cannot independently
+prove the payment provider's live behavior.

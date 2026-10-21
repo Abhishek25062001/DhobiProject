@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { connectDB, disconnectDB } from '../config/db.js';
@@ -18,12 +19,13 @@ export async function contentTestHarness(t) {
     const user = await User.create({ name: `Test ${role}`, email: `${role}@example.test`, phone: role === 'admin' ? '9990000001' : '9990000002', password: 'isolated-test-password', role });
     users[role] = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
   }
-  async function request(path, { method = 'GET', body, role } = {}) {
+  async function request(path, { method = 'GET', body, role, headers = {}, rawBody } = {}) {
+    if (path === '/orders' && method === 'POST' && body && !Object.hasOwn(body, 'idempotencyKey')) body = { ...body, idempotencyKey: randomUUID() };
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, {
-      method, headers: { 'Content-Type': 'application/json', ...(role ? { Authorization: `Bearer ${users[role]}` } : {}) },
-      ...(body ? { body: JSON.stringify(body) } : {}),
+      method, headers: { 'Content-Type': 'application/json', ...(role ? { Authorization: `Bearer ${users[role]}` } : {}), ...headers },
+      ...(rawBody !== undefined ? { body: rawBody } : body ? { body: JSON.stringify(body) } : {}),
     });
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, body: await response.json(), headers: response.headers };
   }
   return { request, users };
 }

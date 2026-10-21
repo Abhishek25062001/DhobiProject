@@ -1,8 +1,9 @@
+import { readSessionCookie } from './sessionMiddleware.js';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
 export const protect = async (req, res, next) => {
-  let token;
+  let token = readSessionCookie(req);
 
   if (
     req.headers.authorization &&
@@ -21,7 +22,7 @@ export const protect = async (req, res, next) => {
   try {
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET || 'indodhobi_super_secret_jwt_key_2026'
+      process.env.JWT_SECRET
     );
 
     req.user = await User.findById(decoded.id).select('-password');

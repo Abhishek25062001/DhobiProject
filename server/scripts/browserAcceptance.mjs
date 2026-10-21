@@ -1,12 +1,16 @@
 // Disposable local acceptance environment. Never connects to the configured project database.
 import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import dotenv from 'dotenv';
+const gatewayFixture = process.argv.includes('--razorpay-test') ? dotenv.parse(readFileSync(new URL('../.env', import.meta.url))) : null;
+if (gatewayFixture && !gatewayFixture.RAZORPAY_KEY_ID?.startsWith('rzp_test_')) throw new Error('Only test-mode gateway credentials are permitted.');
 if (!process.argv.includes('--isolated')) throw new Error('This runner requires --isolated.');
 process.env.NODE_ENV = 'test';
 process.env.PORT = '5101';
 process.env.VITE_API_URL = 'http://127.0.0.1:5101';
 process.env.JWT_SECRET = 'isolated-browser-acceptance-only';
 for (const key of ['MONGO_URI', 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET', 'CLOUDINARY_URL', 'CLAUDINARY_CLOUD_NAME', 'CLAUDINARY_API_KEY', 'CLAUDINARY_API_SECRET', 'CLAUDINARY_URL']) process.env[key] = '';
+if (gatewayFixture) { process.env.RAZORPAY_KEY_ID = gatewayFixture.RAZORPAY_KEY_ID; process.env.RAZORPAY_KEY_SECRET = gatewayFixture.RAZORPAY_KEY_SECRET; }
 const { connectDB, disconnectDB } = await import('../config/db.js');
 await connectDB();
 const { app } = await import('../server.js');

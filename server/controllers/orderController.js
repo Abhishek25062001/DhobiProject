@@ -1,4 +1,9 @@
-import { orderStage, orderStatusLabel } from '../../shared/orderStages.mjs';
+import { orderPage, pageResult } from '../services/orderPagination.js';
+import { holdDeadline, recoverPaymentSession } from '../services/paymentMaintenance.js';
+import crypto from 'node:crypto';
+import { preparePayment, reconcilePayment, applyCapturedPayment, validatePayment, refundCancelledOrder, applyRefund } from '../services/payments.js';
+import { getRazorpayInstance } from '../utils/razorpay.js';
+import { TRACKING_STAGES, orderStage, orderStatusLabel } from '../../shared/orderStages.mjs';
 import mongoose from 'mongoose';
 import { bookingAddressConsent, lockedAddressUser, saveAddressInBook } from '../services/addressBook.js';
 import ServiceArea from '../models/ServiceArea.js';
@@ -37,18 +42,17 @@ export const getAvailableSlots = async (req, res) => {
     // Dynamic TimeSlots from MongoDB
     let activeSlots = await TimeSlot.find({ isActive: true }).sort({ sortOrder: 1, startHour: 1 });
     // Count existing pickup bookings for each slot on this date
-    const ordersOnDate = await Order.find({
-      [`${scheduleKey}.date`]: date,
-      orderStatus: { $ne: 'CANCELLED' }
-    });
+    const counts = await Order.aggregate([
+      { $match: { [`${scheduleKey}.date`]: date, orderStatus: { $ne: 'CANCELLED' } } },
+      { $group: { _id: `$${scheduleKey}.timeSlot`, count: { $sum: 1 } } }
+    ]);
+    const booked = new Map(counts.map(row => [row._id, row.count]));
 
     const slotAvailability = activeSlots.map((slotDoc) => {
       const slot = slotDoc.label;
       const maxCapacity = slotDoc.maxCapacity;
 
-      const bookedCount = ordersOnDate.filter(
-        (o) => o[scheduleKey]?.date === date && o[scheduleKey]?.timeSlot === slot
-      ).length;
+      const bookedCount = booked.get(slot) || 0;
 
       const remaining = Math.max(0, maxCapacity - bookedCount);
 
@@ -71,7 +75,7 @@ export const getAvailableSlots = async (req, res) => {
     });
   } catch (error) {
     console.error('[Slots Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
       message: 'Failed to retrieve slot availability.'
     });
@@ -85,11 +89,20 @@ export const previewOrder = async (req, res) => {
   try {
     const quote = await quoteBooking(req.body, req.user);
     return res.json({ success: true, quote, fingerprint: quoteFingerprint(quote) });
-  } catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.message }); }
+  } catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.statusCode ? error.message : 'Unable to prepare your quote. Please try again.' }); }
 };
 
 export const createOrder = async (req, res) => {
   try {
+    const checkoutKey = req.body.idempotencyKey;
+    if (typeof checkoutKey !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(checkoutKey)) return res.status(400).json({ success: false, message: 'A valid checkout retry key is required. Refresh checkout.' });
+    const { idempotencyKey, quoteFingerprint: ignoredQuote, ...intent } = req.body;
+    const checkoutHash = crypto.createHash('sha256').update(JSON.stringify(intent)).digest('hex');
+    const existing = await Order.findOne({ customer: req.user._id, checkoutKey });
+    if (existing) {
+      if (existing.checkoutHash !== checkoutHash) return res.status(409).json({ success: false, message: 'This checkout was already submitted with different details. Review My Orders first.' });
+      return res.json({ success: true, ...(existing.payment.method === 'ONLINE' && existing.orderStatus !== 'CANCELLED' ? await preparePayment(existing) : { order: existing, razorpay: null }) });
+    }
     const addressConsent = bookingAddressConsent(req.body.addressBook);
     const accepted = await quoteBooking(req.body, req.user);
     if (req.body.quoteFingerprint && req.body.quoteFingerprint !== quoteFingerprint(accepted)) return res.status(409).json({ success: false, message: 'Booking details changed. Review the current quote before placing your order.', quote: accepted, fingerprint: quoteFingerprint(accepted) });
@@ -97,12 +110,11 @@ export const createOrder = async (req, res) => {
     const grandTotal = accepted.pricingBreakdown.grandTotal;
 
     // 6. Generate unique Indian Order ID
-    const year = new Date().getFullYear();
-    const randomSuffix = Math.floor(100000 + Math.random() * 900000);
-    const orderNumber = `IDB-${year}-${randomSuffix}`;
+    const orderNumber = `IDB-${crypto.randomUUID()}`;
 
     // 7. Handle Payment setup
     const isOnline = paymentMethod === 'ONLINE';
+    if (isOnline && !getRazorpayInstance()) return res.status(503).json({ success: false, message: 'Online payment is unavailable. Choose payment on delivery or try again later.' });
     let paymentData = {
       method: isOnline ? 'ONLINE' : 'COD',
       onlineSubMethod: isOnline ? (onlineSubMethod || 'UPI') : null,
@@ -116,18 +128,9 @@ export const createOrder = async (req, res) => {
 
     let razorpayPayload = null;
 
-    if (isOnline) {
-      const rzOrder = await createRazorpayOrder(grandTotal, orderNumber);
-      paymentData.razorpayOrderId = rzOrder.id;
-      razorpayPayload = {
-        ...rzOrder,
-        key_id: rzOrder.keyId || process.env.RAZORPAY_KEY_ID
-      };
-    }
-
     // 8. Generate 4-digit doorstep verification OTPs
-    const pickupOtp = Math.floor(1000 + Math.random() * 9000).toString();
-    const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
+    const pickupOtp = crypto.randomInt(1000, 10000).toString();
+    const deliveryOtp = crypto.randomInt(1000, 10000).toString();
 
     let order;
     let savedAddresses;
@@ -150,6 +153,8 @@ export const createOrder = async (req, res) => {
     // 9. Save order
     order = (await Order.create([{
       orderNumber,
+      checkoutKey, checkoutHash,
+      ...(isOnline ? { holdExpiresAt: holdDeadline() } : {}),
       customer: req.user._id,
       ...current,
       payment: paymentData,
@@ -180,6 +185,10 @@ export const createOrder = async (req, res) => {
       }, { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } });
     } finally { await session.endSession(); }
 
+    if (isOnline) {
+      try { const ready = await preparePayment(order); order = ready.order; razorpayPayload = ready.razorpay; }
+      catch (error) { return res.status(201).json({ success: true, order, razorpay: null, message: error.message }); }
+    }
     return res.status(201).json({
       success: true,
       message: 'Order placed successfully!',
@@ -188,10 +197,14 @@ export const createOrder = async (req, res) => {
       ...(savedAddresses ? { addresses: savedAddresses } : {})
     });
   } catch (error) {
-    console.error('[Create Order Error]:', error.message);
+    if (error.code === 11000 && req.body.idempotencyKey) {
+      const existing = await Order.findOne({ customer: req.user._id, checkoutKey: req.body.idempotencyKey });
+      if (existing) return res.status(409).json({ success: false, message: 'Checkout already submitted. Retry with the same details to recover your order.' });
+    }
+    console.error('[Create Order Error]:', error.name);
     return res.status(error.statusCode || (error.name === 'ValidationError' ? 400 : 500)).json({
       success: false,
-      message: error.message || 'Server error while creating order.',
+      message: error.statusCode ? error.message : 'Could not complete checkout. Retry with the same details or check My Orders.',
       ...(error.quote ? { quote: error.quote, fingerprint: quoteFingerprint(error.quote) } : {})
     });
   }
@@ -200,90 +213,27 @@ export const createOrder = async (req, res) => {
 // @desc    Verify Razorpay online payment cryptographically
 // @route   POST /api/orders/verify-payment or POST /api/orders/:id/pay-online
 // @access  Private
+const ownedOrder = async (req) => {
+  const id = req.params.id || req.body.orderId;
+  if (!mongoose.isObjectIdOrHexString(id)) throw Object.assign(new Error('Choose a valid order.'), { statusCode: 400 });
+  const order = await Order.findById(id);
+  if (!order) throw Object.assign(new Error('Order not found.'), { statusCode: 404 });
+  if (String(order.customer) !== String(req.user._id) && req.user.role !== 'admin') throw Object.assign(new Error('Not authorized to access this order.'), { statusCode: 403 });
+  return order;
+};
+const paymentFailure = (res, error) => res.status(error.statusCode || 503).json({ success: false, message: error.statusCode ? error.message : 'Payment could not be verified. Check again later; do not pay again.' });
 export const verifyPayment = async (req, res) => {
   try {
-    const { orderId, razorpay_order_id, razorpay_payment_id, razorpay_signature, onlineSubMethod } = req.body;
-    const targetId = req.params.id || orderId;
-
-    if (!targetId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Order ID is required.'
-      });
-    }
-
-    const order = await Order.findById(targetId);
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found.'
-      });
-    }
-
-    // Customer or admin authorization check
-    if (order.customer.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to update payment for this order.'
-      });
-    }
-
-    if (order.payment?.method !== 'ONLINE' || order.orderStatus === 'CANCELLED' || !order.payment.razorpayOrderId || (razorpay_order_id && razorpay_order_id !== order.payment.razorpayOrderId)) return res.status(400).json({ success: false, message: 'Payment verification must match this order’s payment session.' });
-
-    const orderIdToVerify = razorpay_order_id || order.payment?.razorpayOrderId;
-    const paymentIdToVerify = razorpay_payment_id;
-
-    if (!orderIdToVerify || !paymentIdToVerify || !razorpay_signature) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required payment verification fields (razorpay_order_id, razorpay_payment_id, razorpay_signature).'
-      });
-    }
-
-    // Strict HMAC-SHA256 signature verification
-    const isValid = verifyRazorpaySignature(orderIdToVerify, paymentIdToVerify, razorpay_signature);
-
-    if (!isValid) {
-      return res.status(400).json({
-        success: false,
-        message: 'Payment verification failed. Invalid cryptographic signature.'
-      });
-    }
-
-    order.payment.status = 'PAID';
-    order.payment.transactionId = paymentIdToVerify;
-    order.payment.razorpayOrderId = orderIdToVerify;
-    order.payment.razorpayPaymentId = paymentIdToVerify;
-    order.payment.razorpaySignature = razorpay_signature;
-    order.payment.onlineSubMethod = onlineSubMethod || order.payment.onlineSubMethod || 'UPI';
-    order.payment.paidAt = new Date();
-
-    if (!order.statusHistory) {
-      order.statusHistory = [];
-    }
-    order.statusHistory.push({
-      status: order.orderStatus,
-      timestamp: new Date(),
-      updatedBy: req.user._id,
-      updaterRole: req.user.role || 'customer',
-      note: `Online payment verified & captured via ${onlineSubMethod || 'Razorpay'}. Transaction ID: ${paymentIdToVerify}`
-    });
-
-    await order.save();
-
-    return res.json({
-      success: true,
-      message: 'Payment verified and captured successfully!',
-      order
-    });
-  } catch (error) {
-    console.error('[Verify Payment Error]:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to process online payment verification.'
-    });
-  }
+    const order = await ownedOrder(req);
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    if (!order.payment.razorpayOrderId || razorpay_order_id !== order.payment.razorpayOrderId || !verifyRazorpaySignature(order.payment.razorpayOrderId, razorpay_payment_id, razorpay_signature)) return res.status(400).json({ success: false, message: 'Payment verification details are invalid.' });
+    const gateway = getRazorpayInstance();
+    if (!gateway) throw new Error('Unavailable');
+    const payment = await gateway.payments.fetch(razorpay_payment_id);
+    validatePayment(order, payment);
+    const captured = await applyCapturedPayment(order._id, payment);
+    return res.json({ success: true, order: await refundCancelledOrder(captured) });
+  } catch (error) { return paymentFailure(res, error); }
 };
 
 // @desc    Record client-side payment failure or checkout dismissal
@@ -291,53 +241,10 @@ export const verifyPayment = async (req, res) => {
 // @access  Private
 export const recordPaymentFailure = async (req, res) => {
   try {
-    const { reason, errorCode, paymentId } = req.body;
-    const order = await Order.findById(req.params.id);
-
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found.'
-      });
-    }
-
-    if (order.customer.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to update payment status for this order.'
-      });
-    }
-
-    if (order.payment.status !== 'PAID') {
-      order.payment.status = 'FAILED';
-      if (paymentId) order.payment.razorpayPaymentId = paymentId;
-
-      if (!order.statusHistory) {
-        order.statusHistory = [];
-      }
-      order.statusHistory.push({
-        status: order.orderStatus,
-        timestamp: new Date(),
-        updatedBy: req.user._id,
-        updaterRole: req.user.role || 'customer',
-        note: `Payment failed/dismissed: ${reason || 'Checkout closed by user'} (Code: ${errorCode || 'USER_DISMISSED'})`
-      });
-
-      await order.save();
-    }
-
-    return res.json({
-      success: true,
-      message: 'Payment failure recorded.',
-      order
-    });
-  } catch (error) {
-    console.error('[Record Payment Failure Error]:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to record payment failure.'
-    });
-  }
+    const order = await ownedOrder(req);
+    // Browser dismissal is not evidence of a failed charge. Never downgrade financial state.
+    return res.json({ success: true, order, message: 'Checkout closed. Check payment status in My Orders before paying again.' });
+  } catch (error) { return paymentFailure(res, error); }
 };
 
 // @desc    Razorpay Server Webhook Handler
@@ -345,81 +252,34 @@ export const recordPaymentFailure = async (req, res) => {
 // @access  Public
 export const handleRazorpayWebhook = async (req, res) => {
   try {
-    const webhookSignature = req.headers['x-razorpay-signature'];
-    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
-
-    if (!webhookSignature || !webhookSecret) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing webhook signature or secret.'
-      });
+    const signature = req.headers['x-razorpay-signature'];
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!secret || !Buffer.isBuffer(req.rawBody) || typeof signature !== 'string' || !/^[a-f0-9]{64}$/i.test(signature)) return res.status(400).json({ success: false, message: 'Invalid webhook signature.' });
+    const expected = crypto.createHmac('sha256', secret).update(req.rawBody).digest();
+    if (!crypto.timingSafeEqual(expected, Buffer.from(signature, 'hex'))) return res.status(400).json({ success: false, message: 'Invalid webhook signature.' });
+    const event = JSON.parse(req.rawBody.toString('utf8'));
+    if (['payment.captured', 'order.paid'].includes(event.event)) {
+      const payment = event.payload?.payment?.entity;
+      if (!payment?.order_id) return res.status(400).json({ success: false });
+      const order = await Order.findOne({ 'payment.razorpayOrderId': payment.order_id });
+      if (!order) return res.status(503).json({ success: false, message: 'Payment session awaiting reconciliation.' });
+      const captured = await applyCapturedPayment(order._id, payment);
+      await refundCancelledOrder(captured);
     }
-
-    const crypto = await import('crypto');
-    const bodyPayload = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-    const expectedSignature = crypto.default
-      .createHmac('sha256', webhookSecret)
-      .update(bodyPayload)
-      .digest('hex');
-
-    if (expectedSignature !== webhookSignature) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid webhook cryptographic signature.'
-      });
+    if (event.event === 'refund.processed') {
+      const refund = event.payload?.refund?.entity;
+      if (!refund?.payment_id) return res.status(400).json({ success: false });
+      const order = await Order.findOne({ 'payment.razorpayPaymentId': refund.payment_id });
+      if (!order) return res.status(503).json({ success: false });
+      const gateway = getRazorpayInstance();
+      if (!gateway) throw new Error('Unavailable');
+      await applyRefund(order, await gateway.payments.fetch(refund.payment_id));
     }
-
-    const event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    const { event: eventName, payload } = event;
-
-    if (eventName === 'payment.captured' || eventName === 'order.paid') {
-      const paymentEntity = payload?.payment?.entity;
-      const rzpOrderId = paymentEntity?.order_id;
-      const paymentId = paymentEntity?.id;
-
-      if (rzpOrderId) {
-        const order = await Order.findOne({ 'payment.razorpayOrderId': rzpOrderId });
-        if (order && order.payment.status !== 'PAID') {
-          order.payment.status = 'PAID';
-          order.payment.transactionId = paymentId;
-          order.payment.razorpayPaymentId = paymentId;
-          order.payment.paidAt = new Date();
-          if (!order.statusHistory) order.statusHistory = [];
-          order.statusHistory.push({
-            status: order.orderStatus,
-            timestamp: new Date(),
-            updaterRole: 'system',
-            note: `Payment captured via Razorpay webhook. Transaction ID: ${paymentId}`
-          });
-          await order.save();
-        }
-      }
-    } else if (eventName === 'payment.failed') {
-      const paymentEntity = payload?.payment?.entity;
-      const rzpOrderId = paymentEntity?.order_id;
-      if (rzpOrderId) {
-        const order = await Order.findOne({ 'payment.razorpayOrderId': rzpOrderId });
-        if (order && order.payment.status !== 'PAID') {
-          order.payment.status = 'FAILED';
-          if (!order.statusHistory) order.statusHistory = [];
-          order.statusHistory.push({
-            status: order.orderStatus,
-            timestamp: new Date(),
-            updaterRole: 'system',
-            note: `Payment failed via Razorpay webhook: ${paymentEntity?.error_description || 'Declined'}`
-          });
-          await order.save();
-        }
-      }
-    }
-
-    return res.status(200).json({ status: 'ok' });
+    // Failed attempts cannot downgrade a captured or still-pending order.
+    return res.json({ status: 'ok' });
   } catch (error) {
-    console.error('[Razorpay Webhook Error]:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Webhook processing failed.'
-    });
+    console.error(JSON.stringify({ event: 'payment_webhook_failed', error: error.name }));
+    return paymentFailure(res, error);
   }
 };
 
@@ -430,53 +290,17 @@ export const payOnlineOrder = verifyPayment;
 // @route   POST /api/orders/:id/retry-payment
 // @access  Private
 export const retryPayment = async (req, res) => {
+  try { return res.json({ success: true, ...await preparePayment(await ownedOrder(req)) }); }
+  catch (error) { return paymentFailure(res, error); }
+};
+
+export const checkPaymentStatus = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found.'
-      });
-    }
-
-    if (order.customer.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to retry payment for this order.'
-      });
-    }
-
-    if (order.orderStatus === 'CANCELLED') return res.status(400).json({ success: false, message: 'Cancelled orders cannot start a payment session.' });
-
-    if (order.payment.status === 'PAID') {
-      return res.status(400).json({
-        success: false,
-        message: 'This order has already been paid.'
-      });
-    }
-
-    const rzOrder = await createRazorpayOrder(order.pricingBreakdown.grandTotal, order.orderNumber);
-    order.payment.method = 'ONLINE';
-    order.payment.razorpayOrderId = rzOrder.id;
-    order.payment.status = 'PENDING';
-    await order.save();
-
-    return res.json({
-      success: true,
-      message: 'Ready for online checkout.',
-      order,
-      razorpay: {
-        ...rzOrder,
-        key_id: rzOrder.keyId || process.env.RAZORPAY_KEY_ID
-      }
-    });
-  } catch (error) {
-    console.error('[Retry Payment Error]:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to initialize payment retry.'
-    });
-  }
+    let order = await recoverPaymentSession(await ownedOrder(req));
+    if (order.payment.razorpayOrderId && !['PAID', 'REFUNDED'].includes(order.payment.status)) order = (await reconcilePayment(order)).order;
+    order = await refundCancelledOrder(order);
+    return res.json({ success: true, order });
+  } catch (error) { return paymentFailure(res, error); }
 };
 
 // @desc    Switch an unpaid online order to Cash on Delivery (COD)
@@ -484,45 +308,14 @@ export const retryPayment = async (req, res) => {
 // @access  Private
 export const switchToCod = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found.'
-      });
-    }
-
-    if (order.customer.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to modify this order.'
-      });
-    }
-
-    if (order.payment.status === 'PAID') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot switch payment method for an already paid order.'
-      });
-    }
-
-    order.payment.method = 'COD';
-    order.payment.onlineSubMethod = null;
-    order.payment.status = 'PENDING';
+    const order = await ownedOrder(req);
+    if (order.orderStatus === 'CANCELLED' || order.payment.status === 'PAID' || order.payment.razorpayOrderId || ![null, undefined, 'NONE'].includes(order.payment.sessionState)) return res.status(409).json({ success: false, message: 'An online payment session may still accept payment. Contact support before changing payment method.' });
+    const config = await PlatformConfig.findOne();
+    if (!config || (config.companyPaymentConfig?.allowCashOnDelivery === false && config.companyPaymentConfig?.allowCompanyQrOnDelivery === false)) return res.status(400).json({ success: false, message: 'Payment on delivery is unavailable.' });
+    order.payment.method = 'COD'; order.payment.onlineSubMethod = null;
     await order.save();
-
-    return res.json({
-      success: true,
-      message: 'Successfully switched order payment method to Cash on Delivery (COD).',
-      order
-    });
-  } catch (error) {
-    console.error('[Switch to COD Error]:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to switch payment method to COD.'
-    });
-  }
+    return res.json({ success: true, order });
+  } catch (error) { return paymentFailure(res, error); }
 };
 
 // @desc    Get logged-in user's orders
@@ -531,40 +324,24 @@ export const switchToCod = async (req, res) => {
 export const getMyOrders = async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
-    const orders = await Order.find({ customer: req.user._id })
+    const filter = { customer: req.user._id };
+    const limit = orderPage(req, filter);
+    const orders = await Order.find(filter)
       .populate('items.garment', 'name category iconName')
       .populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails')
       .populate('payment.collectedBy payment.reconciledBy', 'name phone email')
-      .sort({ createdAt: -1 });
+      .sort({ _id: -1 }).limit(limit + 1);
 
-    // Auto-backfill OTPs if any legacy order is missing them
-    for (const order of orders) {
-      let needsSave = false;
-      if (!order.verificationCodes) {
-        order.verificationCodes = {};
-        needsSave = true;
-      }
-      if (!order.verificationCodes.pickupOtp) {
-        order.verificationCodes.pickupOtp = String(Math.floor(1000 + Math.random() * 9000));
-        needsSave = true;
-      }
-      if (!order.verificationCodes.deliveryOtp) {
-        order.verificationCodes.deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
-        needsSave = true;
-      }
-      if (needsSave) {
-        await order.save();
-      }
-    }
-
+    const pagination = pageResult(orders, limit);
     return res.json({
+      ...pagination,
       success: true,
       count: orders.length,
       orders
     });
   } catch (error) {
     console.error('[Get My Orders Error]:', error);
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: 'Failed to retrieve your orders.'
     });
@@ -577,43 +354,27 @@ export const getMyOrders = async (req, res) => {
 export const getMyActiveOrders = async (req, res) => {
   res.set('Cache-Control', 'no-store');
   try {
-    const activeOrders = await Order.find({
+    const filter = {
       customer: req.user._id,
       orderStatus: { $nin: ['DELIVERED', 'CANCELLED'] }
-    })
+    };
+    const limit = orderPage(req, filter);
+    const activeOrders = await Order.find(filter)
       .populate('items.garment', 'name category iconName imageUrl')
       .populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails')
       .populate('payment.collectedBy payment.reconciledBy', 'name phone email')
-      .sort({ updatedAt: -1 });
+      .sort({ _id: -1 }).limit(limit + 1);
 
-    // Auto-backfill OTPs if any active order is missing them
-    for (const order of activeOrders) {
-      let needsSave = false;
-      if (!order.verificationCodes) {
-        order.verificationCodes = {};
-        needsSave = true;
-      }
-      if (!order.verificationCodes.pickupOtp) {
-        order.verificationCodes.pickupOtp = String(Math.floor(1000 + Math.random() * 9000));
-        needsSave = true;
-      }
-      if (!order.verificationCodes.deliveryOtp) {
-        order.verificationCodes.deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
-        needsSave = true;
-      }
-      if (needsSave) {
-        await order.save();
-      }
-    }
-
+    const pagination = pageResult(activeOrders, limit);
     return res.json({
+      ...pagination,
       success: true,
       count: activeOrders.length,
       activeOrders
     });
   } catch (error) {
     console.error('[Get My Active Orders Error]:', error);
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: 'Failed to retrieve active orders.'
     });
@@ -642,7 +403,7 @@ export const getOrderById = async (req, res) => {
     // Check authorization: customer owning order or admin/rider
     if (
       order.customer._id.toString() !== req.user._id.toString() &&
-      !['admin', 'rider'].includes(req.user.role)
+      req.user.role !== 'admin' && !(req.user.role === 'rider' && [order.logistics?.pickupRider?._id, order.logistics?.deliveryRider?._id, order.logistics?.assignedRider?._id].some(id => String(id) === String(req.user._id)))
     ) {
       return res.status(403).json({
         success: false,
@@ -655,7 +416,7 @@ export const getOrderById = async (req, res) => {
       order
     });
   } catch (error) {
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
       message: 'Failed to retrieve order details.'
     });
@@ -668,7 +429,7 @@ export const getOrderById = async (req, res) => {
 export const getAllOrders = async (req, res) => {
   try {
     const { status, paymentStatus, date, search } = req.query;
-    const filter = {};
+    const filter = req.user.role === 'rider' ? { $and: [{ $or: ['assignedRider', 'pickupRider', 'deliveryRider'].map(key => ({ [`logistics.${key}`]: req.user._id })) }] } : {};
 
     if (status && status !== 'ALL') {
       filter.orderStatus = orderStage(status) ? { $in: orderStage(status).aliases } : status;
@@ -686,7 +447,7 @@ export const getAllOrders = async (req, res) => {
     }
 
     if (search && search.trim()) {
-      const trimmedSearch = search.trim();
+      const trimmedSearch = search.trim().slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const matchingCustomers = await User.find({
         $or: [
           { name: { $regex: trimmedSearch, $options: 'i' } },
@@ -708,6 +469,7 @@ export const getAllOrders = async (req, res) => {
 
       if (filter.$or) {
         filter.$and = [
+          ...(filter.$and || []),
           { $or: filter.$or },
           { $or: searchConditions }
         ];
@@ -717,20 +479,23 @@ export const getAllOrders = async (req, res) => {
       }
     }
 
+    const limit = orderPage(req, filter);
     const orders = await Order.find(filter)
       .populate('customer', 'name email phone')
       .populate('logistics.assignedRider logistics.pickupRider logistics.deliveryRider', 'name phone email riderDetails')
       .populate('payment.collectedBy payment.reconciledBy', 'name phone email')
-      .sort({ createdAt: -1 });
+      .sort({ _id: -1 }).limit(limit + 1);
 
+    const pagination = pageResult(orders, limit);
     return res.json({
+      ...pagination,
       success: true,
       count: orders.length,
       orders
     });
   } catch (error) {
     console.error('[Get All Orders Error]:', error);
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: 'Failed to retrieve platform orders.'
     });
@@ -752,29 +517,13 @@ export const updateOrderStatus = async (req, res) => {
       });
     }
 
-    if (orderStatus) {
-      order.orderStatus = orderStatus;
-      if (orderStatus === 'CANCELLED') {
-        if (order.payment?.status === 'PAID') {
-          order.payment.status = 'REFUNDED';
-        } else if (!paymentStatus) {
-          order.payment.status = 'CANCELLED';
-        }
-        order.payment.reconciliationStatus = 'NOT_APPLICABLE';
-      }
-    }
-
-    if (paymentStatus) {
-      order.payment.status = paymentStatus;
-      if (paymentStatus === 'PAID') {
-        if (!order.payment.transactionId) {
-          order.payment.transactionId = transactionId || `COD_COLLECTED_${Date.now()}`;
-        }
-        if (!order.payment.paidAt) {
-          order.payment.paidAt = new Date();
-        }
-      }
-    }
+    if (paymentStatus || ['CANCELLED', 'PICKED_UP', 'DELIVERED'].includes(orderStatus)) return res.status(400).json({ success: false, message: 'Use the dedicated cancellation, payment or doorstep verification action.' });
+    if (req.user.role !== 'admin') return res.status(403).json({ success: false, message: 'Only administrators may update processing stages.' });
+    if (['CANCELLED', 'DELIVERED'].includes(order.orderStatus) || (order.payment.method === 'ONLINE' && order.payment.status !== 'PAID')) return res.status(409).json({ success: false, message: 'This order cannot advance until payment and order status are resolved.' });
+    const previousStage = TRACKING_STAGES.indexOf(orderStage(order.orderStatus));
+    const nextStage = TRACKING_STAGES.indexOf(orderStage(orderStatus));
+    if (nextStage < 0 || nextStage < previousStage || nextStage > previousStage + 1) return res.status(409).json({ success: false, message: 'Choose the next processing stage. Refresh the order before updating.' });
+    order.orderStatus = orderStatus;
 
     if (!order.statusHistory) {
       order.statusHistory = [];
@@ -807,9 +556,9 @@ export const updateOrderStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('[Update Order Status Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
-      message: error.message || 'Failed to update order status.'
+      message: error.name === 'VersionError' ? 'Order changed while processing. Refresh and try again.' : 'Failed to update order status.'
     });
   }
 };
@@ -827,7 +576,7 @@ export const getRiders = async (req, res) => {
     });
   } catch (error) {
     console.error('[Get Riders Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
       message: 'Failed to retrieve riders list.'
     });
@@ -981,9 +730,9 @@ export const assignRider = async (req, res) => {
     });
   } catch (error) {
     console.error('[Assign Rider Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
-      message: error.message || 'Failed to assign rider to order.'
+      message: error.name === 'VersionError' ? 'Order changed while processing. Refresh and try again.' : 'Failed to assign rider to order.'
     });
   }
 };
@@ -1001,6 +750,9 @@ export const acceptRiderTask = async (req, res) => {
       });
     }
 
+    if (!['BOOKED', 'ORDER_PLACED', 'CONFIRMED', 'PICKUP_ASSIGNED', 'OUT_FOR_PICKUP', 'READY', 'QUALITY_CHECK', 'OUT_FOR_DELIVERY'].includes(order.orderStatus) || (order.payment.method === 'ONLINE' && order.payment.status !== 'PAID')) return res.status(409).json({ success: false, message: 'This order is not ready for rider acceptance.' });
+    const assigned = ['READY', 'QUALITY_CHECK', 'OUT_FOR_DELIVERY'].includes(order.orderStatus) ? order.logistics.deliveryRider : order.logistics.pickupRider;
+    if (assigned && String(assigned) !== String(req.user._id)) return res.status(403).json({ success: false, message: 'This task is assigned to another rider.' });
     const riderId = req.user._id;
     const now = new Date();
     const isDeliveryStage = ['READY', 'QUALITY_CHECK', 'OUT_FOR_DELIVERY'].includes(order.orderStatus);
@@ -1047,9 +799,9 @@ export const acceptRiderTask = async (req, res) => {
     });
   } catch (error) {
     console.error('[Accept Task Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
-      message: error.message || 'Failed to accept task.'
+      message: error.name === 'VersionError' ? 'Order changed while processing. Refresh and try again.' : 'Failed to accept task.'
     });
   }
 };
@@ -1160,7 +912,7 @@ export const getRiderTasks = async (req, res) => {
     });
   } catch (error) {
     console.error('[Get Rider Tasks Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
       message: 'Failed to retrieve rider tasks.'
     });
@@ -1206,9 +958,11 @@ export const verifyPickup = async (req, res) => {
       });
     }
 
+    if (req.user.role !== 'admin' && String(order.logistics?.pickupRider) !== String(req.user._id)) return res.status(403).json({ success: false, message: 'This order is assigned to another rider.' });
+    if (!['PICKUP_ASSIGNED', 'OUT_FOR_PICKUP'].includes(order.orderStatus)) return res.status(409).json({ success: false, message: 'This doorstep action is not available in the current order state.' });
+    if (order.payment.method === 'ONLINE' && order.payment.status !== 'PAID') return res.status(409).json({ success: false, message: 'Online payment must be verified before fulfillment.' });
     const actualOtp = String(order.verificationCodes?.pickupOtp || order.pickupOtp || '').trim();
     if (!submittedOtp || submittedOtp !== actualOtp) {
-      console.warn(`[Verify Pickup]: OTP mismatch for order ${order.orderNumber}. Submitted: "${submittedOtp}", Actual: "${actualOtp}"`);
       return res.status(400).json({
         success: false,
         message: `Invalid pickup verification OTP. Please request the 4-digit OTP shown for order ${order.orderNumber} on customer's screen.`
@@ -1308,9 +1062,9 @@ export const verifyPickup = async (req, res) => {
     });
   } catch (error) {
     console.error('[Verify Pickup Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
-      message: error.message || 'Failed to verify pickup.'
+      message: error.name === 'VersionError' ? 'Order changed while processing. Refresh and try again.' : 'Failed to verify pickup.'
     });
   }
 };
@@ -1331,9 +1085,11 @@ export const verifyDelivery = async (req, res) => {
       });
     }
 
+    if (req.user.role !== 'admin' && String(order.logistics?.deliveryRider) !== String(req.user._id)) return res.status(403).json({ success: false, message: 'This order is assigned to another rider.' });
+    if (!['OUT_FOR_DELIVERY'].includes(order.orderStatus)) return res.status(409).json({ success: false, message: 'This doorstep action is not available in the current order state.' });
+    if (order.payment.method === 'ONLINE' && order.payment.status !== 'PAID') return res.status(409).json({ success: false, message: 'Online payment must be verified before fulfillment.' });
     const actualOtp = String(order.verificationCodes?.deliveryOtp || order.deliveryOtp || '').trim();
     if (!submittedOtp || submittedOtp !== actualOtp) {
-      console.warn(`[Verify Delivery]: OTP mismatch for order ${order.orderNumber}. Submitted: "${submittedOtp}", Actual: "${actualOtp}"`);
       return res.status(400).json({
         success: false,
         message: `Invalid delivery verification OTP. Please request the 4-digit OTP shown for order ${order.orderNumber} on customer's screen.`
@@ -1355,8 +1111,8 @@ export const verifyDelivery = async (req, res) => {
       const chosenMethod = rawMethod;
       const totalDue = order.payment.codAmount || order.pricingBreakdown?.grandTotal || 0;
       const now = new Date();
-      order.payment.status = 'PAID';
-      order.payment.paidAt = now;
+      order.payment.status = chosenMethod === 'CASH' ? 'PAID' : 'PENDING';
+      order.payment.paidAt = chosenMethod === 'CASH' ? now : null;
       order.payment.amountCollected = totalDue;
       order.payment.collectedBy = req.user._id;
       order.payment.collectedAt = now;
@@ -1416,9 +1172,9 @@ export const verifyDelivery = async (req, res) => {
     });
   } catch (error) {
     console.error('[Verify Delivery Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
-      message: error.message || 'Failed to verify delivery.'
+      message: error.name === 'VersionError' ? 'Order changed while processing. Refresh and try again.' : 'Failed to verify delivery.'
     });
   }
 };
@@ -1433,6 +1189,7 @@ export const reconcileCodPayment = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found.' });
     }
 
+    if (order.payment.method !== 'COD' || order.orderStatus === 'CANCELLED') return res.status(400).json({ success: false, message: 'Only collected COD payments can be reconciled here.' });
     const { reconciliationStatus, notes, transactionReferenceId } = req.body;
     const now = new Date();
 
@@ -1446,7 +1203,7 @@ export const reconcileCodPayment = async (req, res) => {
     if (transactionReferenceId) {
       order.payment.transactionReferenceId = String(transactionReferenceId).trim();
     }
-    if (order.payment.status !== 'PAID') {
+    if (reconciliationStatus === 'RECONCILED' && order.payment.status !== 'PAID') {
       order.payment.status = 'PAID';
       order.payment.paidAt = order.payment.paidAt || now;
     }
@@ -1471,7 +1228,7 @@ export const reconcileCodPayment = async (req, res) => {
     });
   } catch (error) {
     console.error('[Reconcile COD Error]:', error);
-    return res.status(500).json({ success: false, message: 'Failed to reconcile payment.' });
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({ success: false, message: 'Failed to reconcile payment.' });
   }
 };
 
@@ -1492,7 +1249,7 @@ export const getActiveCoupons = async (req, res) => {
     });
   } catch (error) {
     console.error('[Get Coupons Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
       message: 'Failed to retrieve active coupons.'
     });
@@ -1589,9 +1346,9 @@ export const createCoupon = async (req, res) => {
     });
   } catch (error) {
     console.error('[Create Coupon Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
-      message: error.message || 'Failed to create coupon.'
+      message: error.name === 'VersionError' ? 'Order changed while processing. Refresh and try again.' : 'Failed to create coupon.'
     });
   }
 };
@@ -1623,7 +1380,7 @@ export const cancelOrder = async (req, res) => {
     }
 
     // Cancellation is allowed strictly in BOOKED or PICKUP_ASSIGNED states
-    const cancellableStatuses = ['BOOKED', 'PICKUP_ASSIGNED'];
+    const cancellableStatuses = ['BOOKED', 'ORDER_PLACED', 'CONFIRMED', 'PICKUP_SCHEDULED', 'PICKUP_ASSIGNED', 'OUT_FOR_PICKUP'];
     if (!cancellableStatuses.includes(order.orderStatus)) {
       return res.status(400).json({
         success: false,
@@ -1635,7 +1392,7 @@ export const cancelOrder = async (req, res) => {
 
     // If payment was already collected, mark as REFUNDED, else mark as CANCELLED (no payment due)
     if (order.payment.status === 'PAID') {
-      order.payment.status = 'REFUNDED';
+      order.payment.refundRequired = true;
     } else {
       order.payment.status = 'CANCELLED';
     }
@@ -1654,6 +1411,8 @@ export const cancelOrder = async (req, res) => {
     });
 
     await order.save();
+    try { await refundCancelledOrder(order); } catch { console.error(JSON.stringify({ event: 'refund_requires_reconciliation', orderId: String(order._id) })); }
+
 
     return res.json({
       success: true,
@@ -1662,7 +1421,7 @@ export const cancelOrder = async (req, res) => {
     });
   } catch (error) {
     console.error('[Cancel Order Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
       message: 'Failed to cancel order.'
     });
@@ -1682,7 +1441,7 @@ export const getAllCoupons = async (req, res) => {
     });
   } catch (error) {
     console.error('[Get All Coupons Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
       message: 'Failed to retrieve coupons.'
     });
@@ -1712,9 +1471,9 @@ export const toggleCoupon = async (req, res) => {
     });
   } catch (error) {
     console.error('[Toggle Coupon Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
-      message: error.message || 'Failed to toggle coupon status.'
+      message: error.name === 'VersionError' ? 'Order changed while processing. Refresh and try again.' : 'Failed to toggle coupon status.'
     });
   }
 };
@@ -1724,76 +1483,24 @@ export const toggleCoupon = async (req, res) => {
 // @access  Private/Admin
 export const getOrderAnalytics = async (req, res) => {
   try {
-    const allOrders = await Order.find();
-
-    let totalRevenue = 0;
-    let settledRevenue = 0;
-    let pendingCodRevenue = 0;
-    let expressOrdersCount = 0;
-    let activeOrders = 0;
-    let deliveredOrders = 0;
-    let cancelledOrders = 0;
-
-    const statusBreakdown = {
-      BOOKED: 0,
-      PICKUP_ASSIGNED: 0,
-      PICKED_UP: 0,
-      IN_WASH: 0,
-      IRONING: 0,
-      QUALITY_CHECK: 0,
-      OUT_FOR_DELIVERY: 0,
-      DELIVERED: 0,
-      CANCELLED: 0
-    };
-
-    allOrders.forEach((o) => {
-      const grand = o.pricingBreakdown?.grandTotal || 0;
-      const status = o.orderStatus;
-
-      // Status breakdown
-      if (statusBreakdown[status] !== undefined) {
-        statusBreakdown[status] += 1;
-      } else {
-        statusBreakdown[status] = 1;
-      }
-
-      // Counts
-      if (status === 'DELIVERED') {
-        deliveredOrders += 1;
-      } else if (status === 'CANCELLED') {
-        cancelledOrders += 1;
-      } else {
-        activeOrders += 1;
-      }
-
-      if (o.isExpress) {
-        expressOrdersCount += 1;
-      }
-
-      // Revenue: non-cancelled orders count towards total revenue
-      if (status !== 'CANCELLED') {
-        totalRevenue += grand;
-      }
-
-      // Settled revenue: strictly PAID orders
-      if (o.payment?.status === 'PAID') {
-        settledRevenue += grand;
-      }
-
-      // Pending COD revenue: COD method, PENDING status, and not cancelled
-      if (
-        o.payment?.method === 'COD' &&
-        o.payment?.status === 'PENDING' &&
-        status !== 'CANCELLED'
-      ) {
-        pendingCodRevenue += grand;
-      }
-    });
+    const [grouped] = await Order.aggregate([{ $facet: {
+      totals: [{ $group: { _id: null, totalOrders: { $sum: 1 },
+        activeOrders: { $sum: { $cond: [{ $in: ['$orderStatus', ['DELIVERED', 'CANCELLED']] }, 0, 1] } },
+        deliveredOrders: { $sum: { $cond: [{ $eq: ['$orderStatus', 'DELIVERED'] }, 1, 0] } },
+        cancelledOrders: { $sum: { $cond: [{ $eq: ['$orderStatus', 'CANCELLED'] }, 1, 0] } },
+        expressOrdersCount: { $sum: { $cond: ['$isExpress', 1, 0] } },
+        totalRevenue: { $sum: { $cond: [{ $ne: ['$orderStatus', 'CANCELLED'] }, '$pricingBreakdown.grandTotal', 0] } },
+        settledRevenue: { $sum: { $cond: [{ $eq: ['$payment.status', 'PAID'] }, '$pricingBreakdown.grandTotal', 0] } },
+        pendingCodRevenue: { $sum: { $cond: [{ $and: [{ $eq: ['$payment.method', 'COD'] }, { $eq: ['$payment.status', 'PENDING'] }, { $ne: ['$orderStatus', 'CANCELLED'] }] }, '$pricingBreakdown.grandTotal', 0] } }
+      } }], statuses: [{ $group: { _id: '$orderStatus', count: { $sum: 1 } } }]
+    } }]);
+    const { totalOrders = 0, activeOrders = 0, deliveredOrders = 0, cancelledOrders = 0, expressOrdersCount = 0, totalRevenue = 0, settledRevenue = 0, pendingCodRevenue = 0 } = grouped.totals[0] || {};
+    const statusBreakdown = Object.fromEntries(grouped.statuses.map(row => [row._id, row.count]));
 
     return res.json({
       success: true,
       analytics: {
-        totalOrders: allOrders.length,
+        totalOrders,
         activeOrders,
         deliveredOrders,
         cancelledOrders,
@@ -1806,7 +1513,7 @@ export const getOrderAnalytics = async (req, res) => {
     });
   } catch (error) {
     console.error('[Get Order Analytics Error]:', error);
-    return res.status(500).json({
+    return res.status(error.name === 'VersionError' ? 409 : 500).json({
       success: false,
       message: 'Failed to compute order analytics.'
     });

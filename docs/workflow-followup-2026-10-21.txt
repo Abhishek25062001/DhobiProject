@@ -1,0 +1,126 @@
+WORKFLOW FOLLOW-UP — 21 October 2026
+Current status: local fixes implemented and verified; production acceptance remains a deployment task.
+This report supersedes the open-items section of transaction-review-2026-10-21.txt.
+That earlier report retains the detailed original findings and transaction fixes.
+
+RESOLVED FINDINGS (verified unless stated otherwise)
+P1 — Abandoned online checkouts held booking capacity indefinitely.
+Files: server/services/paymentMaintenance.js; server/models/Order.js;
+server/controllers/orderController.js; server/services/payments.js.
+Fix: explicit 30-minute hold (BOOKING_HOLD_MINUTES, 5–1440), minute-based expiry,
+legacy hold cutoff, and atomic capture-versus-expiry behavior. No financial record
+is deleted. Expired/cancelled reservations never reactivate; late captured funds
+create an owed refund. COD and paid bookings are not expired. UI shows the deadline.
+Test: repeated simultaneous capture/expiry, late capture and COD exclusion.
+
+P1 — A lost provider creation response left checkout permanently unrecoverable.
+File: server/services/paymentMaintenance.js, recoverPaymentSession.
+Fix: search by original receipt; attach exactly one matching amount/currency session.
+Missing, ambiguous, mismatching or truncated results remain blocked for review.
+The process never creates a replacement payment order to resolve uncertainty.
+Test: concurrent recovery, empty results, duplicate matches and currency mismatch.
+
+P1 — Refund timeout recovery had no safe automatic retry.
+Files: server/services/payments.js; server/utils/razorpay.js; server/models/Order.js.
+Fix: durable refund key and claim time; verify payment before attempting a refund;
+use Razorpay X-Refund-Idempotency for every retry of an original request. Stale claims
+can be retried using that same key. Full refund is confirmed from provider evidence.
+Legacy UNKNOWN refunds without a persisted key remain blocked for manual review.
+Test: timeout after provider acceptance, five concurrent retries, one reused key,
+provider-verified refund and subsequent duplicate no-op; existing refund race suite.
+
+P1 — Deployment could run without transaction/index prerequisites (potential
+production risk; production database not inspected).
+Files: server/services/databaseReadiness.js; server/server.js.
+Fix: require replica set/mongos, explicitly create required indexes even if autoIndex
+is disabled, confirm unique identities, refuse startup on failures. Production
+online-payment configuration requires a webhook secret. No existing index is dropped.
+Test: isolated real MongoDB replica set readiness and transaction regressions.
+Existing duplicate production records require investigation before indexes can build.
+
+P1/P2 — Dependency advisories (verified audit findings; exploitability not proven).
+Files: client/package*.json; server/package*.json; client/src/config/firebase.js;
+client/postcss.config.js; client/src/index.css.
+Fix: updated supported frontend dependencies; import only Firebase app/auth; migrate
+Tailwind PostCSS; replace nodemon with Node watch. Both package audits now report zero
+known vulnerabilities. Build and browser authentication/checkout verified.
+
+P2 — Browser JWT exposure, inline script allowance and per-process limits (potential
+exposure; no successful exploit demonstrated).
+Files: server/middleware/sessionMiddleware.js; server/middleware/authMiddleware.js;
+server/middleware/securityMiddleware.js; server/services/mongoRateLimitStore.js;
+client/src/context/AuthContext.jsx; client/src/services/api.js; server/server.js.
+Fix: HttpOnly cookie sessions, no browser JWT persistence, custom-header/origin CSRF
+checks, production Secure cookies, remove inline script CSP permission, shared MongoDB
+rate counters with TTL. Existing bearer API clients remain supported. Login state is
+verified at startup; removed duplicate identity fetch triggered by setting auth state.
+Test: cookie contains HttpOnly, JWT omitted from JSON, authenticated cookie request,
+missing/hostile CSRF rejected, logout; 30 atomic requests across two limiter instances;
+browser login and refresh persistence; Razorpay test checkout still opens.
+
+P2 — Unbounded order history/analytics/backfill work (verified).
+Files: server/services/orderPagination.js; server/controllers/orderController.js;
+server/models/Order.js; client/src/context/CustomerOrdersContext.jsx;
+client/src/pages/MyOrdersPage.jsx; client/src/pages/AdminDashboardPage.jsx.
+Fix: bounded cursor pages (default 50, maximum 100), load-more interfaces, database
+analytics aggregation, streamed conditional OTP backfill instead of loading all orders.
+Active orders are fetched separately to preserve recent active-order visibility.
+Test: bounded page sizes, no duplicates, ownership filter and malformed cursor/limit.
+
+P2 — Recovery required manually scheduled reconciliation (verified).
+Files: server/services/paymentMaintenance.js; server/scripts/reconcilePayments.js;
+server/server.js.
+Fix: automatic bounded recurring maintenance, local overlap prevention, rotation by
+lastCheckedAt and structured summary/unresolved logs. Durable claims/idempotency protect
+multiple instances. The command remains available for operational invocation.
+Test: bounded processing, unresolved reporting, no fabricated payment/refund status.
+
+P2 — Recovery UI and feed regressions found during browser verification (verified).
+Files: client/src/context/CustomerOrdersContext.jsx; client/src/pages/MyOrdersPage.jsx.
+Fix: paginated feed returns required success marker; show reservation deadline; use
+neutral Processing label when any order action is running. Closed checkout directs to
+My Orders with check-status and retry controls, without claiming a successful payment.
+
+VERIFICATION
+Full automated acceptance run: 189 passing, zero failures (23 connectivity, 6 contracts,
+20 cache/tracking, 140 server tests). Tests use an isolated replica set and controlled
+provider responses for captures/refunds/errors, not real charges.
+Covered: concurrent final pickup and delivery slots; duplicate submissions; uncertain
+session creation; server amount/currency/capture validation; ownership; duplicate signed
+callbacks; failed DB writes/rollback; cancellation and late capture; idempotent refunds;
+expiry races; CSRF/cookies; shared limits and pagination.
+This is a laundry service: garment entries are service catalog entries, not decremented
+physical-stock units. The scarce resource is pickup/delivery booking capacity. A future
+retail stock feature would require its own transactional stock ledger and tests.
+Frontend production build passes. Deferred invoice chunk remains about 612 KB.
+Both client/server npm audit report zero vulnerabilities at verification time.
+Browser: disposable database, fixture customer, real Razorpay TEST credentials only.
+Verified required coverage rejection; slot availability; minimum turnaround enforcement;
+review amount; gateway Test Mode opens at INR 88.20; closing checkout leaves one pending
+order; server check-status; refresh preserves cookie authentication and order recovery.
+Screenshot: /Users/shivamchowdhry/Documents/ChatGPT/indo/workflow-recovery-verified.png
+No actual capture/refund, live webhook delivery or production change was performed.
+
+REMAINING LIMITATIONS / RELEASE REQUIREMENTS
+P1 external configuration: RAZORPAY_WEBHOOK_SECRET is absent locally. Configure it in
+the deployment and provider dashboard, then prove test-mode capture/refund, signed
+webhook delivery/retries and Firebase project login against the deployed environment.
+The new production guard intentionally blocks online-payment startup without this.
+P1 historical data: investigate multiple matching provider receipts and legacy ambiguous
+refunds manually; they remain blocked to prevent duplicate charges/refunds.
+P2 operational: connect structured logs to the deployment's alerting system and monitor
+payment_reconciliation_pending/payment_maintenance_failed, unresolved age and queue size.
+No monitoring account or production deployment was configured in this task.
+P2 scalability: existing slot-template/coverage locks still serialize unrelated dates;
+no oversell was reproduced, but maximum throughput is not benchmarked. Keep guards until
+a date/leg/slot counter design is load-tested. Maintenance is bounded to 100 records/run
+per process; size workers to backlog. Loaded history pages are refreshed by the shared
+feed, and active-order fetch is capped at 50. Very large active queues and rider views
+need a measured pagination/polling redesign. No high-traffic or multi-region certification.
+P2 browser coverage: automated backend scenarios cover captures/refunds; browser verified
+launch/exit/recovery only. No real-money payment, complete external test-mode capture,
+or broad accessibility/browser-device certification is claimed.
+
+Provider references:
+https://razorpay.com/docs/api/orders/fetch-with-id/
+https://github.com/razorpay/markdown-docs/blob/master/api/refunds/normal-refunds-idempotent.md

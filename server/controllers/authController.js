@@ -9,7 +9,7 @@ import { uploadImageToCloudinary } from '../utils/cloudinary.js';
 const generateToken = (id, role = 'customer') => {
   return jwt.sign(
     { id, role },
-    process.env.JWT_SECRET || 'indodhobi_super_secret_jwt_key_2026',
+    process.env.JWT_SECRET,
     { expiresIn: '30d' }
   );
 };
@@ -74,7 +74,7 @@ export const register = async (req, res) => {
       email: email.toLowerCase(),
       phone: cleanPhone,
       password,
-      role: role && ['customer', 'rider', 'admin'].includes(role) ? role : 'customer',
+      role: 'customer',
       isPhoneVerified: false,
       isProfileComplete: true
     });

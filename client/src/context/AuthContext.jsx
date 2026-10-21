@@ -14,36 +14,36 @@ export const AuthProvider = ({ children }) => {
     }
   });
 
-  const [token, setToken] = useState(() => localStorage.getItem('indodhobi_token') || null);
+  const [token, setToken] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const verifyUser = async () => {
-      if (token) {
+      {
         try {
           const res = await authService.getMe();
           if (res.success && res.user) {
             setUser(res.user);
+            setToken(true);
             localStorage.setItem('indodhobi_user', JSON.stringify(res.user));
           }
         } catch (err) {
           console.warn('[AuthContext] Session expired or invalid:', err);
-          logout();
+          if (err.response?.status === 401) { setUser(null); setToken(false); localStorage.removeItem('indodhobi_user'); }
         }
       }
       setLoading(false);
     };
 
     verifyUser();
-  }, [token]);
+  }, []);
 
   const login = async (email, password) => {
     try {
       const res = await authService.login(email, password);
       if (res.success) {
-        setToken(res.token);
+        setToken(res.session);
         setUser(res.user);
-        localStorage.setItem('indodhobi_token', res.token);
         localStorage.setItem('indodhobi_user', JSON.stringify(res.user));
         toast.success(`Welcome back, ${res.user.name.split(' ')[0]}!`);
         return { success: true, user: res.user };
@@ -60,9 +60,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await authService.register(userData);
       if (res.success) {
-        setToken(res.token);
+        setToken(res.session);
         setUser(res.user);
-        localStorage.setItem('indodhobi_token', res.token);
         localStorage.setItem('indodhobi_user', JSON.stringify(res.user));
         toast.success(`Account created! Welcome to IndoDhobi, ${res.user.name.split(' ')[0]}!`);
         return { success: true, user: res.user };
@@ -79,9 +78,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await authService.customerFirebaseLogin({ idToken, name, phone });
       if (res.success) {
-        if (res.token) {
-          setToken(res.token);
-          localStorage.setItem('indodhobi_token', res.token);
+        if (res.session) {
+          setToken(res.session);
         }
         if (res.user) {
           setUser(res.user);
@@ -107,9 +105,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await authService.completeOnboarding({ name, email });
       if (res.success) {
-        if (res.token) {
-          setToken(res.token);
-          localStorage.setItem('indodhobi_token', res.token);
+        if (res.session) {
+          setToken(res.session);
         }
         if (res.user) {
           setUser(res.user);
@@ -131,9 +128,8 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await authService.staffLogin(email, password);
       if (res.success) {
-        setToken(res.token);
+        setToken(res.session);
         setUser(res.user);
-        localStorage.setItem('indodhobi_token', res.token);
         localStorage.setItem('indodhobi_user', JSON.stringify(res.user));
         toast.success(`Staff access granted. Welcome, ${res.user.name.split(' ')[0]}!`);
         return { success: true, user: res.user };
@@ -146,7 +142,8 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try { await authService.logout(); } catch { toast.error('Logout could not be completed. Please try again.'); return; }
     setToken(null);
     setUser(null);
     localStorage.removeItem('indodhobi_token');

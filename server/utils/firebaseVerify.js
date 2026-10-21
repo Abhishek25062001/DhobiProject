@@ -10,12 +10,7 @@ export const verifyFirebaseIdToken = async (idToken) => {
   }
 
   // 1. Test / Simulation tokens (for automated test suite & offline QA)
-  if (
-    process.env.NODE_ENV === 'test' ||
-    process.env.MOCK_FIREBASE === 'true' ||
-    idToken.startsWith('test_') ||
-    idToken.startsWith('mock_')
-  ) {
+  if (process.env.NODE_ENV === 'test') {
     if (idToken.startsWith('test_') || idToken.startsWith('mock_')) {
       const parts = idToken.split('_');
       // Format: test_firebase_token_<phone> OR test_firebase_token_<phone>_<uid>
@@ -43,7 +38,8 @@ export const verifyFirebaseIdToken = async (idToken) => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ idToken })
+        body: JSON.stringify({ idToken }),
+        signal: AbortSignal.timeout(10000)
       });
 
       const data = await response.json();
@@ -71,32 +67,6 @@ export const verifyFirebaseIdToken = async (idToken) => {
     } catch (err) {
       console.error('[FirebaseVerify] Identity Toolkit API Error:', err.message);
     }
-  }
-
-  // 3. Fallback JWT payload inspection (if token is a valid unexpired JWT signed by Google)
-  try {
-    const parts = idToken.split('.');
-    if (parts.length === 3) {
-      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-      const now = Math.floor(Date.now() / 1000);
-
-      // Verify expiration and basic claims
-      if (payload.exp && payload.exp > now && payload.sub) {
-        const rawPhone = payload.phone_number || '';
-        const phoneDigits = rawPhone.replace(/\D/g, '').slice(-10);
-
-        return {
-          success: true,
-          uid: payload.sub,
-          phoneNumber: rawPhone,
-          phone: phoneDigits,
-          email: payload.email,
-          isSimulated: false
-        };
-      }
-    }
-  } catch (decodeErr) {
-    // Non-fatal, return failure below
   }
 
   return { success: false, message: 'Firebase token verification failed or expired' };

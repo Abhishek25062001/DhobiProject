@@ -11,7 +11,7 @@
     "install:all": "npm install && npm --prefix server install && npm --prefix client install",
     "build:client": "npm --prefix client run build",
     "seed": "npm --prefix server run seed",
-    "test": "npm --prefix server test",
+    "test": "npm run test:acceptance",
     "test:connectivity": "node --test tests/connectivity.test.mjs client/tests/apiRecovery.test.mjs client/tests/bookingDraft.test.mjs client/tests/addressBook.test.mjs",
     "test:contracts": "node --test tests/catalogContract.test.mjs",
     "test:admin-content": "node --test server/tests/*.test.mjs",

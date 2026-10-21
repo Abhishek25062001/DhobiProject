@@ -1,5 +1,6 @@
 import { ORDER_STATUS_VALUES } from '../../shared/orderStages.mjs';
 import mongoose from 'mongoose';
+import { randomInt } from 'node:crypto';
 import { SERVICE_CODES, IRONING_CODES } from '../../shared/catalogContract.mjs';
 
 const orderItemSchema = new mongoose.Schema({
@@ -69,6 +70,9 @@ const orderSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+  holdExpiresAt: Date,
+  checkoutKey: String,
+  checkoutHash: String,
   items: [orderItemSchema],
   billingSnapshot: { type: mongoose.Schema.Types.Mixed, immutable: true },
   customerSnapshot: { type: mongoose.Schema.Types.Mixed, immutable: true },
@@ -154,6 +158,13 @@ const orderSchema = new mongoose.Schema({
     grandTotal: { type: Number, required: true, min: 0 }
   },
   payment: {
+    sessionState: { type: String, enum: ['NONE', 'CREATING', 'READY', 'UNKNOWN'], default: 'NONE' },
+    refundRequired: { type: Boolean, default: false },
+    refundState: { type: String, enum: ['NONE', 'CREATING', 'PENDING', 'UNKNOWN', 'PROCESSED'], default: 'NONE' },
+    refundId: String,
+    refundKey: String,
+    refundClaimedAt: Date,
+    lastCheckedAt: { type: Date, default: null },
     method: {
       type: String,
       enum: ['COD', 'ONLINE'],
@@ -358,6 +369,7 @@ const orderSchema = new mongoose.Schema({
   ]
 }, {
   timestamps: true,
+  optimisticConcurrency: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
@@ -377,16 +389,16 @@ orderSchema.pre('validate', function (next) {
     this.verificationCodes = {};
   }
   if (!this.verificationCodes.pickupOtp) {
-    this.verificationCodes.pickupOtp = String(Math.floor(1000 + Math.random() * 9000));
+    this.verificationCodes.pickupOtp = String(randomInt(1000, 10000));
   }
   if (!this.verificationCodes.deliveryOtp) {
-    this.verificationCodes.deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
+    this.verificationCodes.deliveryOtp = String(randomInt(1000, 10000));
   }
 
   // Payment COD & Reconciliation integrity
   if (this.payment) {
     if (this.orderStatus === 'CANCELLED') {
-      if (this.payment.status !== 'REFUNDED') {
+      if (!['PAID', 'REFUNDED'].includes(this.payment.status)) {
         this.payment.status = 'CANCELLED';
       }
       this.payment.reconciliationStatus = 'NOT_APPLICABLE';
@@ -434,38 +446,28 @@ orderSchema.pre('validate', function (next) {
   next();
 });
 
-// Static helper to backfill missing OTPs on existing database orders
+// Bounded cursor migration; never load all legacy orders into memory.
 orderSchema.statics.backfillMissingOtps = async function () {
-  try {
-    const ordersToBackfill = await this.find({
-      $or: [
-        { 'verificationCodes.pickupOtp': { $exists: false } },
-        { 'verificationCodes.pickupOtp': null },
-        { 'verificationCodes.pickupOtp': '' },
-        { 'verificationCodes.deliveryOtp': { $exists: false } },
-        { 'verificationCodes.deliveryOtp': null },
-        { 'verificationCodes.deliveryOtp': '' }
-      ]
-    });
-
-    if (ordersToBackfill.length > 0) {
-      for (const ord of ordersToBackfill) {
-        if (!ord.verificationCodes) ord.verificationCodes = {};
-        if (!ord.verificationCodes.pickupOtp) {
-          ord.verificationCodes.pickupOtp = String(Math.floor(1000 + Math.random() * 9000));
-        }
-        if (!ord.verificationCodes.deliveryOtp) {
-          ord.verificationCodes.deliveryOtp = String(Math.floor(1000 + Math.random() * 9000));
-        }
-        await ord.save();
-      }
-      console.log(`[Order Model]: Backfilled OTPs for ${ordersToBackfill.length} legacy orders.`);
+  const cursor = this.find({ $or: [
+    { 'verificationCodes.pickupOtp': null }, { 'verificationCodes.pickupOtp': '' },
+    { 'verificationCodes.deliveryOtp': null }, { 'verificationCodes.deliveryOtp': '' }
+  ] }).select('_id verificationCodes').lean().cursor({ batchSize: 100 });
+  for await (const order of cursor) {
+    for (const key of ['pickupOtp', 'deliveryOtp']) {
+      if (order.verificationCodes?.[key]) continue;
+      await this.updateOne({ _id: order._id, $or: [{ [`verificationCodes.${key}`]: null }, { [`verificationCodes.${key}`]: '' }] },
+        { $set: { [`verificationCodes.${key}`]: String(randomInt(1000, 10000)) }, $inc: { __v: 1 } });
     }
-  } catch (err) {
-    console.error('[Order Model]: Error backfilling legacy OTPs:', err.message);
   }
 };
 
+// Durable retry identity and provider lookup. Existing orders omit checkoutKey.
+orderSchema.index({ customer: 1, checkoutKey: 1 }, { unique: true, partialFilterExpression: { checkoutKey: { $type: 'string' } } });
+orderSchema.index({ 'payment.razorpayOrderId': 1 }, { unique: true, partialFilterExpression: { 'payment.razorpayOrderId': { $type: 'string' } } });
+orderSchema.index({ 'payment.razorpayPaymentId': 1 }, { unique: true, partialFilterExpression: { 'payment.razorpayPaymentId': { $type: 'string' } } });
+for (const leg of ['pickupSchedule', 'deliverySchedule']) orderSchema.index({ [`${leg}.date`]: 1, [`${leg}.timeSlot`]: 1, orderStatus: 1 });
+orderSchema.index({ 'payment.method': 1, 'payment.status': 1, holdExpiresAt: 1 });
+orderSchema.index({ 'payment.lastCheckedAt': 1, _id: 1 });
 // Production Compound Indexes
 orderSchema.index({ customer: 1, createdAt: -1 });
 orderSchema.index({ orderStatus: 1, 'pickupSchedule.date': 1 });

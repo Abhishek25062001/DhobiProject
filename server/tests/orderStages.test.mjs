@@ -40,7 +40,11 @@ test('order changes agree in active bookings, details and history; alias filters
   const order = await Order.create(base);
   const other = await Order.create({ ...base, orderNumber: 'IDB-OTHER', customer: (await User.findOne({ role: 'admin' }))._id });
   for (const stage of TRACKING_STAGES) {
-    const update = await request(`/orders/${order._id}/status`, { method: 'PATCH', role: 'admin', body: { orderStatus: stage.status } });
+    const update = stage.status === 'PICKED_UP'
+      ? await request(`/orders/${order._id}/verify-pickup`, { method: 'POST', role: 'admin', body: { otp: order.verificationCodes.pickupOtp, bagTagId: 'TEST-BAG' } })
+      : stage.status === 'DELIVERED'
+        ? await request(`/orders/${order._id}/verify-delivery`, { method: 'POST', role: 'admin', body: { otp: order.verificationCodes.deliveryOtp, codCollectionMethod: 'CASH' } })
+        : await request(`/orders/${order._id}/status`, { method: 'PATCH', role: 'admin', body: { orderStatus: stage.status } });
     assert.equal(update.status, 200, JSON.stringify(update.body));
     const [active, history, details] = await Promise.all([
       request('/orders/my-active', { role: 'customer' }), request('/orders/my-orders', { role: 'customer' }), request(`/orders/${order._id}`, { role: 'customer' }),
@@ -51,7 +55,9 @@ test('order changes agree in active bookings, details and history; alias filters
     assert.equal(active.body.activeOrders.length, isActiveOrder(history.body.orders[0]) ? 1 : 0);
     if (active.body.activeOrders.length) assert.equal(getTrackingState(active.body.activeOrders[0]).step, getTrackingState(details.body.order).step);
   }
-  await request(`/orders/${order._id}/status`, { method: 'PATCH', role: 'admin', body: { orderStatus: 'CANCELLED' } });
+  assert.equal((await request(`/orders/${order._id}/cancel`, { method: 'POST', role: 'customer', body: {} })).status, 400);
+  await Order.updateOne({ _id: order._id }, { orderStatus: 'BOOKED' });
+  await request(`/orders/${order._id}/cancel`, { method: 'POST', role: 'customer', body: {} });
   const cancelled = await request('/orders/my-orders', { role: 'customer' });
   assert.equal(cancelled.body.orders[0].orderStatus, 'CANCELLED');
   assert.equal((await request('/orders/my-active', { role: 'customer' })).body.activeOrders.length, 0);

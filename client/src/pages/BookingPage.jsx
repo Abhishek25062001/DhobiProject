@@ -6,7 +6,7 @@ import usePincodeCoverage from '../hooks/usePincodeCoverage';
 import useSiteContent from '../hooks/useSiteContent';
 import { activeOptions, customTemplate, validPreferences, scheduleAllowed } from '../../../shared/bookingChoices.mjs';
 import { availableServices, availableFinishes, preferredFinish, selectionAvailable, IRONING_PRICE_KEYS, money } from '../../../shared/pricing.mjs';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useOrderBooking, calculateItemUnitPrice } from '../context/OrderBookingContext';
@@ -258,6 +258,7 @@ const BookingPage = () => {
 
   // Payment method selection
   const [paymentMethod, setPaymentMethod] = useState('COD'); // 'COD' or 'ONLINE'
+  const placingOrderRef = useRef(false);
   const [placingOrder, setPlacingOrder] = useState(false);
 
   // Online payment modal state
@@ -469,6 +470,9 @@ const BookingPage = () => {
     if (!validPreferences(preferences, platformConfig)) { toast.error('Choose available care preferences.'); setActiveStep(2); return; }
     if (coverage.error || coverage.loading || !activeHub || !scheduleAllowed(pickupSchedule, deliverySchedule, slots, platformConfig, isExpress)) { toast.error('Review your address and available schedule.'); setActiveStep(3); return; }
 
+    if (placingOrderRef.current) return;
+    if (createdOrder) { navigate('/my-orders'); return; }
+    placingOrderRef.current = true;
     setPlacingOrder(true);
 
     try {
@@ -536,7 +540,9 @@ const BookingPage = () => {
               }
             });
           } else {
-            setShowPaymentModal(true);
+            toast(res.message || 'Booking saved. Check payment status in My Orders before paying.');
+            clearCart(res.addresses);
+            navigate('/my-orders');
           }
         } else {
           // COD Order placed instantly
@@ -556,6 +562,7 @@ const BookingPage = () => {
       console.error('[Place Order Error]:', error);
       toast.error(error.response?.data?.message || 'Server error while booking order.');
     } finally {
+      placingOrderRef.current = false;
       setPlacingOrder(false);
     }
   };
