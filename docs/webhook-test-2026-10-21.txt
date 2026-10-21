@@ -1,0 +1,58 @@
+RAZORPAY TEST MODE — current verification 21 October 2026
+
+Local configuration completed:
+- Created server/.env.webhook.local with 32 random bytes encoded as hex, file mode 0600.
+- Added ignore rule; loaded by server/utils/razorpay.js. Existing environment values win.
+- setupWebhookSecret.mjs preserves existing secrets; it never prints or rotates them.
+- Isolated browser fixture now uses that secret when --razorpay-test is requested.
+- Test-only webhook relay accepts POST /api/orders/webhook/razorpay only, verifies HMAC,
+  bounds request size, and forwards to loopback 5101. Other application routes stay private.
+- Temporary Cloudflare tunnel: https://developmental-zen-presidential-amended.trycloudflare.com
+- Full webhook URL: https://developmental-zen-presidential-amended.trycloudflare.com/api/orders/webhook/razorpay
+- Remote probe results: private auth path 404; unsigned webhook 400; correctly signed
+  synthetic no-op probe 200. This proves reachability/signature configuration, NOT
+  genuine Razorpay webhook delivery.
+
+Actual provider test:
+- Application order: 6ad893f39735a057e0a5be89
+- Order reference: IDB-e556ff87-e8af-436c-b088-6fa219efdbf4
+- Razorpay order: order_TqWdoFybPnj3Or
+- Razorpay payment: pay_TqWel3oYJKT7zY
+- Test amount: INR 88.20 (8820 paise).
+- Existing provider session reused by Retry Online Payment.
+- Mock HDFC netbanking initiated; embedded browser remained in processing, but later
+  direct provider fetch confirmed captured. Application payment-status then confirmed PAID.
+- Cancelled through authenticated application endpoint before pickup.
+- Idempotent refund attempted with persisted key. Razorpay returned HTTP 400,
+  BAD_REQUEST_ERROR, description 'invalid request sent'. A same-key retry returned the
+  same rejection. Provider refund list is empty and amount_refunded=0.
+- Application remains CANCELLED, payment PAID, refundRequired=true, refundState UNKNOWN.
+  No refund success is claimed. No live-mode key or real-money transaction used.
+- Improved cancellation response to return current reconciled order rather than its
+  pre-refund snapshot. Added HTTP providerStatus to structured refund failure logs.
+- 24 focused transaction/recovery tests passed after edits; git diff --check passed.
+
+Required next steps:
+1. Sign into Razorpay dashboard in TEST MODE. Accounts & Settings > Webhooks > Add.
+2. Use full webhook URL above; enter only the value after '=' from the private local
+   secret file. Select payment.captured, order.paid, refund.processed. Enable/save.
+3. Resolve provider-side refund rejection for the payment above (dashboard refund
+   availability/account settings or Razorpay support); do not remove idempotency safety.
+4. Verify genuine provider delivery logs, processed refund/provider totals, duplicate
+   callbacks and final REFUNDED app status. Existing automated tests cover these states
+   with controlled provider responses; real delivery/refund verification is outstanding.
+
+Runtime currently left available for continuation:
+- Isolated local app http://127.0.0.1:5174, API loopback5101, webhook relay loopback5102.
+- Processes: browserAcceptance.mjs --isolated --razorpay-test; webhookTestRelay.mjs;
+  /tmp/indo-cloudflared/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:5102
+- Tunnel is temporary: stops when its process/computer stops and URL changes on restart.
+- Database is disposable; do not stop fixture before recording remaining test evidence.
+- Logs: /tmp/indo-webhook-browser.log, /tmp/indo-webhook-relay.log,
+  /tmp/indo-webhook-tunnel.log, /tmp/indo-webhook-final-tests.log.
+- Fixture API session is in /tmp/indo-test-payment-session.json with private permissions;
+  remove after verification. No new secret value is included in this report.
+
+Official references:
+https://razorpay.com/docs/webhooks/setup-edit-payments/
+https://github.com/razorpay/markdown-docs/blob/master/api/refunds/normal-refunds-idempotent.md

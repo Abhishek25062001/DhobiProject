@@ -1411,13 +1411,14 @@ export const cancelOrder = async (req, res) => {
     });
 
     await order.save();
-    try { await refundCancelledOrder(order); } catch { console.error(JSON.stringify({ event: 'refund_requires_reconciliation', orderId: String(order._id) })); }
+    let currentOrder = order;
+    try { currentOrder = await refundCancelledOrder(order); } catch { console.error(JSON.stringify({ event: 'refund_requires_reconciliation', orderId: String(order._id) })); }
 
 
     return res.json({
       success: true,
       message: 'Order cancelled successfully.',
-      order
+      order: currentOrder
     });
   } catch (error) {
     console.error('[Cancel Order Error]:', error);

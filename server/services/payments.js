@@ -103,9 +103,9 @@ export async function refundCancelledOrder(order, { gateway = getRazorpayInstanc
     // Fetch the actual payment; a submitted refund is not necessarily processed.
     const refreshed = await gateway.payments.fetch(payment.id);
     if (refreshed.status === 'refunded') return applyRefund(await Order.findById(order._id), refreshed);
-  } catch {
+  } catch (error) {
     await Order.updateOne({ _id: order._id, 'payment.refundState': 'CREATING' }, { $set: { 'payment.refundState': 'UNKNOWN' }, $inc: { __v: 1 } });
-    console.error(JSON.stringify({ event: 'refund_requires_reconciliation', orderId: String(order._id) }));
+    console.error(JSON.stringify({ event: 'refund_requires_reconciliation', orderId: String(order._id), providerStatus: error.providerStatus || null }));
   }
   return await Order.findById(order._id);
 }

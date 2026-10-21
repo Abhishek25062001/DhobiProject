@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 
 dotenv.config();
+// Explicit environment values (including isolated test overrides) take precedence.
+dotenv.config({ path: new URL('../.env.webhook.local', import.meta.url) });
 
 export const isConfigured = () => {
   const keyId = process.env.RAZORPAY_KEY_ID;
@@ -33,7 +35,7 @@ export const getRazorpayInstance = () => {
             'Content-Type': 'application/json', 'X-Refund-Idempotency': key
           }, body: JSON.stringify({ amount })
         });
-        if (!response.ok) throw new Error('Refund awaits provider reconciliation');
+        if (!response.ok) throw Object.assign(new Error('Refund awaits provider reconciliation'), { providerStatus: response.status });
         return response.json();
       };
     }

@@ -1,2 +1,5 @@
 node_modules
 .local-backups/
+
+# Machine-local webhook signing secret; never commit.
+server/.env.webhook.local
