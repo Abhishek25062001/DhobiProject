@@ -6,6 +6,11 @@ import { connectDB, disconnectDB } from '../config/db.js';
 export async function contentTestHarness(t) {
   process.env.NODE_ENV = 'test';
   process.env.JWT_SECRET = 'isolated-content-test-secret';
+  // Empty values prevent dotenv from loading machine-local gateway credentials.
+  // Provider acceptance runs use their own explicitly opted-in browser harness.
+  process.env.RAZORPAY_KEY_ID = '';
+  process.env.RAZORPAY_KEY_SECRET = '';
+  process.env.RAZORPAY_WEBHOOK_SECRET = '';
   await connectDB();
   const { app } = await import('../server.js');
   const server = app.listen(0, '127.0.0.1');

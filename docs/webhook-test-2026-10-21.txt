@@ -56,3 +56,115 @@ Runtime currently left available for continuation:
 Official references:
 https://razorpay.com/docs/webhooks/setup-edit-payments/
 https://github.com/razorpay/markdown-docs/blob/master/api/refunds/normal-refunds-idempotent.md
+
+FOLLOW-UP AFTER USER ENABLED WEBHOOK — 21 October 2026, 4:39 PM IST
+The new end-to-end TEST payment/refund cycle PASSED.
+- Application order: 6ad89cbf9735a057e0a5c848
+- Order reference: IDB-dceb438b-ee04-4810-a65e-770781d73f0b
+- Provider order: order_TqXHSZ5SLAv1O2
+- Payment: pay_TqXI50oNzmmxGE — INR8820 paise captured, then fully refunded.
+- Refund: rfnd_TqXJ8hFyTfH7Bm — processed, INR8820 paise.
+- Genuine provider deliveries observed by the signature-verifying relay:
+  16:37:22 IST payment.captured -> HTTP200
+  16:37:22 IST order.paid -> HTTP200
+  16:38:52 IST refund.processed -> HTTP200
+  These events were not locally generated probes.
+- The two capture events produced exactly one capture audit entry and one payment.
+- Three locally constructed signed duplicate capture replays returned HTTP200,
+  without adding audit entries or changing state.
+- Cancellation through the application initiated the refund; provider API confirms
+  exactly one refund, amount_refunded=8820, payment.status=refunded.
+- Three concurrent identical provider refund retries used the SAME persisted key/body:
+  two returned HTTP200 with the SAME refund ID, one HTTP409 (already in progress).
+  A subsequent refund-list read confirmed count=1 and total=8820.
+- Locally constructed duplicate refund and delayed capture notifications returned200
+  and preserved CANCELLED/REFUNDED, refundRequired=false, with no extra audit entries.
+- Browser refresh shows Refund confirmed. User screenshots at16:39 independently show
+  the matching payment and processed refund in the Razorpay TEST dashboard.
+- Evidence screenshot: /Users/shivamchowdhry/Documents/ChatGPT/indo/webhook-payment-refund-confirmed.png
+
+SEPARATE UNRESOLVED EARLIER FIXTURE
+pay_TqWel3oYJKT7zY still reported captured, amount_refunded=0, empty refund list on the
+last provider read. It is NOT the payment shown in the user's successful screenshots.
+Same-key retries through both fetch and SDK transport returned HTTP400. After explicit
+HTTP400 rejection and repeated zero-refund confirmation, a test-only UUID-format key
+was persisted for this isolated fixture and tried; it also returned400. No production
+key-rotation/retry policy was changed. Root cause is not established. The newer payment
+proves the same refund integration can succeed on this account, so an account-wide
+refund restriction is NOT established. Dashboard investigation of the original payment
+was requested; do not fabricate a refunded status for that fixture.
+
+All amounts here are TEST MODE only. This proves the tested local integration, not live
+production settlement, production deployment, or every payment-method scenario.
+
+EARLIER PAYMENT INVESTIGATION — 2026-10-21T11:21:23.881Z
+{
+  "checkedAt": "2026-10-21T11:21:23.881Z",
+  "paymentId": "pay_TqWel3oYJKT7zY",
+  "httpStatuses": [
+    200,
+    200
+  ],
+  "status": "captured",
+  "amount": 8820,
+  "currency": "INR",
+  "amount_refunded": 0,
+  "refund_status": null,
+  "refundCount": 0,
+  "refunds": []
+}
+A same-persisted-key application retry again returned the generic provider rejection.
+Insufficient test balance after fees is a possible cause, not verified for this account.
+Similar user reports: https://github.com/razorpay/razorpay-node/issues/438
+Requested the exact earlier payment dashboard refund result to expose provider reason.
+No partial refund, reduced refund amount, or false refunded state has been applied.
+
+REFUND CAUSE CONFIRMED BY USER'S DASHBOARD
+User reports that refunding pay_TqWel3oYJKT7zY shows insufficient balance.
+This establishes the provider balance blocker; no refund amount reduction is appropriate.
+Started a separate isolated TEST payment of INR161.70 to replenish simulated balance.
+Application order: 6ad8a1189735a057e0a5ced8
+Provider order: order_TqXb2MEGejV72o
+Provider payment: pay_TqXbOYNrembFr5
+Last checked status: created (awaiting mock bank confirmation), not captured.
+This funding fixture should remain captured, not cancelled/refunded, during recovery.
+Requested user complete the external mock-bank Success action; popup is inaccessible
+through available in-app browser controls. Original refund still unprocessed.
+
+EARLIER REFUND RESOLVED
+User confirmed mock-bank success for the funding payment. Provider independently verified
+pay_TqXbOYNrembFr5 captured INR161.70, with no refund. It remains a TEST balance fixture.
+Retried original cancellation refund through application payment-status using its existing
+persisted UUID key, unchanged amount/body. It succeeded after test balance replenishment.
+{
+  "verifiedAt": "2026-10-21T11:28:11.349Z",
+  "paymentId": "pay_TqWel3oYJKT7zY",
+  "status": "refunded",
+  "amount": 8820,
+  "currency": "INR",
+  "amount_refunded": 8820,
+  "refund_status": "full",
+  "refundCount": 1,
+  "refunds": [
+    {
+      "id": "rfnd_TqXdoAouzwrl1G",
+      "status": "processed",
+      "amount": 8820,
+      "payment_id": "pay_TqWel3oYJKT7zY"
+    }
+  ],
+  "app": {
+    "orderId": "6ad893f39735a057e0a5be89",
+    "status": "CANCELLED",
+    "paymentStatus": "REFUNDED",
+    "refundState": "PROCESSED",
+    "refundRequired": false
+  },
+  "repeatStatusChecks": {
+    "beforeHistory": 5,
+    "afterHistory": 5
+  }
+}
+Cause: insufficient merchant TEST balance, confirmed by user dashboard error and successful
+unchanged refund after additional captured test payment. No production code change needed
+for this provider-balance condition; no amount reduction or synthetic refunded status used.

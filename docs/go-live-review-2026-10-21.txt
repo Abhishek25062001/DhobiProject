@@ -1,0 +1,103 @@
+GO-LIVE REVIEW — 21 October 2026
+Decision: do not enable live payments yet.
+Scope: current repository, isolated automated tests, provider TEST payment readback.
+No live payment, production deployment, real database migration or credential rotation.
+
+VERIFIED PENDING FINDINGS
+
+P1 — Failed refunds cannot recover automatically.
+Files/functions: server/services/payments.js refundCancelledOrder (lines 86–110);
+server/controllers/orderController.js handleRazorpayWebhook;
+server/services/paymentMaintenance.js runPaymentMaintenance.
+Cause: refund submission response status is ignored; any valid identity/amount is stored
+PENDING. Later checks fetch the payment but never inspect the stored refund ID's status.
+PENDING is excluded from claims, and refund.failed events have no explicit handler.
+Impact: a terminal failed refund can remain awaiting confirmation indefinitely.
+Verified with isolated database and controlled provider response status=failed: two
+calls leave PENDING/refundRequired=true, with only one provider submission.
+Fix: fetch stored refund status; explicitly handle pending/processed/failed and signed
+failure events. Surface confirmed failure and alert an operator. Permit a new logical
+refund attempt only after terminal failure and cumulative refunded amount are verified;
+keep same-key retries for uncertain outcomes. Add pending-to-failed, replay and race tests.
+
+P1 — Already-refunded payments cannot reconcile when capture was missed.
+Files/functions: server/services/payments.js reconcilePayment (lines 41–52), applyRefund;
+server/controllers/orderController.js handleRazorpayWebhook;
+server/services/paymentMaintenance.js runPaymentMaintenance.
+Cause: reconciliation finds captured payments only and throws for a paid provider order
+whose payment is already refunded. The refund webhook lookup requires the local payment
+ID that the missed capture never persisted.
+Impact: provider can be fully refunded while local state stays pending/cancelled; repeated
+reconciliation cannot repair it without manual intervention.
+Verified with isolated pending order and provider paid order/full-refunded payment:
+reconcilePayment rejects and local payment remains PENDING.
+Fix: validate identity/order/amount/currency and provider refund evidence; atomically record
+payment identity and final refund status, cancel/release any remaining reservation, and
+write one audit entry. Add reversed callback ordering and missed-capture recovery tests.
+
+P1 — Backend secrets remain tracked in Git.
+Files: server/.env; .gitignore. client/.env is also tracked, although frontend config is
+not inherently secret. Verified backend fields include JWT_SECRET, MONGO_URI and
+RAZORPAY_KEY_SECRET; values were not printed. Actual disclosure outside repository access
+is NOT established.
+Fix: remove backend env from tracking while retaining local configuration, use a secret
+store and sanitized example, rotate potentially exposed credentials, and assess repository
+history/access. Do not assume .gitignore alone removes existing files/history.
+
+FIX IMPLEMENTED DURING THIS REVIEW
+P2 — Test harness depended on working directory and could load configured Razorpay keys.
+File: server/tests/contentTestHarness.mjs.
+Initial server-directory run: 138/140 reported passing, one failed callback subtest and
+its parent suite (both counted as failures). Synthetic payment lookup reached configured
+provider because dotenv loaded server/.env. No real charge/refund was created by that test.
+Fix: explicitly blank gateway keys/signing secret in the isolated harness so dotenv cannot
+reload machine-local values. Explicit provider browser acceptance uses a separate harness.
+Final rerun results are recorded below.
+
+PRODUCTION REQUIREMENTS — NOT VERIFIED DEPLOYMENT DEFECTS
+- Stable public HTTPS API/webhook URL; current verified webhook uses a temporary local
+  Cloudflare tunnel. Configure live keys and a separate matching live webhook secret.
+- Deploy against a persistent MongoDB replica set/sharded cluster, verify required unique
+  indexes/startup readiness, backups and restore. Existing startup code checks topology
+  and indexes; production infrastructure was not exercised here.
+- Verify deployed login, secure cookies, allowed origin, CSP, payment checkout, callback
+  delivery and restart/recovery. Current browser evidence is local TEST mode.
+- Route reconciliation errors/stale refunds to alerts, keep refund balance available, and
+  define manual support/reconciliation procedures. Earlier insufficient-balance refund
+  recovered successfully after simulated funds were available; that incident is resolved.
+- Reconcile legacy ambiguous sessions/refunds before migration; do not create replacement
+  provider orders or rotate refund keys merely because an outcome is uncertain.
+
+PERFORMANCE / SCOPE LIMITATIONS
+P2 potential risk: slot-template and coverage locks serialize unrelated booking dates.
+Correctness contention tests pass; peak throughput, large queues and multi-region failover
+have not been benchmarked. Date/leg/slot counters require concurrency testing before use.
+Maintenance is bounded per run, but unresolved/old cancelled payments can grow polling
+work; monitor backlog and plan verified terminal-state retention/reconciliation policy.
+Frontend build warns about large deferred chunks; correctness takes priority.
+This is a laundry service catalog, not retail stock. Last pickup/delivery slot contention
+is tested. A future physical-stock feature needs a separate atomic stock ledger and tests.
+
+PROVIDER TEST EVIDENCE RECHECKED THIS REVIEW
+pay_TqWel3oYJKT7zY: refunded INR88.20; exactly one processed refund rfnd_TqXdoAouzwrl1G.
+pay_TqXI50oNzmmxGE: refunded INR88.20; exactly one processed refund rfnd_TqXJ8hFyTfH7Bm.
+pay_TqXbOYNrembFr5: captured INR161.70, zero refunds; retained simulated balance fixture.
+Earlier genuine capture/order-paid/refund-processed webhook delivery and duplicate replay
+evidence is in docs/webhook-test-2026-10-21.txt. No fresh charge was made this review.
+
+VERIFICATION
+Frontend/connectivity/contracts/cache tests: 49 passing, zero failures.
+Production frontend build: passed, chunk-size warnings remain.
+Client and server production-dependency npm audits: zero reported vulnerabilities.
+Two additional isolated diagnostic scenarios reproduced the refund gaps above; these
+assert existing faulty behavior and are NOT passing correctness tests for those gaps.
+Diagnostic reproduction: /tmp/indo-go-live-probes.test.mjs
+Diagnostic log: /tmp/indo-go-live-probes.log
+Server rerun log: /tmp/indo-final-server-tests-isolated.log
+Frontend test log: /tmp/indo-final-client-tests.log
+Build log: /tmp/indo-final-build.log
+
+FINAL RERUN: 140 server tests passed, zero failures/skips. Combined with 49 client and
+contract/connectivity tests, existing suite total is 189 passing. The two separately
+reproduced refund edge-case gaps remain pending; passing existing coverage does not
+resolve them. git diff --check passed.
