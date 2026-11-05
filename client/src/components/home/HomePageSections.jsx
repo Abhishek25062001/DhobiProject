@@ -35,7 +35,7 @@ const HomePageSections = ({ section, text, garments, config, coverage }) => {
       {/* SERVICES OVERVIEW */}
       {section.key === 'services' && <section className="garment-services" aria-labelledby="garment-services-heading">
         <div className="garment-services__shell">
-          <header className="garment-services__header">
+          <header className="garment-services__header" data-scroll-reveal="rise" data-reveal-key="heading-services">
             <p className="garment-services__eyebrow">{text(content.eyebrow)}</p>
             <h2 id="garment-services-heading">{text(content.plain)} <span>{text(content.accent)}</span></h2>
             <p className="garment-services__intro">
@@ -46,6 +46,8 @@ const HomePageSections = ({ section, text, garments, config, coverage }) => {
             {services.map((service) => (
               <article
                 key={service.id}
+                data-scroll-reveal="rise"
+                data-reveal-key={`service-${service.id}`}
                 className={`garment-service${service.badge ? ' garment-service--featured' : ''}`}
               >
                 {service.badge && <span className="garment-service__badge">{text(service.badge)}</span>}
@@ -75,13 +77,13 @@ const HomePageSections = ({ section, text, garments, config, coverage }) => {
       {/* COMPARISON */}
       {section.key === 'comparison' && <section className="home-trust home-comparison" aria-labelledby="comparison-heading">
         <div className="home-trust__shell">
-          <header className="home-trust__header">
+          <header className="home-trust__header" data-scroll-reveal="rise" data-reveal-key="heading-comparison">
             <p className="home-trust__eyebrow">{text(content.eyebrow)}</p>
             <h2 id="comparison-heading">{text(content.plain)} <span>{text(content.accent)}</span></h2>
             <p>{text(content.intro)}</p>
           </header>
           <p className="home-comparison__scroll-hint" id="comparison-scroll-hint">{text(content.scrollHint)}</p>
-          <div aria-describedby="comparison-scroll-hint" className="home-comparison__table-wrap" role="region" aria-label="Laundry service comparison" tabIndex={0}>
+          <div aria-describedby="comparison-scroll-hint" className="home-comparison__table-wrap" role="region" aria-label="Laundry service comparison" tabIndex={0} data-scroll-reveal="fade" data-reveal-key="comparison-table">
             <table className="home-comparison__table">
               <caption className="sr-only">{text(content.caption)}</caption>
               <colgroup><col className="home-comparison__feature-col" /><col /><col /></colgroup>
@@ -106,14 +108,14 @@ const HomePageSections = ({ section, text, garments, config, coverage }) => {
       {/* CUSTOMER TESTIMONIALS */}
       {section.key === 'testimonials' && <section className="home-trust home-reviews" aria-labelledby="reviews-heading">
         <div className="home-trust__shell">
-          <header className="home-trust__header">
+          <header className="home-trust__header" data-scroll-reveal="rise" data-reveal-key="heading-testimonials">
             <p className="home-trust__eyebrow">{text(content.eyebrow)}</p>
             <h2 id="reviews-heading">{text(content.plain)} <span>{text(content.accent)}</span></h2>
             <p>{text(content.intro)}</p>
           </header>
           <div className="home-reviews__grid">
             {testimonials.map((review, index) => (
-              <figure key={review.id} className={`home-review home-review--${index + 1}`}>
+              <figure key={review.id} className={`home-review home-review--${index + 1}`} data-scroll-reveal="rise" data-reveal-key={`review-${review.id}`}>
                 <div className="home-review__top">
                   <span className="home-review__stars" role="img" aria-label={`${review.rating} out of 5 stars`}>
                     {Array.from({ length: review.rating }, (_, star) => <Star key={star} size={17} fill="currentColor" aria-hidden="true" />)}
@@ -134,7 +136,7 @@ const HomePageSections = ({ section, text, garments, config, coverage }) => {
       {/* OPERATIONAL HUBS & SERVICE AREAS */}
       {section.key === 'areas' && <section id="operational-areas" className="service-areas" aria-labelledby="service-areas-heading">
         <div className="service-areas__shell">
-          <header className="service-areas__header">
+          <header className="service-areas__header" data-scroll-reveal="rise" data-reveal-key="heading-areas">
             <div>
               <p className="service-areas__eyebrow">{text(content.eyebrow)}</p>
               <h2 id="service-areas-heading">{text(content.plain)} <span>{text(content.accent)}</span></h2>
@@ -147,7 +149,7 @@ const HomePageSections = ({ section, text, garments, config, coverage }) => {
           {coverage.error && <button type="button" onClick={coverage.retry}>Service areas could not be loaded. Try again.</button>}
           <div className="service-areas__grid">
             {serviceAreas.map(hub => (
-              <article key={hub._id} className="service-area">
+              <article key={hub._id} className="service-area" data-scroll-reveal="rise" data-reveal-key={`area-${hub._id}`}>
                 <span className="service-area__badge">{hub.homeBadge}</span>
                 <h3><Building2 size={24} aria-hidden="true" /><span>{hub.shortName}</span></h3>
                 <p className="service-area__locations">{hub.summary}</p>

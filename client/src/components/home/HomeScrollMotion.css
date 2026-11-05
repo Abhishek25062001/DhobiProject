@@ -1,0 +1,44 @@
+/* Opt-in motion only; idle, pending and unsupported states retain normal styles. */
+.home-page {
+  --scroll-distance: 14px;
+  --scroll-duration: 500ms;
+}
+
+.home-page [data-scroll-reveal="rise"][data-reveal-state="entering"] {
+  animation: id-scroll-rise var(--scroll-duration) cubic-bezier(.22, 1, .36, 1) var(--scroll-delay, 0ms) both;
+}
+
+.home-page [data-scroll-reveal="fade"][data-reveal-state="entering"] {
+  animation: id-scroll-fade var(--scroll-duration) ease-out var(--scroll-delay, 0ms) both;
+}
+
+.home-page .hp-journey-stages[data-reveal-state="entering"]::before {
+  animation: hp-line-flow 1.8s linear 2;
+}
+
+@keyframes id-scroll-rise {
+  from { opacity: 0; translate: 0 var(--scroll-distance); }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes id-scroll-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 760px) {
+  .home-page { --scroll-distance: 8px; --scroll-duration: 350ms; }
+  .home-page [data-scroll-reveal][data-reveal-state="entering"] { animation-delay: 0ms; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-page [data-scroll-reveal], .home-page [data-scroll-reveal]::before {
+    animation: none !important;
+  }
+}
+
+@media print {
+  .home-page [data-scroll-reveal], .home-page [data-scroll-reveal]::before {
+    animation: none !important;
+  }
+}

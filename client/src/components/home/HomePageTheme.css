@@ -41,7 +41,6 @@
 .home-page :is(a, button, [tabindex]):focus-visible, .id-home-nav :is(a, button):focus-visible,
 .id-home-footer a:focus-visible { outline: 3px solid var(--home-status); outline-offset: 4px; }
 .home-page [id] { scroll-margin-top: 90px; }
-.home-page .hp-journey-visible .hp-journey-stages::before { animation-iteration-count: 2; will-change: auto; }
 .home-page .home-comparison__scroll-hint { display: none; }
 .id-home-footer { background: var(--home-ink); padding-top: 0; padding-bottom: 28px; }
 /* The hero already contains the four benefits; keep the footer focused on navigation. */

@@ -7,10 +7,13 @@ import ContentBlocks from '../components/ContentBlocks';
 import ActiveOrderTracker from '../components/ActiveOrderTracker';
 import ApiLoadError from '../components/ApiLoadError';
 import useSiteContent from '../hooks/useSiteContent';
+import useScrollReveal from '../hooks/useScrollReveal';
 import { useOrderBooking } from '../context/OrderBookingContext';
 import '../components/home/HomePageTheme.css';
+import '../components/home/HomeScrollMotion.css';
 
 export default function HomePage() {
+  const motionRoot = useScrollReveal();
   const { platformConfig, catalogGarments } = useOrderBooking();
   const coverage = useServiceAreas();
   const content = useSiteContent('home', platformConfig);
@@ -20,7 +23,7 @@ export default function HomePage() {
     if (!groups.length || groups.at(-1).upper !== upper) groups.push({ upper, sections: [] });
     groups.at(-1).sections.push(section);
   }
-  return <div className="home-page" id="home-content">
+  return <div className="home-page" id="home-content" ref={motionRoot}>
     <div className="hp-shell"><ActiveOrderTracker /></div>
     {content.error && !content.page ? <ApiLoadError message="The homepage could not be loaded." onRetry={content.retry} />
       : content.loading && !content.page ? <div className="min-h-[70vh]" aria-busy="true" aria-label="Loading homepage" />
