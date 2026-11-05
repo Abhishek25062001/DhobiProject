@@ -1809,12 +1809,12 @@ const BookingPage = () => {
           </div>
 
           {/* Quick Dhobi Assurance card */}
-          <div className="bg-slate-900 text-white p-4 rounded-3xl text-xs space-y-1.5 shadow-xs">
-            <div className="flex items-center gap-2 text-teal-400 font-bold">
-              <Shield className="w-4 h-4" />
+          <div className="bg-[#fafbf7] text-[#45554b] p-4 rounded-2xl text-xs space-y-1.5 shadow-xs ring-1 ring-inset ring-[#d8e2d6] border-l-[3px] border-l-[#356349]">
+            <div className="flex items-center gap-2 text-[#244d36] font-bold">
+              <Shield className="w-4 h-4 shrink-0" aria-hidden="true" />
               <span>{copy('indodhobi_fabric_guarantee_5168188')}</span>
             </div>
-            <p className="text-[11px] text-slate-400 leading-relaxed">{copy('every_garment_is_barcoded_upon_pickup_zero_fabric_mixing_zero_col_79bced3')}</p>
+            <p className="text-[11px] text-[#526157] leading-relaxed">{copy('every_garment_is_barcoded_upon_pickup_zero_fabric_mixing_zero_col_79bced3')}</p>
           </div>
         </div>
 
