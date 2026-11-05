@@ -1,0 +1,47 @@
+INDODHOBI BRAND IDENTITY — 5 November 2026
+
+The open hanger reference has been redrawn as clean vector geometry with rounded
+ends, balanced shoulders, and an open lower bar. Signature violet: #5030EF.
+
+Applied to the header and footer, the HTML startup loader, the shared React
+loader (session, route and booking states), the favicon and Apple touch icon.
+The favicon has a heavier white stroke on a violet tile for small-size clarity.
+The loader draws the hanger with a gentle sway and a small progress sweep.
+Reduced-motion preferences disable all three animations.
+
+Source and exports
+- client/src/branding/identity.mjs: master mark geometry, color and asset revision.
+- client/src/branding/wordmark.json: outlined Plus Jakarta Sans ExtraBold lettering.
+- client/src/branding/OFL.txt: font license.
+- npm run brand:generate: rebuild SVG variants and the HTML startup mark.
+- client/public/images/laundry/brand-logo.svg: primary outlined horizontal logo.
+- client/public/images/laundry/brand-logo-white.svg: reverse horizontal logo.
+- client/public/images/laundry/brand-mark*.svg: violet, white and ink symbols.
+- client/public/images/laundry/brand-mark.png: transparent 1024px symbol.
+- client/public/favicon.svg and images/laundry/brand-favicon.svg: browser icon.
+- client/public/favicon.ico: 16, 32 and 48px PNG images in one ICO file.
+- client/public/favicon-16.png, favicon-32.png, favicon-48.png: raster icons.
+- client/public/apple-touch-icon.png: opaque 180px mobile icon.
+- client/public/icon-192.png and icon-512.png: larger icon exports.
+
+When changing the mark, regenerate the SVGs, re-export the raster assets and
+increase BRAND_REVISION to refresh cached defaults. The generator updates the
+startup URL revisions. Raster exports in this revision were produced with Sharp.
+No runtime dependencies were added.
+
+Content administration
+Existing media URLs are retained so already-published content picks up the new
+mark. Built-in logo and favicon URLs receive a brand revision query. Uploaded
+replacements keep their own version and explicitly removed branding stays absent.
+The startup favicon remains available while content is loading or unavailable.
+No database changes or publishing were needed for this local implementation.
+
+Verification
+- Production build passed; existing deferred invoice chunk-size warning remains.
+- Desktop 1440px, mobile 390px and 320px: no horizontal overflow; logos load.
+- Startup without JavaScript and React session loading both use the hanger.
+- Reduced-motion mode is static; normal mode has drawing, sway and progress.
+- Mocked admin logo/favicon replacements and removals are respected.
+- Mocked content unavailability preserves the startup favicon.
+- No browser page errors during the desktop/mobile checks.
+- No orders, payments or external-provider writes were made.

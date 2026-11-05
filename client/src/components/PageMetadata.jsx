@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import usePageCopy from '../hooks/usePageCopy';
 import { useGlobalContent } from '../context/SiteContentContext';
 import { CONTENT_PAGE_PATHS } from '../utils/contentPages';
+import { brandAssetUrl, DEFAULT_FAVICON } from '../branding/identity.mjs';
 
 export default function PageMetadata() {
   const { pathname } = useLocation();
@@ -24,11 +25,14 @@ export default function PageMetadata() {
     meta('og:image', seo?.image?.asset?.url || '', true);
     const favicon = global.section('branding')?.favicon?.asset;
     let icon = document.head.querySelector('link[rel="icon"]');
-    if (!favicon?.url) icon?.remove();
+    // Keep the startup icon while content is loading/unavailable. A published
+    // removal still takes effect, and uploaded favicons keep their own versions.
+    const faviconUrl = brandAssetUrl(favicon, global.page ? null : DEFAULT_FAVICON);
+    if (!faviconUrl) icon?.remove();
     else {
       if (!icon) { icon = document.createElement('link'); icon.rel = 'icon'; document.head.appendChild(icon); }
       icon.removeAttribute('type');
-      icon.href = `${favicon.url}${favicon.url.includes('?') ? '&' : '?'}v=${favicon.version}`;
+      icon.href = faviconUrl;
     }
   }, [content.page, global.page, pathname, content.text]);
   return null;

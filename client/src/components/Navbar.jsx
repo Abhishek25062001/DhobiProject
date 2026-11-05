@@ -1,6 +1,6 @@
 import { visibleContentItems } from '../../../shared/contentSchema.mjs';
 import { useGlobalContent } from '../context/SiteContentContext';
-import ManagedImage from './ManagedImage';
+import BrandLogo from './BrandLogo';
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -57,14 +57,14 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16 sm:h-20">
           
           {/* Logo & Brand */}
-          <Link to={logoDestination} className="flex items-center gap-3 group">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-primary-700 via-primary-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-primary-500/20 group-hover:scale-105 transition-transform">
-              <ManagedImage optional reference={branding?.logo} className="w-6 h-6" width={24} height={24} />
+          <Link to={logoDestination} className="flex items-center gap-2.5 group">
+            <div className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 flex items-center justify-center motion-safe:group-hover:-rotate-6 transition-transform">
+              <BrandLogo reference={branding?.logo} className="w-full h-full object-contain" width={48} height={48} />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-extrabold text-xl sm:text-2xl tracking-tight text-slate-900">
-                  {global.text(branding?.name)}<span className="text-primary-600">{global.text(branding?.accent)}</span>
+                  {global.text(branding?.name)}<span className="text-[#5030ef]">{global.text(branding?.accent)}</span>
                 </span>
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">{copy('in_fed1d87')}</span>
               </div>

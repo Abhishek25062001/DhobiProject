@@ -1,7 +1,7 @@
 import { visibleContentItems } from '../../../shared/contentSchema.mjs';
 import ContentAssurances from './ContentAssurances';
 import { useGlobalContent } from '../context/SiteContentContext';
-import ManagedImage from './ManagedImage';
+import BrandLogo from './BrandLogo';
 import useServiceAreas from '../hooks/useServiceAreas';
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
@@ -26,8 +26,8 @@ const Footer = () => {
           {/* Brand Info */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary-600 to-teal-400 flex items-center justify-center text-white shadow-md">
-                <ManagedImage optional reference={branding?.logo} className="w-5 h-5" width={20} height={20} />
+              <div className="w-11 h-11 shrink-0 rounded-xl bg-[#f4f0ff] flex items-center justify-center">
+                <BrandLogo reference={branding?.logo} className="w-10 h-10 object-contain" width={40} height={40} />
               </div>
               <span className="font-extrabold text-xl text-white tracking-tight">
                 {global.text(branding?.name)}<span className="text-primary-400">{global.text(branding?.accent)}</span>
