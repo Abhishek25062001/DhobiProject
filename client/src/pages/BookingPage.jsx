@@ -1648,16 +1648,20 @@ const BookingPage = () => {
 
                   {/* Available Coupons List with Full Details */}
                   {availableCoupons.length > 0 && (
-                    <div className="space-y-2 pt-2">
-                      <div className="flex items-center justify-between">
+                    <details className="group/offers pt-2">
+                      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 [&::-webkit-details-marker]:hidden">
                         <span className="text-[11px] text-slate-700 font-bold flex items-center gap-1">
-                          <Percent className="w-3 h-3 text-teal-600" />
+                          <Percent className="w-3 h-3 text-teal-600" aria-hidden="true" />
                           <span>{copy('available_offers_bb31856')}{availableCoupons.length})</span>
                         </span>
-                        <span className="text-[10px] text-slate-400">{copy('tap_to_apply_cf700ba')}</span>
-                      </div>
+                        <span className="flex shrink-0 items-center gap-1 text-[10px] font-semibold text-primary-600">
+                          <span className="group-open/offers:hidden">Expand</span>
+                          <span className="hidden group-open/offers:inline">Minimise</span>
+                          <ChevronDown className="w-3.5 h-3.5 group-open/offers:rotate-180" aria-hidden="true" />
+                        </span>
+                      </summary>
                       
-                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                      <div className="mt-2 space-y-2 max-h-72 overflow-y-auto pr-1">
                         {availableCoupons.map((c) => {
                           const minReq = Number(c.minOrderSubtotal) || 0;
                           const isEligible = subtotal >= minReq;
@@ -1740,7 +1744,7 @@ const BookingPage = () => {
                           );
                         })}
                       </div>
-                    </div>
+                    </details>
                   )}
                 </div>
               )}
