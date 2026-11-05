@@ -12,6 +12,7 @@ import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
 import BookingConfigGate from './components/BookingConfigGate';
 import SiteLoader from './components/SiteLoader';
+import ScrollToTop from './components/ScrollToTop';
 
 import HomePage from './pages/HomePage';
 const BookingPage = lazy(() => import('./pages/BookingPage'));
@@ -94,6 +95,7 @@ function AppShell() {
 
             {/* Main Application Routes */}
             <main className="grow">
+              <ScrollToTop />
               <Suspense fallback={<SiteLoader label="Loading the page" />}>
               <Routes>
                 <Route path="/" element={<BookingConfigGate><HomePage /></BookingConfigGate>} />

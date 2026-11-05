@@ -2,6 +2,10 @@
 @config "../tailwind.config.js";
 
 @layer base {
+  html {
+    overflow-anchor: none;
+  }
+
   body {
     @apply bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans;
   }
