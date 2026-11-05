@@ -8,9 +8,31 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/components/SiteLoader.css" />
   </head>
   <body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
-    <div id="root"></div>
+    <div id="root">
+      <div class="id-loader id-loader--screen" role="status">
+        <div class="id-loader__stage" aria-hidden="true">
+          <span class="id-loader__glow"></span>
+          <span class="id-loader__orbit"></span>
+          <span class="id-loader__door">
+            <span class="id-loader__water"></span>
+            <svg class="id-loader__shirt" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+              <path d="M18 16.5 32 24l14-7.5 9.5 8.2-7 5.4v22.4H15.5V22.1l-7-5.4 9.5-8.2Z" fill="#eef2ff" stroke="#5030ef" stroke-width="2.4" stroke-linejoin="round"></path>
+              <path d="M26 16.5c.4 4.2 2.7 6.8 6 6.8s5.6-2.6 6-6.8" stroke="#5030ef" stroke-width="2.4" stroke-linecap="round"></path>
+            </svg>
+            <span class="id-loader__bubble"></span>
+            <span class="id-loader__bubble id-loader__bubble--two"></span>
+            <span class="id-loader__bubble id-loader__bubble--three"></span>
+          </span>
+        </div>
+        <div class="id-loader__copy">
+          <p class="id-loader__brand">Indo<span>Dhobi</span></p>
+          <p class="id-loader__label">Preparing your fresh load</p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

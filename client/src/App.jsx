@@ -5,12 +5,13 @@ import AdditionalPageSections from './components/AdditionalPageSections';
 import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { OrderBookingProvider } from './context/OrderBookingContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
 import BookingConfigGate from './components/BookingConfigGate';
+import SiteLoader from './components/SiteLoader';
 
 import HomePage from './pages/HomePage';
 const BookingPage = lazy(() => import('./pages/BookingPage'));
@@ -33,12 +34,11 @@ const PartnerRedirect = () => {
   }, []);
 
   return (
-    <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center space-y-3">
-      <div className="w-8 h-8 border-3 border-primary-600 border-t-transparent rounded-full animate-spin" />
-      <p className="text-sm font-semibold text-slate-700">Redirecting to Avyakt Infotech Partner Portal...</p>
+    <div className="relative">
+      <SiteLoader label="Opening the partner portal" />
       <a
         href="https://avyaktinfotech.com"
-        className="text-xs font-bold text-primary-600 underline"
+        className="absolute bottom-10 inset-x-0 text-center text-xs font-bold text-primary-600 underline"
       >
         Click here if you are not redirected automatically
       </a>
@@ -46,10 +46,11 @@ const PartnerRedirect = () => {
   );
 };
 
-function App() {
+function AppShell() {
+  const { loading } = useAuth();
+  if (loading) return <SiteLoader screen label="Preparing your fresh load" />;
+
   return (
-    <Router>
-      <AuthProvider>
         <CustomerOrdersProvider>
         <OrderBookingProvider>
           <SiteContentProvider>
@@ -93,7 +94,7 @@ function App() {
 
             {/* Main Application Routes */}
             <main className="grow">
-              <Suspense fallback={<div role="status" className="min-h-[60vh] flex items-center justify-center gap-3 text-sm text-slate-500"><span className="h-5 w-5 rounded-full border-2 border-primary-200 border-t-primary-600 motion-safe:animate-spin" aria-hidden="true" />Loading…</div>}>
+              <Suspense fallback={<SiteLoader label="Loading the page" />}>
               <Routes>
                 <Route path="/" element={<BookingConfigGate><HomePage /></BookingConfigGate>} />
                 <Route path="/book" element={<BookingConfigGate><BookingPage /></BookingConfigGate>} />
@@ -155,6 +156,14 @@ function App() {
         </SiteContentProvider>
         </OrderBookingProvider>
       </CustomerOrdersProvider>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        <AppShell />
       </AuthProvider>
     </Router>
   );
