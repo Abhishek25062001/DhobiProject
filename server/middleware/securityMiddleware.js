@@ -30,14 +30,41 @@ export const sanitizeInput = (req, res, next) => {
 };
 
 // Render's public edge overwrites CF-Connecting-IP. X-Forwarded-For can include client input.
-function renderVisitorKey(req) {
+function connectionAddress(req) {
   const visitorIp = req.get('CF-Connecting-IP');
-  const address = isIP(visitorIp) ? visitorIp : req.socket.remoteAddress;
-  return ipKeyGenerator(address ?? 'unknown');
+  return isIP(visitorIp) ? visitorIp : req.socket.remoteAddress;
+}
+
+// The website reaches this API through a Vercel /api rewrite, so CF-Connecting-IP is a shared
+// Vercel egress address. Vercel overwrites X-Forwarded-For with the real visitor IP (leftmost).
+// A direct caller can fake these headers, so proxyConnectionLimiter still caps each connection.
+function proxiedVisitorAddress(req) {
+  if (!req.get('x-vercel-id')) return null;
+  const leftmost = (req.get('X-Forwarded-For') || '').split(',')[0].trim();
+  return isIP(leftmost) ? leftmost : null;
+}
+
+function renderVisitorKey(req) {
+  return ipKeyGenerator(proxiedVisitorAddress(req) ?? connectionAddress(req) ?? 'unknown');
 }
 
 const isRenderWebService = process.env.RENDER === 'true' && process.env.RENDER_SERVICE_TYPE === 'web';
 const visitorKeyGenerator = isRenderWebService ? renderVisitorKey : undefined;
+
+// Upper bound on authentication attempts per connecting address for proxied requests.
+export const proxyConnectionLimiter = rateLimit({
+  store: new MongoRateLimitStore('proxyConnectionLimiter'),
+  keyGenerator: req => ipKeyGenerator(connectionAddress(req) ?? 'unknown'),
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  standardHeaders: false,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many authentication attempts. Please try again after 15 minutes.'
+  },
+  skip: (req) => process.env.NODE_ENV === 'test' || !isRenderWebService || !proxiedVisitorAddress(req)
+});
 
 // Rate limiter for authentication routes: 100 requests per 15 minutes
 export const authLimiter = rateLimit({

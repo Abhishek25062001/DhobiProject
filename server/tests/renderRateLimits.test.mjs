@@ -31,6 +31,19 @@ test('public Render requests are limited by the visitor IP for API and login rou
     assert.equal(await remaining('/health', null, '192.0.2.20'), '999');
     assert.equal(await remaining('/health', '192.0.2.1, 192.0.2.2', '192.0.2.21'), '998');
   });
+  await t.test('requests through the Vercel /api rewrite are limited per forwarded visitor', async () => {
+    async function proxied(path, visitor) {
+      const headers = { 'CF-Connecting-IP': '203.0.113.50', 'X-Forwarded-For': `${visitor}, 203.0.113.50`, 'x-vercel-id': 'bom1::test' };
+      const options = path === '/health' ? { headers } : { headers, method: 'POST', body: {} };
+      return (await request(path, options)).headers.get('ratelimit-remaining');
+    }
+    assert.equal(await proxied('/auth/login', '198.51.100.40'), '99');
+    assert.equal(await proxied('/auth/login', '198.51.100.40'), '98');
+    // Another visitor behind the same Vercel egress address keeps a separate limit.
+    assert.equal(await proxied('/auth/login', '198.51.100.41'), '99');
+    // An unusable forwarded address falls back to the connection address.
+    assert.equal(await proxied('/health', 'not-an-ip'), '999');
+  });
   await t.test('IPv6 addresses in the same visitor subnet share a limit', async () => {
     assert.equal(await remaining('/health', '2001:db8:1::1', '192.0.2.1'), '999');
     assert.equal(await remaining('/health', '2001:db8:1::2', '192.0.2.2'), '998');

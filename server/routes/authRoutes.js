@@ -16,15 +16,15 @@ import {
   staffLogin
 } from '../controllers/authController.js';
 import { protect } from '../middleware/authMiddleware.js';
-import { authLimiter } from '../middleware/securityMiddleware.js';
+import { authLimiter, proxyConnectionLimiter } from '../middleware/securityMiddleware.js';
 
 const router = express.Router();
 
-router.post('/customer/firebase-login', authLimiter, customerFirebaseLogin);
+router.post('/customer/firebase-login', proxyConnectionLimiter, authLimiter, customerFirebaseLogin);
 router.post('/complete-onboarding', protect, completeOnboarding);
-router.post('/staff/login', authLimiter, staffLogin);
-router.post('/register', authLimiter, register);
-router.post('/login', authLimiter, login);
+router.post('/staff/login', proxyConnectionLimiter, authLimiter, staffLogin);
+router.post('/register', proxyConnectionLimiter, authLimiter, register);
+router.post('/login', proxyConnectionLimiter, authLimiter, login);
 
 router.get('/me', protect, getMe);
 router.get('/profile', protect, getProfile);

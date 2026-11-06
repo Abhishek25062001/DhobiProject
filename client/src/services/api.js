@@ -3,12 +3,11 @@ import { notifyOrdersChanged } from './activeOrderFeed.mjs';
 import axios from 'axios';
 import { readWithRetry, requireCatalog, requirePublicConfig } from './readWithRetry';
 
-const apiOrigin = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
-
 const API = axios.create({
-  // Dev calls go through the Vite proxy so the browser stays same-origin.
-  // Production has no proxy, so it calls VITE_API_URL directly.
-  baseURL: import.meta.env.DEV || !apiOrigin ? '/api' : `${apiOrigin}/api`,
+  // Always same-origin: Vite proxies /api in development and vercel.json rewrites /api to the
+  // Render API in production. The HttpOnly session cookie is then first-party, so browsers that
+  // block third-party cookies (Safari, Brave, incognito) still keep users signed in.
+  baseURL: '/api',
   withCredentials: true,
   headers: {
     'X-Session-Mode': 'cookie',
