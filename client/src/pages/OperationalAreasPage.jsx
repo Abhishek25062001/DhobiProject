@@ -28,10 +28,6 @@ const OperationalAreasPage = () => {
     window.scrollTo(0, 0);
   }, []);
 
-  const wording = (key, previous, next) => {
-    const value = copy(key);
-    return !value || value === previous ? next : value;
-  };
   const pincodeReady = /^[1-9]\d{5}$/.test(searchQuery);
 
   const handleCheckPincode = async (event) => {
@@ -71,28 +67,28 @@ const OperationalAreasPage = () => {
           <form onSubmit={handleCheckPincode} className="w-full shrink-0 rounded-[20px] border border-[#e2dcfb] bg-white p-5 shadow-[0_5px_18px_#5030ef0d] lg:w-[22.5rem]">
             <h2 className="flex items-center gap-2 text-sm font-extrabold text-[#080f31]">
               <Search className="h-4 w-4 text-[#5030ef]" aria-hidden="true" />
-              <span>{wording('instant_pincode_checker_38bc744', 'Instant Pincode Checker', 'Check your pincode')}</span>
+              <span>{copy('instant_pincode_checker_38bc744')}</span>
             </h2>
-            <p className="mt-1 text-xs text-[#536489]">{copy('enter_your_6_digit_pincode_0a9af78')}</p>
+            <label htmlFor="area-pincode" className="mt-1 block text-xs text-[#536489]">{copy('enter_your_6_digit_pincode_0a9af78')}</label>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <input
+                id="area-pincode"
                 type="text"
                 value={searchQuery}
                 disabled={checking}
                 inputMode="numeric"
                 autoComplete="postal-code"
                 maxLength={6}
-                aria-label={copy('enter_your_6_digit_pincode_0a9af78')}
                 onChange={(e) => { setSearchQuery(e.target.value.replace(/\D/g, '').slice(0, 6)); setCheckResult(null); }}
                 placeholder={copy('e_g_110001_d1c3a44')}
-                className="h-11 min-w-0 flex-1 rounded-xl border border-[#e2dcfb] bg-white px-3.5 text-sm text-[#080f31] placeholder:text-[#536489] focus:border-[#5030ef] focus:outline-hidden focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-[#008778]"
+                className="h-11 min-w-0 sm:flex-1 rounded-xl border border-[#e2dcfb] bg-white px-3.5 text-sm text-[#080f31] placeholder:text-[#536489] focus:border-[#5030ef] focus:outline-hidden focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-[#008778]"
               />
               <button
                 type="submit"
                 disabled={checking || !pincodeReady}
                 className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#5030ef] px-4 text-sm font-bold text-white hover:bg-[#3b24d0] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-4 focus-visible:outline-[#008778]"
               >
-                <span>{checking ? 'Checking…' : wording('check_serviceability_6c8dbe0', 'Check Serviceability', 'Check pincode')}</span>
+                <span>{checking ? 'Checking…' : copy('check_serviceability_6c8dbe0')}</span>
                 {!checking && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
               </button>
             </div>
@@ -103,7 +99,7 @@ const OperationalAreasPage = () => {
                     <p className="font-bold text-[#008778]">Served by {checkResult.hub?.name}</p>
                     {checkResult.hub?.turnaround && <p className="mt-1 text-xs text-[#536489]">{checkResult.hub.turnaround}</p>}
                     <Link to="/book" className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-[#5030ef] hover:text-[#3b24d0] focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-4 focus-visible:outline-[#008778]">
-                      <span>{wording('book_pickup_for_cd4d6a8', 'Book Pickup for ', 'Book pickup')}</span>
+                      <span>{copy('book_pickup_for_cd4d6a8')}</span>
                       <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
                     </Link>
                   </>
@@ -117,7 +113,7 @@ const OperationalAreasPage = () => {
           </form>
         </div>
 
-        {/* 4 Operational Hub Grid */}
+        {/* Active service areas */}
         <div className="space-y-6">
           <div className="text-center sm:text-left">
             <h2 className="text-2xl font-black text-slate-900 tracking-tight">{copy('active_fleet_networks_plant_locations_7960bf4')}</h2>
@@ -137,13 +133,13 @@ const OperationalAreasPage = () => {
                       {hub.badge}
                     </span>
                     <span className="text-xs text-slate-500 font-semibold flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-teal-600" />
+                      <Clock className="w-3.5 h-3.5 shrink-0 text-teal-600" aria-hidden="true" />
                       <span>{hub.turnaround}</span>
                     </span>
                   </div>
 
                   <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <Building2 className="w-5 h-5 text-primary-600 shrink-0" />
+                    <Building2 className="w-5 h-5 text-primary-600 shrink-0" aria-hidden="true" />
                     <span>{hub.name}</span>
                   </h3>
 
@@ -152,29 +148,29 @@ const OperationalAreasPage = () => {
                   </div>
 
                   <div className="space-y-1.5 pt-1">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">{copy('prominent_service_neighborhoods_37bd0fa')}</span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-slate-700">
+                    <p className="text-xs font-bold text-slate-600">{copy('prominent_service_neighborhoods_37bd0fa')}</p>
+                    <ul className="grid grid-cols-1 xl:grid-cols-2 gap-x-4 gap-y-2 text-xs leading-relaxed text-slate-700">
                       {hub.coverage.map((area, idx) => (
-                        <div key={idx} className="flex items-center gap-1.5">
-                          <MapPin className="w-3 h-3 text-teal-600 shrink-0" />
-                          <span className="truncate">{area}</span>
-                        </div>
+                        <li key={idx} className="flex min-w-0 items-start gap-1.5">
+                          <MapPin className="mt-1 w-3 h-3 text-teal-600 shrink-0" aria-hidden="true" />
+                          <span className="min-w-0 break-words">{area}</span>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
+                <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                  {copy('fleet_active_ready_d0c7ff6') && <span className="text-xs text-emerald-700 font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
                     <span>{copy('fleet_active_ready_d0c7ff6')}</span>
-                  </span>
+                  </span>}
                   <Link
                     to="/book"
-                    className="inline-flex items-center gap-1 text-xs font-extrabold text-primary-600 hover:text-primary-700 hover:underline"
+                    className="ml-auto inline-flex items-center gap-1 text-xs font-extrabold text-primary-600 hover:text-primary-700 hover:underline"
                   >
                     <span>{copy('schedule_wash_ea59b39')}</span>
-                    <ArrowRight className="w-3 h-3" />
+                    <ArrowRight className="w-3 h-3" aria-hidden="true" />
                   </Link>
                 </div>
               </div>
@@ -183,33 +179,33 @@ const OperationalAreasPage = () => {
         </div>
 
         {/* Assurances Strip */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-6 text-center sm:text-left">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-3 gap-6 text-left">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
-              <Truck className="w-5 h-5" />
+              <Truck className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
-              <h4 className="font-bold text-slate-900 text-sm">{copy('free_doorstep_pickup_4ce6006')}</h4>
+              <h2 className="font-bold text-slate-900 text-sm">{copy('free_doorstep_pickup_4ce6006')}</h2>
               <p className="text-xs text-slate-500 mt-0.5">{copy('complimentary_doorstep_collection_on_orders_above_399_across_all__f9a4ff2')}</p>
             </div>
           </div>
 
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center shrink-0">
-              <ShieldCheck className="w-5 h-5" />
+              <ShieldCheck className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
-              <h4 className="font-bold text-slate-900 text-sm">{copy('digital_chain_of_custody_12ed623')}</h4>
+              <h2 className="font-bold text-slate-900 text-sm">{copy('digital_chain_of_custody_12ed623')}</h2>
               <p className="text-xs text-slate-500 mt-0.5">{copy('physical_tamper_proof_bag_tags_and_4_digit_customer_otp_verificat_f7879f0')}</p>
             </div>
           </div>
 
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-              <Sparkles className="w-5 h-5" />
+              <Sparkles className="w-5 h-5" aria-hidden="true" />
             </div>
             <div>
-              <h4 className="font-bold text-slate-900 text-sm">{copy('german_steam_finishing_c354dd5')}</h4>
+              <h2 className="font-bold text-slate-900 text-sm">{copy('german_steam_finishing_c354dd5')}</h2>
               <p className="text-xs text-slate-500 mt-0.5">{copy('professional_boiler_steam_pressing_and_antiseptic_garment_sanitiz_031999c')}</p>
             </div>
           </div>
@@ -217,14 +213,14 @@ const OperationalAreasPage = () => {
 
         <div className="flex flex-col items-start justify-between gap-6 rounded-[20px] bg-[#f0ecff] px-6 py-6 sm:flex-row sm:items-center sm:px-8">
           <div>
-            <h2 className="text-xl font-extrabold tracking-[-0.03em] text-[#080f31] sm:text-2xl">{wording('is_your_pincode_in_our_fleet_zone_b05c4bd', 'Is Your Pincode in Our Fleet Zone?', 'Ready for a pickup?')}</h2>
+            <h2 className="text-xl font-extrabold tracking-[-0.03em] text-[#080f31] sm:text-2xl">{copy('is_your_pincode_in_our_fleet_zone_b05c4bd')}</h2>
             <p className="mt-1 text-sm text-[#536489]">{checkResult?.status === 'available' && checkResult.hub?.name ? `Doorstep pickup is available in ${checkResult.hub.name}.` : copy('book_your_wash_in_under_60_seconds_with_live_doorstep_tracking_04b1c46')}</p>
           </div>
           <Link
             to="/book"
             className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl bg-[#5030ef] px-5 text-sm font-bold text-white hover:bg-[#3b24d0] focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-4 focus-visible:outline-[#008778]"
           >
-            <span>{wording('book_your_wash_now_00e01c2', 'Book Your Wash Now →', 'Book your wash')}</span>
+            <span>{copy('book_your_wash_now_00e01c2')}</span>
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
         </div>

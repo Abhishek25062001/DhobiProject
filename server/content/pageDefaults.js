@@ -11,6 +11,12 @@ import orderSuccess from './order-successCopy.json' with { type: 'json' };
 
 const names = { book: 'Book Laundry', pricing: 'Pricing & Services', privacy: 'Privacy Policy', terms: 'Terms of Service', areas: 'Service Areas', login: 'Sign In', register: 'Register', profile: 'Your Profile', orders: 'My Orders', 'order-success': 'Booking Confirmed' };
 export const PAGE_DEFAULTS = Object.entries({ book, pricing, privacy, terms, areas, login, register, profile, orders, 'order-success': orderSuccess }).map(([pageKey, copy]) => ({
-  pageKey, schemaVersion: 1, revision: 1, seo: { title: `${names[pageKey]} | IndoDhobi`, description: pageKey === 'book' ? 'Choose your garments, care and pickup schedule.' : names[pageKey], image: null },
+  pageKey, schemaVersion: 1, revision: 1, seo: {
+    title: pageKey === 'areas' ? 'Laundry & Ironing Service Areas | IndoDhobi' : `${names[pageKey]} | IndoDhobi`,
+    description: pageKey === 'book' ? 'Choose your garments, care and pickup schedule.'
+      : pageKey === 'areas' ? 'Explore IndoDhobi laundry and ironing service areas. View neighbourhoods and turnaround times, and check your pincode for doorstep pickup and delivery.'
+        : names[pageKey],
+    image: null,
+  },
   sections: [{ key: 'copy', type: 'copy', isVisible: true, sortOrder: 0, content: { entries: Object.entries(copy).map(([id, value]) => ({ id, value })) } }],
 }));

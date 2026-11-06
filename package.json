@@ -16,6 +16,7 @@
     "test:contracts": "node --test tests/catalogContract.test.mjs",
     "test:admin-content": "node --test server/tests/*.test.mjs",
     "migrate:website": "node server/scripts/migrateWebsite.js",
+    "content:areas": "node server/scripts/refreshAreasContent.js",
     "test:cache": "node --test client/tests/resourceCache.test.mjs client/tests/basketReconciliation.test.mjs client/tests/orderTracking.test.mjs",
     "test:acceptance": "npm run test:connectivity && npm run test:contracts && npm run test:cache && npm run test:admin-content",
     "brand:generate": "node scripts/generateBrandAssets.mjs"

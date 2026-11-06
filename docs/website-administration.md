@@ -42,6 +42,12 @@ npm run migrate:website -- --rollback /absolute/path/to/website-journal.json --a
 
 Rollback restores the participating collections exactly, including BSON IDs/dates and originally absent fields. It refuses if any participating content changed after the recorded run, protecting later admin edits. For such a conflict, restore individual fields from the journal after review. A hard process interruption before an after-snapshot is safely recorded also requires selective recovery from the before-snapshot and the normal database backup. Do not force a wholesale rollback over newer edits.
 
+## Service Areas copy refresh
+
+For an existing installation, run `npm run content:areas` to review the proposed copy and SEO changes, then `npm run content:areas -- --apply` to save them. This targets only the Areas page, backs up the original document in `.local-backups/areas-content-*.json`, and requires the page revision to remain unchanged. It replaces exact old defaults only; custom wording, blank/removed entries, hidden copy sections, custom metadata, hub records and pincode eligibility remain intact. Repeat runs report no changes. New installations receive the revised copy through the usual content migration.
+
+The page keeps full locality names and pincodes visible, uses the existing fee and delivery bindings, and directs customers to the exact-pincode checker rather than treating a display range as complete coverage. Both existing page URLs remain available.
+
 ## Fresh installations
 
 `npm run seed` is an explicit, one-time initialization for an empty catalog/configuration database; it then migrates page content and media. It refuses a populated installation and does nothing once its completion ledger exists. It does not create demo users or orders in a normal environment. Provision the initial administrator through the deployment's account administration process; do not ship shared demonstration credentials.
