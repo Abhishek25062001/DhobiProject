@@ -14,9 +14,7 @@ import {
   ShieldCheck, 
   Sparkles, 
   ArrowRight, 
-  Building2, 
-  Compass,
-  AlertCircle
+  Building2
 } from 'lucide-react';
 
 const OperationalAreasPage = () => {
@@ -30,92 +28,93 @@ const OperationalAreasPage = () => {
     window.scrollTo(0, 0);
   }, []);
 
-  const handleCheckPincode = async (e) => {
-    e.preventDefault();
-    setChecking(true); setCheckResult(null);
+  const wording = (key, previous, next) => {
+    const value = copy(key);
+    return !value || value === previous ? next : value;
+  };
+  const pincodeReady = /^[1-9]\d{5}$/.test(searchQuery);
+
+  const handleCheckPincode = async (event) => {
+    event?.preventDefault();
+    if (!pincodeReady) return;
+    setChecking(true);
+    setCheckResult(null);
     try {
-      const result = await serviceAreaService.check(searchQuery.trim());
-      setCheckResult({ serviceable: result.serviceable, area: searchQuery.trim(),
-        message: result.serviceable ? `Doorstep service is available through ${result.area.name}. ${result.area.turnaround}` : `We do not currently offer doorstep service for ${searchQuery.trim()}.` });
-    } catch (error) { setCheckResult({ serviceable: false, message: error.response?.data?.message || 'Coverage could not be checked. Please try again.' }); }
-    finally { setChecking(false); }
+      const result = await serviceAreaService.check(searchQuery);
+      setCheckResult(result.serviceable
+        ? { status: 'available', hub: result.area }
+        : { status: 'unavailable' });
+    } catch (error) {
+      setCheckResult({ status: 'error', message: error.response?.data?.message || 'Coverage could not be checked. Please try again.' });
+    } finally {
+      setChecking(false);
+    }
   };
 
   return (
-    <ContentState resource={copy}><div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 space-y-12">
+    <ContentState resource={copy}><div className="min-h-screen bg-[#f7f5ff] py-12 px-4 sm:px-6 lg:px-8 space-y-12 font-[Plus_Jakarta_Sans,system-ui,sans-serif] text-[#080f31]">
       <div className="max-w-6xl mx-auto space-y-10">
         
-        {/* Header Hero Banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-primary-950 to-slate-900 text-white p-8 sm:p-12 border border-slate-800 shadow-xl text-center sm:text-left flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="space-y-4 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-teal-500/20 text-teal-300 text-xs font-bold border border-teal-500/30">
-              <Compass className="w-3.5 h-3.5 text-teal-400 animate-spin" />
+        <div className="flex flex-col items-start gap-8 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-2xl">
+            <p className="mb-2.5 flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.18em] text-[#5030ef]">
+              <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span>{copy('doorstep_pickup_48_hour_hub_delivery_42f5b6e')}</span>
-            </div>
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">{copy('our_operational_hubs_b64da69')}<br />
-              <span className="bg-gradient-to-r from-teal-400 via-primary-300 to-indigo-300 bg-clip-text text-transparent">{copy('serviceable_cities_aaadc60')}</span>
+            </p>
+            <h1 className="text-[clamp(28px,3vw,42px)] font-extrabold leading-[1.2] tracking-[-0.04em] text-[#080f31]">
+              {copy('our_operational_hubs_b64da69')}
+              <span className="block text-[#5030ef] sm:inline">{copy('serviceable_cities_aaadc60')}</span>
             </h1>
-            <p className="text-sm sm:text-base text-slate-300 leading-relaxed">{copy('indodhobi_operates_commercial_temperature_controlled_laundry_and__ecd0ee0')}</p>
+            <p className="mt-3 text-sm leading-relaxed text-[#536489]">{copy('indodhobi_operates_commercial_temperature_controlled_laundry_and__ecd0ee0')}</p>
           </div>
 
-          {/* Quick Pincode Checker Card */}
-          <div className="w-full md:w-96 bg-white/10 backdrop-blur-xl p-6 rounded-2xl border border-white/20 text-white shadow-2xl shrink-0">
-            <h3 className="text-sm font-bold flex items-center gap-2 mb-2">
-              <Search className="w-4 h-4 text-teal-300" />
-              <span>{copy('instant_pincode_checker_38bc744')}</span>
-            </h3>
-            <p className="text-xs text-slate-300 mb-4">{copy('enter_your_6_digit_pincode_0a9af78')}</p>
-
-            <form onSubmit={handleCheckPincode} className="space-y-3">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  disabled={checking}
-                  inputMode="numeric"
-                  maxLength={6}
-                  onChange={(e) => { setSearchQuery(e.target.value); setCheckResult(null); }}
-                  placeholder={copy('e_g_110001_d1c3a44')}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white text-slate-900 text-xs font-semibold placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-primary-400"
-                />
-              </div>
+          <form onSubmit={handleCheckPincode} className="w-full shrink-0 rounded-[20px] border border-[#e2dcfb] bg-white p-5 shadow-[0_5px_18px_#5030ef0d] lg:w-[22.5rem]">
+            <h2 className="flex items-center gap-2 text-sm font-extrabold text-[#080f31]">
+              <Search className="h-4 w-4 text-[#5030ef]" aria-hidden="true" />
+              <span>{wording('instant_pincode_checker_38bc744', 'Instant Pincode Checker', 'Check your pincode')}</span>
+            </h2>
+            <p className="mt-1 text-xs text-[#536489]">{copy('enter_your_6_digit_pincode_0a9af78')}</p>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                value={searchQuery}
+                disabled={checking}
+                inputMode="numeric"
+                autoComplete="postal-code"
+                maxLength={6}
+                aria-label={copy('enter_your_6_digit_pincode_0a9af78')}
+                onChange={(e) => { setSearchQuery(e.target.value.replace(/\D/g, '').slice(0, 6)); setCheckResult(null); }}
+                placeholder={copy('e_g_110001_d1c3a44')}
+                className="h-11 min-w-0 flex-1 rounded-xl border border-[#e2dcfb] bg-white px-3.5 text-sm text-[#080f31] placeholder:text-[#536489] focus:border-[#5030ef] focus:outline-hidden focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-[#008778]"
+              />
               <button
                 type="submit"
-                disabled={checking}
-                className="w-full py-2.5 rounded-xl bg-primary-600 hover:bg-primary-500 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                disabled={checking || !pincodeReady}
+                className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#5030ef] px-4 text-sm font-bold text-white hover:bg-[#3b24d0] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-4 focus-visible:outline-[#008778]"
               >
-                <span>{copy('check_serviceability_6c8dbe0')}</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <span>{checking ? 'Checking…' : wording('check_serviceability_6c8dbe0', 'Check Serviceability', 'Check pincode')}</span>
+                {!checking && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
               </button>
-            </form>
-
-            {/* Checker Output */}
+            </div>
             {checkResult && (
-              <div className={`mt-4 p-3 rounded-xl text-xs font-medium border animate-in fade-in ${
-                checkResult.serviceable
-                  ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40'
-                  : 'bg-amber-500/20 text-amber-200 border-amber-400/40'
-              }`}>
-                <div className="flex items-start gap-2">
-                  {checkResult.serviceable ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  )}
-                  <div>
-                    <p className="leading-snug">{checkResult.message}</p>
-                    {checkResult.serviceable && (
-                      <Link
-                        to="/book"
-                        className="inline-block mt-2 font-bold text-emerald-300 underline hover:text-white"
-                      >{copy('book_pickup_for_cd4d6a8')}{checkResult.area} &rarr;
-                      </Link>
-                    )}
-                  </div>
-                </div>
+              <div className="mt-4 text-sm" role="status">
+                {checkResult.status === 'available' ? (
+                  <>
+                    <p className="font-bold text-[#008778]">Served by {checkResult.hub?.name}</p>
+                    {checkResult.hub?.turnaround && <p className="mt-1 text-xs text-[#536489]">{checkResult.hub.turnaround}</p>}
+                    <Link to="/book" className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-[#5030ef] hover:text-[#3b24d0] focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-4 focus-visible:outline-[#008778]">
+                      <span>{wording('book_pickup_for_cd4d6a8', 'Book Pickup for ', 'Book pickup')}</span>
+                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Link>
+                  </>
+                ) : checkResult.status === 'unavailable' ? (
+                  <p className="text-[#536489]">This pincode is outside current coverage.</p>
+                ) : (
+                  <p className="text-[#536489]">{checkResult.message} <button type="button" onClick={handleCheckPincode} className="font-bold text-[#5030ef] underline">Try again</button></p>
+                )}
               </div>
             )}
-          </div>
+          </form>
         </div>
 
         {/* 4 Operational Hub Grid */}
@@ -216,16 +215,18 @@ const OperationalAreasPage = () => {
           </div>
         </div>
 
-        {/* Bottom CTA Banner */}
-        <div className="rounded-3xl p-8 bg-gradient-to-r from-primary-600 to-teal-600 text-white text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl">
+        <div className="flex flex-col items-start justify-between gap-6 rounded-[20px] bg-[#f0ecff] px-6 py-6 sm:flex-row sm:items-center sm:px-8">
           <div>
-            <h3 className="text-xl sm:text-2xl font-black">{copy('is_your_pincode_in_our_fleet_zone_b05c4bd')}</h3>
-            <p className="text-xs sm:text-sm text-white/90 mt-1">{copy('book_your_wash_in_under_60_seconds_with_live_doorstep_tracking_04b1c46')}</p>
+            <h2 className="text-xl font-extrabold tracking-[-0.03em] text-[#080f31] sm:text-2xl">{wording('is_your_pincode_in_our_fleet_zone_b05c4bd', 'Is Your Pincode in Our Fleet Zone?', 'Ready for a pickup?')}</h2>
+            <p className="mt-1 text-sm text-[#536489]">{checkResult?.status === 'available' && checkResult.hub?.name ? `Doorstep pickup is available in ${checkResult.hub.name}.` : copy('book_your_wash_in_under_60_seconds_with_live_doorstep_tracking_04b1c46')}</p>
           </div>
           <Link
             to="/book"
-            className="px-6 py-3.5 rounded-2xl bg-white text-primary-700 font-extrabold text-xs shadow-lg hover:bg-slate-50 hover:scale-105 transition-all shrink-0"
-          >{copy('book_your_wash_now_00e01c2')}</Link>
+            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl bg-[#5030ef] px-5 text-sm font-bold text-white hover:bg-[#3b24d0] focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-4 focus-visible:outline-[#008778]"
+          >
+            <span>{wording('book_your_wash_now_00e01c2', 'Book Your Wash Now →', 'Book your wash')}</span>
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
         </div>
 
       </div>
