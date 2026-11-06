@@ -274,6 +274,10 @@ const BookingPage = () => {
       toast.error('Add items to your laundry bag before applying a coupon.');
       return;
     }
+    if (!user || !isAuthenticated) {
+      toast('Log in to check coupon eligibility.', { icon: '🔐' });
+      return;
+    }
 
     setValidatingCoupon(true);
     try {
@@ -288,6 +292,10 @@ const BookingPage = () => {
         toast.success(`Coupon ${res.code} applied! Saved ₹${res.discountAmount}`);
       }
     } catch (err) {
+      if (err.response?.status === 401) {
+        toast('Log in to check coupon eligibility.', { icon: '🔐' });
+        return;
+      }
       toast.error(err.response?.data?.message || 'Invalid coupon code.');
     } finally {
       setValidatingCoupon(false);
