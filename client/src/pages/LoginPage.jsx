@@ -25,7 +25,11 @@ function phoneAuthMessage(code, fallback) {
     case 'auth/network-request-failed': return 'Check your connection and try again.';
     case 'auth/too-many-requests': return 'Too many attempts. Wait a while before trying again.';
     case 'auth/invalid-phone-number': return 'Check your mobile number and try again.';
-    case 'auth/captcha-check-failed': return 'The security check expired. Please try again.';
+    // Firebase also returns this when the page's domain is not an Authorized domain in Firebase Authentication.
+    case 'auth/captcha-check-failed': return 'The security check could not be verified. Please refresh the page and try again.';
+    case 'auth/invalid-app-credential':
+    case 'auth/missing-app-credential': return 'The security check could not be completed. Please refresh the page and try again.';
+    case 'auth/billing-not-enabled':
     case 'auth/operation-not-allowed':
     case 'auth/unauthorized-domain':
     case 'auth/quota-exceeded': return 'Phone sign-in is currently unavailable. Please try again later.';
@@ -129,6 +133,11 @@ const LoginPage = () => {
       setOtpStep(2);
       toast.success(`Code sent to +91 ${phone}`);
     } catch (error) {
+      // Keep the Firebase code visible for diagnosis; the toast stays user-friendly.
+      console.error('[PhoneAuth] Could not send code:', error.code, error.message);
+      // A failed attempt can leave the invisible reCAPTCHA with a spent token. Start fresh next time.
+      try { verifier.current?.clear(); } catch { /* widget already removed */ }
+      verifier.current = null;
       if (mounted.current) toast.error(phoneAuthMessage(error.code, 'Could not send a code. Please try again.'));
     } finally {
       otpBusy.current = false;
