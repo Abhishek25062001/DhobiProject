@@ -2,7 +2,7 @@ import ContentState from '../components/ContentState';
 import BrandLogo from '../components/BrandLogo';
 import usePageCopy from '../hooks/usePageCopy';
 import { useGlobalContent } from '../context/SiteContentContext';
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { Link, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -19,6 +19,19 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { setupRecaptcha, sendPhoneOtp } from '../config/firebase';
+
+function phoneAuthMessage(code, fallback) {
+  switch (code) {
+    case 'auth/network-request-failed': return 'Check your connection and try again.';
+    case 'auth/too-many-requests': return 'Too many attempts. Wait a while before trying again.';
+    case 'auth/invalid-phone-number': return 'Check your mobile number and try again.';
+    case 'auth/captcha-check-failed': return 'The security check expired. Please try again.';
+    case 'auth/operation-not-allowed':
+    case 'auth/unauthorized-domain':
+    case 'auth/quota-exceeded': return 'Phone sign-in is currently unavailable. Please try again later.';
+    default: return fallback;
+  }
+}
 
 const LoginPage = () => {
   const copy = usePageCopy('login');
@@ -39,7 +52,21 @@ const LoginPage = () => {
   const [emailOptional, setEmailOptional] = useState('');
   const [confirmationResult, setConfirmationResult] = useState(null);
   const [countdown, setCountdown] = useState(30);
-  const [canResend, setCanResend] = useState(false);
+  const [verifiedUser, setVerifiedUser] = useState(null);
+  const [codeError, setCodeError] = useState('');
+  const verifier = useRef(null);
+  const captchaContainer = useRef(null);
+  const codeInput = useRef(null);
+  const otpBusy = useRef(false);
+  const mounted = useRef(false);
+  const attachCaptcha = useCallback(node => {
+    // Page content can reload and replace the element that owns the reCAPTCHA widget.
+    if (!node) {
+      verifier.current?.clear();
+      verifier.current = null;
+    }
+    captchaContainer.current = node;
+  }, []);
 
   // Email + Password state
   const [email, setEmail] = useState('');
@@ -60,114 +87,105 @@ const LoginPage = () => {
     }
   };
 
-  // Timer for OTP resend countdown
   useEffect(() => {
-    let timer;
-    if (otpStep === 2 && countdown > 0) {
-      timer = setInterval(() => {
-        setCountdown((prev) => prev - 1);
-      }, 1000);
-    } else if (countdown === 0) {
-      setCanResend(true);
-    }
-    return () => clearInterval(timer);
-  }, [otpStep, countdown]);
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
-  // Step 1: Send OTP
-  const handleSendOtp = async (e) => {
-    e.preventDefault();
-    const cleanDigits = phone.replace(/\D/g, '').slice(-10);
+  useEffect(() => {
+    if (otpStep !== 2 || verifiedUser || countdown === 0) return;
+    const timer = setTimeout(() => setCountdown(seconds => seconds - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [otpStep, verifiedUser, countdown]);
 
-    if (cleanDigits.length !== 10) {
+  function resetPhoneStep() {
+    setOtpStep(1);
+    setOtp('');
+    setCodeError('');
+    setConfirmationResult(null);
+    setVerifiedUser(null);
+  }
+
+  async function requestCode(event) {
+    event.preventDefault();
+    if (otpBusy.current || (otpStep === 2 && countdown > 0)) return;
+    if (!/^\d{10}$/.test(phone)) {
       toast.error('Please enter a valid 10-digit Indian mobile number.');
       return;
     }
 
+    otpBusy.current = true;
     setLoading(true);
     try {
-      const appVerifier = setupRecaptcha('recaptcha-container');
-      const confirmation = await sendPhoneOtp(cleanDigits, appVerifier);
+      verifier.current ??= setupRecaptcha(captchaContainer.current);
+      const confirmation = await sendPhoneOtp(phone, verifier.current);
+      if (!mounted.current) return;
       setConfirmationResult(confirmation);
+      setOtp('');
+      setCodeError('');
+      setCountdown(30);
       setOtpStep(2);
-      setCountdown(30);
-      setCanResend(false);
-
-      if (confirmation?.isDevFallback) {
-        toast('Dev Mode: Enter OTP 123456 to verify.', { icon: '🧪', duration: 5000 });
-      } else {
-        toast.success(`OTP sent to +91 ${cleanDigits}`);
-      }
+      toast.success(`Code sent to +91 ${phone}`);
     } catch (error) {
-      console.error('[Firebase OTP Error]:', error);
-      toast.error(error.message || 'Failed to send OTP. Please try again.');
+      if (mounted.current) toast.error(phoneAuthMessage(error.code, 'Could not send a code. Please try again.'));
     } finally {
-      setLoading(false);
+      otpBusy.current = false;
+      if (mounted.current) setLoading(false);
     }
-  };
+  }
 
-  // Resend OTP
-  const handleResendOtp = async () => {
-    if (!canResend) return;
-    const cleanDigits = phone.replace(/\D/g, '').slice(-10);
-    setLoading(true);
-    try {
-      const appVerifier = setupRecaptcha('recaptcha-container');
-      const confirmation = await sendPhoneOtp(cleanDigits, appVerifier);
-      setConfirmationResult(confirmation);
-      setCountdown(30);
-      setCanResend(false);
-      toast.success(`New OTP sent to +91 ${cleanDigits}`);
-    } catch (error) {
-      toast.error(error.message || 'Failed to resend OTP.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Step 2: Verify OTP
-  const handleVerifyOtp = async (e) => {
-    e.preventDefault();
-    const cleanOtp = otp.trim();
-
-    if (!cleanOtp || cleanOtp.length !== 6) {
-      toast.error('Please enter the 6-digit verification code.');
-      return;
-    }
-
+  async function handleVerifyOtp(event) {
+    event.preventDefault();
+    if (otpBusy.current) return;
     if (!confirmationResult) {
-      toast.error('Session expired. Please request a new OTP.');
-      setOtpStep(1);
+      resetPhoneStep();
+      toast.error('Request a new code to continue.');
+      return;
+    }
+    if (!verifiedUser && !/^\d{6}$/.test(otp)) {
+      setCodeError('Enter the six digits from your latest SMS.');
       return;
     }
 
+    otpBusy.current = true;
     setLoading(true);
+    setCodeError('');
     try {
-      const userCredential = await confirmationResult.confirm(cleanOtp);
-      const idToken = await userCredential.user.getIdToken();
-      const cleanDigits = phone.replace(/\D/g, '').slice(-10);
-
-      // The session is verified before returning the user and onboarding state.
-      const res = await customerLoginWithFirebase({
-        idToken,
-        phone: cleanDigits
-      });
-
-      if (res.success) {
-        if (res.requiresName) {
-          // First-time user needs name
-          setOtpStep(3);
-        } else {
-          // Returning user: redirect immediately!
-          routeByRole(res.user?.role);
-        }
+      // A successful confirmation consumes the SMS code. Retry the app sign-in with that user.
+      let phoneUser = verifiedUser;
+      if (!phoneUser) {
+        const credential = await confirmationResult.confirm(otp);
+        if (!mounted.current) return;
+        phoneUser = credential.user;
+        setVerifiedUser(phoneUser);
+        setOtp('');
+      }
+      const idToken = await phoneUser.getIdToken();
+      if (!mounted.current) return;
+      const res = await customerLoginWithFirebase({ idToken, phone });
+      if (mounted.current && res.success) {
+        if (res.requiresName) setOtpStep(3);
+        else routeByRole(res.user?.role);
       }
     } catch (error) {
-      console.error('[OTP Verification Error]:', error);
-      toast.error(error.message || 'Invalid verification code. Please try again.');
+      if (!mounted.current) return;
+      if (error.code === 'auth/invalid-verification-code') {
+        setOtp('');
+        setCodeError('That code didn’t match. Enter the six digits from your latest SMS.');
+        codeInput.current?.focus();
+      } else if (['auth/code-expired', 'auth/invalid-verification-id', 'auth/missing-verification-id'].includes(error.code)) {
+        resetPhoneStep();
+        toast.error('This code has expired. Request a new one to sign in.');
+      } else {
+        toast.error(phoneAuthMessage(error.code, 'Could not finish phone sign-in. Please try again.'));
+      }
     } finally {
-      setLoading(false);
+      otpBusy.current = false;
+      if (mounted.current) setLoading(false);
     }
-  };
+  }
 
   // Step 3: Complete Onboarding for First-time user
   const handleCompleteOnboarding = async (e) => {
@@ -226,7 +244,7 @@ const LoginPage = () => {
       <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-xl shadow-slate-100 space-y-6">
         
         {/* Invisible reCAPTCHA container for Firebase Phone Auth */}
-        <div id="recaptcha-container"></div>
+        <div ref={attachCaptcha} id="recaptcha-container"></div>
 
         {/* Brand Header */}
         <div className="text-center space-y-2">
@@ -243,7 +261,7 @@ const LoginPage = () => {
           <div className="space-y-4 text-xs">
             {/* Step 1: Phone input */}
             {otpStep === 1 && (
-              <form onSubmit={handleSendOtp} className="space-y-4">
+              <form onSubmit={requestCode} className="space-y-4">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1.5">{copy('mobile_phone_number_57c0337')}</label>
                   <div className="flex items-stretch rounded-xl border border-slate-300 overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500 transition-all">
@@ -256,6 +274,7 @@ const LoginPage = () => {
                       autoFocus
                       maxLength="10"
                       value={phone}
+                      disabled={loading}
                       onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                       placeholder="9876543210"
                       className="min-w-0 flex-1 px-3.5 py-3 font-mono text-sm leading-5 tracking-wide focus:outline-hidden text-slate-800"
@@ -286,21 +305,21 @@ const LoginPage = () => {
               <form onSubmit={handleVerifyOtp} className="space-y-4">
                 <div className="p-3 bg-teal-50 border border-teal-200 rounded-xl flex items-center justify-between">
                   <div className="text-xs">
-                    <span className="text-slate-500 block text-[10px]">{copy('code_sent_to_39ade83')}</span>
+                    <span className="text-slate-500 block text-[10px]">{verifiedUser ? 'Verified number' : copy('code_sent_to_39ade83')}</span>
                     <span className="font-bold text-teal-800 font-mono">+91 {phone}</span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setOtpStep(1);
-                      setOtp('');
-                    }}
+                    disabled={loading}
+                    onClick={resetPhoneStep}
                     className="text-xs text-primary-600 hover:underline font-semibold cursor-pointer"
                   >{copy('change_c0bf75b')}</button>
                 </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1.5">{copy('enter_6_digit_sms_verification_code_6ac02ae')}</label>
+                {verifiedUser ? (
+                  !loading && <p role="status">Your number is verified. Continue to finish signing in.</p>
+                ) : <div>
+                  <label htmlFor="login-otp" className="block font-semibold text-slate-700 mb-1.5">{copy('enter_6_digit_sms_verification_code_6ac02ae')}</label>
                   <div className="relative">
                     <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
@@ -308,27 +327,28 @@ const LoginPage = () => {
                       required
                       maxLength="6"
                       autoFocus
+                      id="login-otp"
+                      ref={codeInput}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      readOnly={loading}
+                      aria-invalid={Boolean(codeError)}
+                      aria-describedby={codeError ? 'login-otp-error' : undefined}
                       value={otp}
-                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                      onChange={(e) => {
+                        setOtp(e.target.value.replace(/\D/g, ''));
+                        setCodeError('');
+                      }}
                       placeholder="••••••"
                       className="w-full pl-9 pr-3.5 py-3 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-primary-500 font-mono text-center tracking-widest text-xl font-bold text-slate-900"
                     />
                   </div>
-                  {(confirmationResult?.isDevFallback || confirmationResult?.isSimulated) && (
-                    <div className="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-center justify-between">
-                      <span>{copy('dev_mode_code_is_768506f')}<strong className="font-mono bg-amber-100 px-1 py-0.5 rounded">123456</strong></span>
-                      <button
-                        type="button"
-                        onClick={() => setOtp('123456')}
-                        className="text-amber-700 underline font-semibold cursor-pointer hover:text-amber-900"
-                      >{copy('auto_fill_68631d1')}</button>
-                    </div>
-                  )}
-                </div>
+                  {codeError && <p id="login-otp-error" role="alert" className="mt-2 text-red-700">{codeError}</p>}
+                </div>}
 
                 <button
                   type="submit"
-                  disabled={loading || otp.length !== 6}
+                  disabled={loading || (!verifiedUser && otp.length !== 6)}
                   className="w-full py-3.5 px-4 rounded-xl font-bold text-white bg-teal-600 hover:bg-teal-700 shadow-md shadow-teal-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
                 >
                   {loading ? (
@@ -336,16 +356,16 @@ const LoginPage = () => {
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>{copy('verify_continue_ce8b07b')}</span>
+                      <span>{verifiedUser ? 'Finish signing in' : copy('verify_continue_ce8b07b')}</span>
                     </>
                   )}
                 </button>
 
-                <div className="text-center text-xs">
-                  {canResend ? (
+                {!verifiedUser && <div className="text-center text-xs">
+                  {countdown === 0 ? (
                     <button
                       type="button"
-                      onClick={handleResendOtp}
+                      onClick={requestCode}
                       disabled={loading}
                       className="text-primary-600 hover:underline font-semibold inline-flex items-center gap-1 cursor-pointer"
                     >
@@ -356,7 +376,7 @@ const LoginPage = () => {
                     <span className="text-slate-400">{copy('resend_code_in_e947053')}<span className="font-bold text-slate-600">{countdown}{copy('s_043a718')}</span>
                     </span>
                   )}
-                </div>
+                </div>}
               </form>
             )}
 
@@ -477,9 +497,10 @@ const LoginPage = () => {
           {authMode === 'otp' ? (
             <button
               type="button"
+              disabled={loading}
               onClick={() => {
                 setAuthMode('password');
-                setOtpStep(1);
+                resetPhoneStep();
               }}
               className="text-slate-600 hover:text-primary-600 font-semibold transition-colors cursor-pointer"
             >{copy('staff_or_prefer_password_aaa4661')}<span className="underline">{copy('sign_in_with_email_password_c6f4879')}</span>
@@ -487,9 +508,10 @@ const LoginPage = () => {
           ) : (
             <button
               type="button"
+              disabled={loading}
               onClick={() => {
                 setAuthMode('otp');
-                setOtpStep(1);
+                resetPhoneStep();
               }}
               className="text-slate-600 hover:text-primary-600 font-semibold transition-colors cursor-pointer"
             >{copy('customer_7ffe79f')}<span className="underline">{copy('sign_in_with_mobile_number_otp_0e5044e')}</span>

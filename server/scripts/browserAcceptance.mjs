@@ -38,9 +38,11 @@ const viewportFixture = { name: 'isolated-acceptance-viewport', configureServer(
     res.end(`<!doctype html><html><head><meta charset="utf-8"><title>Isolated responsive acceptance</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:12px;background:#e2e8f0;font:14px system-ui"><p>Disposable preview · viewport ${width}px · ${route}</p><nav>${[390,768,1280].map(size => `<a style="margin-right:20px" href="?width=${size}&page=${encodeURIComponent(route)}">${size}px</a>`).join('')}${['/','/book','/pricing'].map(page => `<a style="margin-right:20px" href="?width=${width}&page=${encodeURIComponent(page)}">${page}</a>`).join('')}</nav><iframe title="Responsive website" src="${route}" width="${width}" height="900" style="display:block;border:0;margin-top:12px;background:white"></iframe></body></html>`);
   });
 } };
-const vite = await createServer({ plugins: [viewportFixture], cacheDir: '/tmp/indodhobi-acceptance-vite', root: fileURLToPath(new URL('../../client', import.meta.url)), configFile: fileURLToPath(new URL('../../client/vite.config.js', import.meta.url)), server: { host: '127.0.0.1', port: 5174, strictPort: true } });
+const phoneAuthFixture = fileURLToPath(new URL('../tests/fixtures/browserPhoneAuth.mjs', import.meta.url));
+const vite = await createServer({ resolve: { alias: { '../config/firebase': phoneAuthFixture } }, plugins: [viewportFixture], cacheDir: '/tmp/indodhobi-acceptance-vite', root: fileURLToPath(new URL('../../client', import.meta.url)), configFile: fileURLToPath(new URL('../../client/vite.config.js', import.meta.url)), server: { host: '127.0.0.1', port: 5174, strictPort: true } });
 await vite.listen();
 console.log('Disposable browser acceptance site ready at http://127.0.0.1:5174');
+console.log('Fixture SMS codes start at 123456 per phone and increase by one with each resend.');
 console.log('Fixture admin: admin@indodhobi.com / admin123. Fixture customer: customer@indodhobi.com / password123.');
 let closing = false;
 async function close() {
