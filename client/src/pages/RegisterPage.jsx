@@ -1,14 +1,19 @@
 import ContentState from '../components/ContentState';
+import BrandLogo from '../components/BrandLogo';
 import usePageCopy from '../hooks/usePageCopy';
+import { useGlobalContent } from '../context/SiteContentContext';
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Shirt, Lock, Mail, User, Phone, ArrowRight, Loader2, Sparkles } from 'lucide-react';
+import { Lock, Mail, User, Phone, ArrowRight, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const RegisterPage = () => {
   const copy = usePageCopy('register');
+  const { global } = useGlobalContent();
+  const branding = global.section('branding');
   const navigate = useNavigate();
+  const location = useLocation();
   const { register } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -37,7 +42,9 @@ const RegisterPage = () => {
     setLoading(false);
 
     if (res.success) {
-      navigate('/book');
+      const requested = new URLSearchParams(location.search).get('redirect') || location.state?.from?.pathname;
+      const redirect = requested && requested.startsWith('/') && !requested.startsWith('//') ? requested : '/book';
+      navigate(redirect);
     }
   };
 
@@ -47,8 +54,8 @@ const RegisterPage = () => {
         
         {/* Header */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-primary-600 to-teal-500 text-white flex items-center justify-center mx-auto shadow-md">
-            <Shirt className="w-6 h-6 stroke-[2.2]" />
+          <div className="w-12 h-12 mx-auto flex items-center justify-center">
+            <BrandLogo reference={branding?.logo} className="w-full h-full object-contain" width={48} height={48} />
           </div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">{copy('create_an_account_3bf6dd4')}</h1>
           <p className="text-xs text-slate-500">{copy('join_thousands_enjoying_clean_crisp_clothes_delivered_in_48_hours_571dd6e')}</p>
@@ -135,7 +142,10 @@ const RegisterPage = () => {
         {/* Footer Link */}
         <div className="pt-2 text-center text-xs text-slate-500">
           <span>{copy('already_have_an_account_04a38dd')}</span>
-          <Link to="/login" className="font-bold text-primary-600 hover:underline">{copy('sign_in_here_d807385')}</Link>
+          <Link
+            to={{ pathname: '/login', search: location.search, state: location.state }}
+            className="font-bold text-primary-600 hover:underline"
+          >{copy('sign_in_here_d807385')}</Link>
         </div>
 
       </div>

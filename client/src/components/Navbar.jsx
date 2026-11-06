@@ -167,16 +167,10 @@ const Navbar = () => {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/login"
-                  className="px-3.5 py-2 text-sm font-medium text-slate-700 hover:text-primary-600 transition-colors"
-                >{copy('sign_in_bcc0bcc')}</Link>
-                <Link
-                  to="/register"
-                  className="px-4 py-2 text-sm font-semibold text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
-                >{copy('register_bb7234e')}</Link>
-              </div>
+              <Link
+                to="/login"
+                className="px-4 py-2 text-sm font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-xl shadow-sm shadow-primary-600/30 transition-all"
+              >{copy('sign_in_bcc0bcc')}</Link>
             )}
           </div>
 
@@ -283,18 +277,11 @@ const Navbar = () => {
                 >{copy('sign_out_0b184bc')}</button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
-                <Link
-                  to="/login"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="text-center py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50"
-                >{copy('sign_in_bcc0bcc')}</Link>
-                <Link
-                  to="/register"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="text-center py-2.5 rounded-xl bg-primary-600 text-white font-semibold text-sm hover:bg-primary-700 shadow-xs"
-                >{copy('register_bb7234e')}</Link>
-              </div>
+              <Link
+                to="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block text-center py-2.5 rounded-xl bg-primary-600 text-white font-semibold text-sm hover:bg-primary-700 shadow-xs"
+              >{copy('sign_in_bcc0bcc')}</Link>
             )}
           </div>
         </div>

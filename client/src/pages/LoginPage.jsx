@@ -1,13 +1,13 @@
 import ContentState from '../components/ContentState';
+import BrandLogo from '../components/BrandLogo';
 import usePageCopy from '../hooks/usePageCopy';
+import { useGlobalContent } from '../context/SiteContentContext';
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
-  Shirt,
   Lock,
   Mail,
-  Phone,
   ArrowRight,
   Loader2,
   User,
@@ -22,6 +22,8 @@ import { setupRecaptcha, sendPhoneOtp } from '../config/firebase';
 
 const LoginPage = () => {
   const copy = usePageCopy('login');
+  const { global } = useGlobalContent();
+  const branding = global.section('branding');
   const navigate = useNavigate();
   const location = useLocation();
   const { login, customerLoginWithFirebase, completeOnboarding } = useAuth();
@@ -211,6 +213,10 @@ const LoginPage = () => {
     }
   };
 
+  const storedAccountPrompt = copy('new_to_indodhobi_sign_in_with_your_mobile_number_to_get_started_i_128a20f');
+  const accountPrompt = /Sign in with your mobile number/.test(storedAccountPrompt) ? 'New to IndoDhobi? ' : (storedAccountPrompt || 'New to IndoDhobi? ');
+  const accountAction = copy('create_an_account_7c1a0e2') || 'Create an account';
+
   return (
     <ContentState resource={copy}><div className="max-w-md mx-auto my-12 px-4 sm:px-6">
       <div className="bg-white rounded-3xl p-8 border border-slate-200/80 shadow-xl shadow-slate-100 space-y-6">
@@ -220,8 +226,8 @@ const LoginPage = () => {
 
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-primary-600 to-teal-500 text-white flex items-center justify-center mx-auto shadow-md">
-            <Shirt className="w-6 h-6 stroke-[2.2]" />
+          <div className="w-12 h-12 mx-auto flex items-center justify-center">
+            <BrandLogo reference={branding?.logo} className="w-full h-full object-contain" width={48} height={48} />
           </div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">{copy('sign_in_to_indo_ec99bee')}<span className="text-primary-600">{copy('dhobi_5205e15')}</span>
           </h1>
@@ -488,7 +494,13 @@ const LoginPage = () => {
         </div>
 
         {/* Register Link */}
-        <div className="text-center text-[11px] text-slate-400">{copy('new_to_indodhobi_sign_in_with_your_mobile_number_to_get_started_i_128a20f')}</div>
+        <div className="text-center text-[11px] text-slate-400">
+          <span>{accountPrompt}</span>
+          <Link
+            to={{ pathname: '/register', search: location.search, state: location.state }}
+            className="font-bold text-primary-600 hover:underline"
+          >{accountAction}</Link>
+        </div>
 
       </div>
     </div></ContentState>
