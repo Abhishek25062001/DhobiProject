@@ -242,8 +242,8 @@ const LoginPage = () => {
               <form onSubmit={handleSendOtp} className="space-y-4">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1.5">{copy('mobile_phone_number_57c0337')}</label>
-                  <div className="relative flex rounded-xl border border-slate-300 overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500 transition-all">
-                    <span className="inline-flex items-center px-3.5 bg-slate-100 text-slate-700 font-bold text-xs border-r border-slate-200">
+                  <div className="flex items-stretch rounded-xl border border-slate-300 overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500 transition-all">
+                    <span className="inline-flex shrink-0 items-center whitespace-nowrap px-3.5 bg-slate-100 text-slate-700 font-bold text-xs border-r border-slate-200">
                       🇮🇳 +91
                     </span>
                     <input
@@ -254,7 +254,7 @@ const LoginPage = () => {
                       value={phone}
                       onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                       placeholder="9876543210"
-                      className="w-full px-3.5 py-3 font-mono text-sm tracking-wide focus:outline-hidden text-slate-800"
+                      className="min-w-0 flex-1 px-3.5 py-3 font-mono text-sm leading-5 tracking-wide focus:outline-hidden text-slate-800"
                     />
                   </div>
                   <p className="text-[11px] text-slate-400 mt-1.5">{copy('we_ll_send_a_6_digit_sms_verification_code_to_your_phone_b180fd0')}</p>
