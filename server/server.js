@@ -177,7 +177,7 @@ app.use(errorHandler);
 // Startup connects only. Catalog/content defaults require an explicit migration.
 export const startServer = async () => {
   if (!process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' && process.env.JWT_SECRET.length < 32)) throw new Error('Configure a strong JWT_SECRET before starting the API.');
-  if (process.env.NODE_ENV === 'production' && process.env.RAZORPAY_KEY_ID && !process.env.RAZORPAY_WEBHOOK_SECRET) throw new Error('Configure RAZORPAY_WEBHOOK_SECRET before enabling production online payments.');
+  // Webhooks are optional; checkout verification and maintenance use the Razorpay API keys.
   const port = apiPort(process.env.PORT);
   const server = await startHttpService(app, {
     port,

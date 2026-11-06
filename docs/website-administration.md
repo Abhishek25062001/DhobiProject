@@ -54,6 +54,14 @@ The page keeps full locality names and pincodes visible, uses the existing fee a
 
 The disposable browser acceptance harness (`node server/scripts/browserAcceptance.mjs --isolated`) creates its own in-memory database on ports 5101/5174. Its demo users/orders are restricted to test mode and its payment/upload provider credentials are disabled. It never uses the main database.
 
+## Production payments without webhooks
+
+Online payments require `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in the backend environment. `RAZORPAY_WEBHOOK_SECRET` is optional and can remain unset on Render; it must not prevent the API from starting.
+
+Checkout signatures are verified with the API key secret, then the backend checks the payment with Razorpay before marking the order paid. Customers can also check payment status in My Orders. While the API is running, background maintenance checks pending payments and refunds at startup and every 60 seconds in batches of up to 100 records. These paths do not depend on webhooks.
+
+Without a webhook secret, the webhook endpoint returns `404 WEBHOOKS_DISABLED` and does not process events. The ordinary server does not load `.env.webhook.local`; that file is reserved for the explicitly enabled provider test harness. If webhooks are enabled later, their separate signing secret must be configured explicitly and signatures remain mandatory.
+
 ## Verification
 
 `npm run test:acceptance` runs the isolated connectivity, data-contract, cache/basket and admin-content suites. `npm run build:client` verifies the production bundle. The original broad legacy `npm test` includes integration scripts with external-provider assumptions and is not part of this isolated verification command.

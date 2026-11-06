@@ -18,6 +18,22 @@ test('reservation expiry, provider recovery, sessions, shared limits and paging'
  const garment = await Garment.create({ name: 'Shirt', category: 'Test', categoryId: category._id, pricing: testPrices });
  let number = 0;
  const fixture = extra => Order.create({ orderNumber: `REMAINING-${++number}`, customer: customer._id, items: [{ garment: garment._id, garmentName: 'Shirt', category: 'Test', quantity: 1, serviceType: 'WASH_AND_FOLD', ironingType: 'NONE', unitPrice: 35, lineTotal: 35 }], pickupAddress: { flatAndBuilding: 'Test', streetAndLandmark: 'Test road', city: 'Delhi', pincode: '110001', contactPhone: '9990000002' }, pickupSchedule: { date: '2030-01-01', timeSlot: 'Morning' }, deliverySchedule: { date: '2030-01-04', timeSlot: 'Morning' }, pricingBreakdown: { subtotal: 35, taxAmount: 0, grandTotal: 35 }, payment: { method: 'ONLINE', status: 'PENDING' }, ...extra });
+ await t.test('maintenance confirms a captured payment without a webhook or browser callback', async () => {
+   assert.ok(!process.env.RAZORPAY_WEBHOOK_SECRET);
+   const order = await fixture({ holdExpiresAt: new Date(Date.now() + 600000), payment: { method: 'ONLINE', status: 'PENDING', razorpayOrderId: 'order_polled' } });
+   const gateway = { orders: {
+     fetch: async id => ({ id, amount: 3500, currency: 'INR', status: 'paid' }),
+     fetchPayments: async id => ({ items: [{ id: 'pay_polled', order_id: id, amount: 3500, currency: 'INR', status: 'captured', captured: true }] }),
+   } };
+   const summary = await runPaymentMaintenance({ gateway, log: () => {} });
+   assert.equal(summary.checked, 1); assert.equal(summary.unresolved, 0);
+   const paid = await Order.findById(order._id);
+   assert.equal(paid.orderStatus, 'BOOKED'); assert.equal(paid.payment.status, 'PAID');
+   assert.equal(paid.payment.razorpayPaymentId, 'pay_polled');
+   const repeated = await runPaymentMaintenance({ gateway, log: () => {} });
+   assert.equal(repeated.checked, 0);
+   assert.equal((await Order.findById(order._id)).statusHistory.length, paid.statusHistory.length);
+ });
  await t.test('expiry and capture races cannot confirm an expired reservation', async () => {
    for (let i=0; i<5; i++) {
     const order = await fixture({ holdExpiresAt: new Date(Date.now()-1000), payment: { method: 'ONLINE', status: 'PENDING', razorpayOrderId: `order_expiry_${i}` } });

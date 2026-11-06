@@ -254,7 +254,8 @@ export const handleRazorpayWebhook = async (req, res) => {
   try {
     const signature = req.headers['x-razorpay-signature'];
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-    if (!secret || !Buffer.isBuffer(req.rawBody) || typeof signature !== 'string' || !/^[a-f0-9]{64}$/i.test(signature)) return res.status(400).json({ success: false, message: 'Invalid webhook signature.' });
+    if (!secret?.trim()) return res.status(404).json({ success: false, code: 'WEBHOOKS_DISABLED', message: 'Payment webhooks are not enabled.' });
+    if (!Buffer.isBuffer(req.rawBody) || typeof signature !== 'string' || !/^[a-f0-9]{64}$/i.test(signature)) return res.status(400).json({ success: false, message: 'Invalid webhook signature.' });
     const expected = crypto.createHmac('sha256', secret).update(req.rawBody).digest();
     if (!crypto.timingSafeEqual(expected, Buffer.from(signature, 'hex'))) return res.status(400).json({ success: false, message: 'Invalid webhook signature.' });
     const event = JSON.parse(req.rawBody.toString('utf8'));
