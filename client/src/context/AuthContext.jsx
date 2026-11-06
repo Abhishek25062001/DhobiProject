@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authService } from '../services/api';
+import { confirmAuthSession, SessionConfirmationError } from '../services/authSession.mjs';
 import toast from 'react-hot-toast';
 
 const AuthContext = createContext(null);
@@ -18,16 +19,19 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     const verifyUser = async () => {
       {
         try {
           const res = await authService.getMe();
+          if (!active) return;
           if (res.success && res.user) {
             setUser(res.user);
             setToken(true);
             localStorage.setItem('indodhobi_user', JSON.stringify(res.user));
           }
         } catch (err) {
+          if (!active) return;
           console.warn('[AuthContext] Session expired or invalid:', err);
           if (err.response?.status === 401) { setUser(null); setToken(false); localStorage.removeItem('indodhobi_user'); }
         }
@@ -36,11 +40,25 @@ export const AuthProvider = ({ children }) => {
     };
 
     verifyUser();
+    return () => { active = false; };
   }, []);
+
+  const confirmSession = async (response) => {
+    try {
+      return await confirmAuthSession(response, authService.getMe);
+    } catch (error) {
+      setToken(false);
+      setUser(null);
+      localStorage.removeItem('indodhobi_user');
+      throw error;
+    }
+  };
+  const authErrorMessage = (error, fallback) => error instanceof SessionConfirmationError
+    ? error.message : error.response?.data?.message || fallback;
 
   const login = async (email, password) => {
     try {
-      const res = await authService.login(email, password);
+      const res = await confirmSession(await authService.login(email, password));
       if (res.success) {
         setToken(res.session);
         setUser(res.user);
@@ -50,7 +68,7 @@ export const AuthProvider = ({ children }) => {
       }
       return { success: false, message: res.message };
     } catch (error) {
-      const msg = error.response?.data?.message || 'Login failed. Please check your credentials.';
+      const msg = authErrorMessage(error, 'Login failed. Please check your credentials.');
       toast.error(msg);
       return { success: false, message: msg };
     }
@@ -58,7 +76,7 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (userData) => {
     try {
-      const res = await authService.register(userData);
+      const res = await confirmSession(await authService.register(userData));
       if (res.success) {
         setToken(res.session);
         setUser(res.user);
@@ -68,7 +86,7 @@ export const AuthProvider = ({ children }) => {
       }
       return { success: false, message: res.message };
     } catch (error) {
-      const msg = error.response?.data?.message || 'Registration failed.';
+      const msg = authErrorMessage(error, 'Registration failed.');
       toast.error(msg);
       return { success: false, message: msg };
     }
@@ -76,7 +94,7 @@ export const AuthProvider = ({ children }) => {
 
   const customerLoginWithFirebase = async ({ idToken, name, phone }) => {
     try {
-      const res = await authService.customerFirebaseLogin({ idToken, name, phone });
+      const res = await confirmSession(await authService.customerFirebaseLogin({ idToken, name, phone }));
       if (res.success) {
         if (res.session) {
           setToken(res.session);
@@ -95,7 +113,7 @@ export const AuthProvider = ({ children }) => {
       }
       return { success: false, message: res.message };
     } catch (error) {
-      const msg = error.response?.data?.message || 'Phone verification failed.';
+      const msg = authErrorMessage(error, 'Phone verification failed.');
       toast.error(msg);
       return { success: false, message: msg };
     }
@@ -103,7 +121,7 @@ export const AuthProvider = ({ children }) => {
 
   const completeOnboarding = async ({ name, email }) => {
     try {
-      const res = await authService.completeOnboarding({ name, email });
+      const res = await confirmSession(await authService.completeOnboarding({ name, email }));
       if (res.success) {
         if (res.session) {
           setToken(res.session);
@@ -118,7 +136,7 @@ export const AuthProvider = ({ children }) => {
       }
       return { success: false, message: res.message };
     } catch (error) {
-      const msg = error.response?.data?.message || 'Failed to complete registration.';
+      const msg = authErrorMessage(error, 'Failed to complete registration.');
       toast.error(msg);
       return { success: false, message: msg };
     }
@@ -126,7 +144,7 @@ export const AuthProvider = ({ children }) => {
 
   const loginAsStaff = async (email, password) => {
     try {
-      const res = await authService.staffLogin(email, password);
+      const res = await confirmSession(await authService.staffLogin(email, password));
       if (res.success) {
         setToken(res.session);
         setUser(res.user);
@@ -136,7 +154,7 @@ export const AuthProvider = ({ children }) => {
       }
       return { success: false, message: res.message };
     } catch (error) {
-      const msg = error.response?.data?.message || 'Staff authentication failed.';
+      const msg = authErrorMessage(error, 'Staff authentication failed.');
       toast.error(msg);
       return { success: false, message: msg };
     }
@@ -275,8 +293,8 @@ export const AuthProvider = ({ children }) => {
         updateAddress,
         deleteAddress,
         isAuthenticated: Boolean(token && user),
-        isAdmin: user?.role === 'admin',
-        isRider: user?.role === 'rider'
+        isAdmin: Boolean(token && user?.role === 'admin'),
+        isRider: Boolean(token && user?.role === 'rider')
       }}
     >
       {children}

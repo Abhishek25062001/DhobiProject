@@ -5,17 +5,7 @@ import ApiLoadError from '../components/ApiLoadError';
 import { serviceAreaService } from '../services/api';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  MapPin, 
-  Search, 
-  CheckCircle2, 
-  Clock, 
-  Truck, 
-  ShieldCheck, 
-  Sparkles, 
-  ArrowRight, 
-  Building2
-} from 'lucide-react';
+import { MapPin, Search, CheckCircle2, Clock, Truck, ShieldCheck, Sparkles, ArrowRight, Building2} from 'lucide-react';
 
 const OperationalAreasPage = () => {
   const copy = usePageCopy('areas');

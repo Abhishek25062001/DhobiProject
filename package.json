@@ -12,7 +12,7 @@
     "build:client": "npm --prefix client run build",
     "seed": "npm --prefix server run seed",
     "test": "npm run test:acceptance",
-    "test:connectivity": "node --test tests/connectivity.test.mjs client/tests/apiRecovery.test.mjs client/tests/bookingDraft.test.mjs client/tests/addressBook.test.mjs",
+    "test:connectivity": "node --test tests/connectivity.test.mjs client/tests/apiRecovery.test.mjs client/tests/bookingDraft.test.mjs client/tests/addressBook.test.mjs client/tests/authSession.test.mjs",
     "test:contracts": "node --test tests/catalogContract.test.mjs",
     "test:admin-content": "node --test server/tests/*.test.mjs",
     "migrate:website": "node server/scripts/migrateWebsite.js",

@@ -3,7 +3,7 @@ import BrandLogo from '../components/BrandLogo';
 import usePageCopy from '../hooks/usePageCopy';
 import { useGlobalContent } from '../context/SiteContentContext';
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   Lock,
@@ -26,7 +26,7 @@ const LoginPage = () => {
   const branding = global.section('branding');
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, customerLoginWithFirebase, completeOnboarding } = useAuth();
+  const { user, isAuthenticated, login, customerLoginWithFirebase, completeOnboarding } = useAuth();
 
   // Mode: 'otp' (Mobile OTP) | 'password' (Email + Password)
   const [authMode, setAuthMode] = useState('otp');
@@ -146,7 +146,7 @@ const LoginPage = () => {
       const idToken = await userCredential.user.getIdToken();
       const cleanDigits = phone.replace(/\D/g, '').slice(-10);
 
-      // Backend returns { isNewUser, requiresName, token, user }
+      // The session is verified before returning the user and onboarding state.
       const res = await customerLoginWithFirebase({
         idToken,
         phone: cleanDigits
@@ -216,6 +216,10 @@ const LoginPage = () => {
   const storedAccountPrompt = copy('new_to_indodhobi_sign_in_with_your_mobile_number_to_get_started_i_128a20f');
   const accountPrompt = /Sign in with your mobile number/.test(storedAccountPrompt) ? 'New to IndoDhobi? ' : (storedAccountPrompt || 'New to IndoDhobi? ');
   const accountAction = copy('create_an_account_7c1a0e2') || 'Create an account';
+
+  if (isAuthenticated && (user?.role === 'admin' || user?.role === 'rider')) {
+    return <Navigate to={user.role === 'admin' ? '/admin' : '/rider'} replace />;
+  }
 
   return (
     <ContentState resource={copy}><div className="max-w-md mx-auto my-12 px-4 sm:px-6">
