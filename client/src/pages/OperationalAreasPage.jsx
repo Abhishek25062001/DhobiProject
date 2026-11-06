@@ -52,7 +52,7 @@ const OperationalAreasPage = () => {
   };
 
   return (
-    <ContentState resource={copy}><div className="min-h-screen bg-[#f7f5ff] py-12 px-4 sm:px-6 lg:px-8 space-y-12 font-[Plus_Jakarta_Sans,system-ui,sans-serif] text-[#080f31]">
+    <ContentState resource={copy}><div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 space-y-12 font-[Plus_Jakarta_Sans,system-ui,sans-serif] text-[#080f31]">
       <div className="max-w-6xl mx-auto space-y-10">
         
         <div className="flex flex-col items-start gap-8 lg:flex-row lg:items-center lg:justify-between">
