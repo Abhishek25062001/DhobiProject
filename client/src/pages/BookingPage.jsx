@@ -191,9 +191,6 @@ const BookingPage = () => {
         if (!location.state?.startAtBeginning && draft.activeStep && draft.activeStep > 1) {
           setActiveStep(draft.activeStep);
         }
-        if (!location.state?.startAtBeginning) {
-          toast.success('Restored your draft laundry booking!', { icon: '🧺', id: 'booking-draft-restored' });
-        }
       }
     } catch (err) {
       console.warn('[Draft Rehydration Failed]:', err);
