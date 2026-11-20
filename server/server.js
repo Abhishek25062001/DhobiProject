@@ -22,6 +22,7 @@ import configRoutes from './routes/configRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import mediaRoutes from './routes/mediaRoutes.js';
+import { publicAnalyticsRoutes, adminAnalyticsRoutes } from './routes/analyticsRoutes.js';
 import { sanitizeInput, apiLimiter } from './middleware/securityMiddleware.js';
 import errorHandler from './middleware/errorMiddleware.js';
 
@@ -142,6 +143,8 @@ app.use('/api/service-areas', publicServiceAreaRoutes);
 app.use('/api/admin/service-areas', adminServiceAreaRoutes);
 app.use('/api/content', publicContentRoutes);
 app.use('/api/admin/content', adminContentRoutes);
+app.use('/api/analytics', publicAnalyticsRoutes);
+app.use('/api/admin/analytics', adminAnalyticsRoutes);
 
 // Production Static Asset Serving
 if (process.env.NODE_ENV === 'production') {

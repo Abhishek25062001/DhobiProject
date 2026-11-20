@@ -8,6 +8,8 @@ import { format, addDays } from 'date-fns';
 import { configService } from '../services/api';
 import { readBookingDraft, readDraftCart, saveBookingDraft } from '../utils/bookingDraft';
 import useApiResource from '../hooks/useApiResource';
+import { track, EVENTS } from '../services/analytics';
+import { diffCart, cartSummary, productProps } from '../services/cartAnalytics.mjs';
 
 const firstActive = options => (options || []).filter(option => option.isActive !== false).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))[0];
 const loadPlatformConfig = signal => configService.getPublicConfig({ signal });
@@ -228,12 +230,14 @@ export const OrderBookingProvider = ({ children }) => {
     );
   };
 
-  const clearCart = (addresses) => {
+  const clearCart = (addresses, reason = 'order_placed') => {
+    if (cartItems.length) clearReason.current = reason;
     setCartItems([]);
     setPickupAddress(defaultBookingAddress(addresses ? { ...user, addresses } : user));
   };
 
   const resetBooking = () => {
+    if (cartItems.length) clearReason.current = 'reset';
     setCartItems([]);
     setPickupAddress(defaultBookingAddress(user));
     setPreferences({
@@ -276,11 +280,36 @@ export const OrderBookingProvider = ({ children }) => {
 
   const applyCoupon = (couponData) => {
     setAppliedCoupon(couponData);
+    track(EVENTS.COUPON_APPLIED, { couponCode: String(couponData?.code || '').slice(0, 40), discount: Number(couponData?.discountAmount) || 0, ...cartSummary(cartItems) });
   };
 
   const removeCoupon = () => {
+    if (appliedCoupon) track(EVENTS.COUPON_REMOVED, { couponCode: String(appliedCoupon.code || '').slice(0, 40) });
     setAppliedCoupon(null);
   };
+
+  // Cart analytics: every change to the bag (booking page, homepage basket, pricing page)
+  // flows through cartItems, so diffing snapshots captures them all exactly once.
+  // The restored draft and price reconciliation do not change quantities, so they emit nothing.
+  const previousCart = useRef(null);
+  const clearReason = useRef(null);
+  useEffect(() => {
+    const previous = previousCart.current;
+    previousCart.current = cartItems;
+    if (previous === null || previous === cartItems) return;
+    const summary = cartSummary(cartItems);
+    if (clearReason.current && !cartItems.length) {
+      track(EVENTS.CART_CLEARED, { reason: clearReason.current, ...cartSummary(previous) });
+      clearReason.current = null;
+      return;
+    }
+    clearReason.current = null;
+    for (const change of diffCart(previous, cartItems)) {
+      const product = productProps(change.item);
+      if (change.type === 'option') track(EVENTS.PRODUCT_OPTION_CHANGE, { ...product, fromServiceType: change.from.serviceType, fromIroningType: change.from.ironingType, inCart: true });
+      else track(change.type === 'add' ? EVENTS.ADD_TO_CART : EVENTS.REMOVE_FROM_CART, { ...product, quantity: change.quantity, value: Math.round(product.unitPrice * change.quantity * 100) / 100, ...summary });
+    }
+  }, [cartItems]);
 
   // Live Pricing Calculations dynamically derived from PlatformConfig
   const {

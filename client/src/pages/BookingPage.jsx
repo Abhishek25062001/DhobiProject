@@ -18,6 +18,8 @@ import useGarments from '../hooks/useGarments';
 import useCategories from '../hooks/useCategories';
 import ApiLoadError from '../components/ApiLoadError';
 import { launchRazorpayCheckout } from '../utils/razorpayCheckout';
+import { track, EVENTS } from '../services/analytics';
+import { cartSummary } from '../services/cartAnalytics.mjs';
 import { 
   Shirt, 
   Scissors, 
@@ -155,6 +157,27 @@ const BookingPage = () => {
   const { garments, loading: loadingGarments, error: catalogError, retry: retryCatalog } = useGarments(selectedCategory, searchQuery);
   const [showMobileCart, setShowMobileCart] = useState(false);
   const { garments: allGarments } = useGarments();
+
+  // Search analytics: record what customers look for once they pause typing, with the result count,
+  // so the admin can see popular and zero-result searches.
+  const lastTrackedSearch = React.useRef('');
+  useEffect(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (query.length < 2 || loadingGarments) return;
+    const timer = window.setTimeout(() => {
+      const key = `${query}|${selectedCategory}`;
+      if (lastTrackedSearch.current === key) return;
+      lastTrackedSearch.current = key;
+      track(EVENTS.SEARCH, { query: query.slice(0, 60), category: selectedCategory === 'All' ? 'All' : (categoryResource.categories.find(cat => cat._id === selectedCategory)?.name || ''), resultsCount: garments.filter(g => !g.isCustom).length });
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery, selectedCategory, loadingGarments, garments]);
+
+  const firstCategoryRender = React.useRef(true);
+  useEffect(() => {
+    if (firstCategoryRender.current) { firstCategoryRender.current = false; return; }
+    track(EVENTS.FILTER, { filter: 'category', value: selectedCategory === 'All' ? 'All' : (categoryResource.categories.find(cat => cat._id === selectedCategory)?.name || 'Unknown'), screenName: 'book' });
+  }, [selectedCategory]);
 
   const categoryCounts = React.useMemo(() => {
     const source = allGarments.length > 0 ? allGarments : garments;
@@ -438,6 +461,18 @@ const BookingPage = () => {
     }
   };
 
+  // Checkout analytics: step 1 is choosing clothes; moving past it with a filled bag starts checkout.
+  const checkoutStarted = React.useRef(false);
+  useEffect(() => {
+    const stepNames = { 1: 'select_clothes', 2: 'wash_care', 3: 'schedule', 4: 'review_and_pay' };
+    const summary = cartSummary(cartItems);
+    if (activeStep > 1 && cartItems.length && !checkoutStarted.current) {
+      checkoutStarted.current = true;
+      track(EVENTS.BEGIN_CHECKOUT, { ...summary, value: grandTotal ?? summary.cartValue, loggedIn: Boolean(user) });
+    }
+    track(EVENTS.CHECKOUT_STEP, { step: activeStep, stepName: stepNames[activeStep] || String(activeStep), ...summary });
+  }, [activeStep]);
+
   const handlePrevStep = () => {
     if (activeStep > 1) {
       setActiveStep(activeStep - 1);
@@ -447,7 +482,10 @@ const BookingPage = () => {
 
   // Final Order Submission - Authenticated Booking Enforced
   const handlePlaceOrder = async () => {
+    const orderSummary = { ...cartSummary(cartItems), value: grandTotal ?? 0, paymentMethod, isExpress: Boolean(isExpress), couponCode: appliedCoupon?.code || '' };
+    track(EVENTS.PLACE_ORDER_CLICK, { ...orderSummary, loggedIn: Boolean(user && isAuthenticated) });
     if (!user || !isAuthenticated) {
+      track(EVENTS.CHECKOUT_LOGIN_REQUIRED, orderSummary);
       // Save draft state to sessionStorage
       const draft = {
         cartItems,
@@ -507,6 +545,7 @@ const BookingPage = () => {
       const preview = await orderService.quote(orderPayload);
       const changed = preview.quote.pricingBreakdown.grandTotal !== grandTotal || preview.quote.items.some((item, index) => item.unitPrice !== cartItems[index]?.unitPrice);
       if (changed && !(serverQuote?.reviewed && serverQuote.fingerprint === preview.fingerprint)) {
+        track(EVENTS.ORDER_FAILED, { ...orderSummary, reason: 'quote_changed' });
         setServerQuote({ ...preview, reviewed: false });
         await fetchPlatformConfig();
         toast('Booking details changed. Review the updated quote before placing the order.');
@@ -520,12 +559,14 @@ const BookingPage = () => {
       });
 
       if (res.success && res.order) {
+        track(EVENTS.PURCHASE, { ...orderSummary, orderId: String(res.order._id), value: res.order.pricingBreakdown?.grandTotal ?? orderSummary.value });
         if (res.addresses) updateUser({ ...user, addresses: res.addresses });
         setCreatedOrder(res.order);
         sessionStorage.removeItem('indodhobi_draft_booking');
 
         if (paymentMethod === 'ONLINE') {
           if (res.razorpay) {
+            track(EVENTS.PAYMENT_OPENED, { orderId: String(res.order._id), value: orderSummary.value, provider: 'razorpay' });
             launchRazorpayCheckout({
               order: res.order,
               razorpayPayload: res.razorpay,
@@ -536,11 +577,13 @@ const BookingPage = () => {
                 navigate('/my-orders', { state: { order: updatedOrder } });
               },
               onDismiss: () => {
+                track(EVENTS.PAYMENT_DISMISSED, { orderId: String(res.order._id), value: orderSummary.value });
                 sessionStorage.removeItem('indodhobi_draft_booking');
                 clearCart(res.addresses);
                 navigate('/my-orders');
               },
               onFallback: () => {
+                track(EVENTS.PAYMENT_OPENED, { orderId: String(res.order._id), value: orderSummary.value, provider: 'fallback_modal' });
                 setShowPaymentModal(true);
               }
             });
@@ -557,9 +600,11 @@ const BookingPage = () => {
           navigate('/my-orders', { state: { order: res.order } });
         }
       } else {
+        track(EVENTS.ORDER_FAILED, { ...orderSummary, reason: 'rejected' });
         toast.error(res.message || 'Failed to place order.');
       }
     } catch (error) {
+      track(EVENTS.ORDER_FAILED, { ...orderSummary, reason: error.response?.status === 409 ? 'conflict' : error.response ? `http_${error.response.status}` : 'network' });
       if (error.response?.status === 409 && error.response.data.quote) {
         setServerQuote({ quote: error.response.data.quote, fingerprint: error.response.data.fingerprint, reviewed: false });
         await fetchPlatformConfig();

@@ -1,4 +1,5 @@
 import BasketReview from '../BasketReview';
+import { ImpressionArticle } from '../../hooks/useProductImpression';
 import { selectionAvailable } from '../../../../shared/pricing.mjs';
 import React, { useId, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -36,7 +37,7 @@ export default function LaundryBasket({ garments, status: catalogStatus, onRetry
           const presentation = garmentPresentation(garment);
           const available = selectionAvailable(garment, platformConfig, item?.serviceType || care.service, item?.ironingType || care.ironing);
           const unitPrice = available ? calculateItemUnitPrice(garment, item?.serviceType || care.service, item?.ironingType || care.ironing) : null;
-          return <article className={`hp-garment-card ${quantity ? 'hp-garment-selected' : ''}`} key={garment._id} aria-label={`${garment.name}, ${available ? formatRupees(unitPrice) + ' per piece' : 'Unavailable'}`}>
+          return <ImpressionArticle garment={garment} list="home_basket" className={`hp-garment-card ${quantity ? 'hp-garment-selected' : ''}`} key={garment._id} aria-label={`${garment.name}, ${available ? formatRupees(unitPrice) + ' per piece' : 'Unavailable'}`}>
             <GarmentThumbnail garment={garment} />
             <h3 title={garment.description || garment.name}>{presentation.name}</h3>
             <div className="hp-garment-price">{available ? formatRupees(unitPrice) : 'Unavailable'}<span>/ pc</span></div>
@@ -45,7 +46,7 @@ export default function LaundryBasket({ garments, status: catalogStatus, onRetry
               <span className="hp-quantity-number" key={quantity}>{quantity}</span>
               <button type="button" disabled={!available} aria-label={`Add one ${garment.name}`} onClick={() => item ? updateQuantity(item.cartItemId || garment._id, quantity + 1) : addItem(garment, care.service, care.ironing)}><Plus size={15} aria-hidden="true" /></button>
             </div>
-          </article>;
+          </ImpressionArticle>;
         })}
         <Link className="hp-more-items" to="/book" state={{ startAtBeginning: true }}><Grid2X2 size={25} strokeWidth={1.5} aria-hidden="true" /><span>{copy('moreItems')}</span><ArrowRight size={15} aria-hidden="true" /></Link>
       </>}

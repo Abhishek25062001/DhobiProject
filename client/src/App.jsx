@@ -13,6 +13,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import BookingConfigGate from './components/BookingConfigGate';
 import SiteLoader from './components/SiteLoader';
 import ScrollToTop from './components/ScrollToTop';
+import AnalyticsTracker from './components/AnalyticsTracker';
 
 import HomePage from './pages/HomePage';
 const BookingPage = lazy(() => import('./pages/BookingPage'));
@@ -56,6 +57,7 @@ function AppShell() {
         <OrderBookingProvider>
           <SiteContentProvider>
           <PageMetadata />
+          <AnalyticsTracker />
           <div className="flex flex-col min-h-screen bg-slate-50 text-slate-800">
             {/* Global Toast Notifications */}
             <Toaster

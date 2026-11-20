@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import Order from '../models/Order.js';
 import { createRazorpayOrder, getRazorpayInstance } from '../utils/razorpay.js';
+import { recordServerEvent } from './analytics.js';
+import { ANALYTICS_EVENTS } from '../../shared/analyticsEvents.mjs';
 
 export const paymentError = (message, statusCode = 409) => Object.assign(new Error(message), { statusCode });
 const expectedAmount = order => Math.round(order.pricingBreakdown.grandTotal * 100);
@@ -14,8 +16,10 @@ export function validatePayment(order, payment) {
 export async function applyCapturedPayment(orderId, payment) {
   const session = await mongoose.startSession();
   let result;
+  let captured = false;
   try {
     await session.withTransaction(async () => {
+      captured = false; // transactions can retry this callback
       const order = await Order.findById(orderId).session(session);
       if (!order) throw paymentError('Order not found.', 404);
       validatePayment(order, payment);
@@ -33,8 +37,10 @@ export async function applyCapturedPayment(orderId, payment) {
       order.statusHistory.push({ status: order.orderStatus, updaterRole: 'system', note: order.payment.refundRequired ? 'Payment captured after cancellation. Refund requires reconciliation.' : 'Payment capture verified with provider.' });
       await order.save({ session });
       result = order;
+      captured = true;
     });
   } finally { await session.endSession(); }
+  if (captured) void recordServerEvent(ANALYTICS_EVENTS.PAYMENT_CAPTURED, { userId: result.customer, props: { orderId: String(result._id), value: result.pricingBreakdown?.grandTotal || 0, paymentMethod: 'ONLINE' } });
   return result;
 }
 

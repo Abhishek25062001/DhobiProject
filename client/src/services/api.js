@@ -1,6 +1,7 @@
 import { notifyContentChanged } from './resourceCache.mjs';
 import { notifyOrdersChanged } from './activeOrderFeed.mjs';
 import axios from 'axios';
+import { analyticsHeaders } from './analytics';
 import { readWithRetry, requireCatalog, requirePublicConfig } from './readWithRetry';
 
 const API = axios.create({
@@ -14,6 +15,13 @@ const API = axios.create({
     'X-CSRF-Protection': '1',
     'Content-Type': 'application/json',
   },
+});
+
+// Every request carries the anonymous analytics ids so orders and payments recorded by the API
+// can be attributed to the browsing session (and its traffic source) that produced them.
+API.interceptors.request.use(config => {
+  Object.assign(config.headers, analyticsHeaders());
+  return config;
 });
 
 // Remove credentials retained by older app versions. Sessions now use HttpOnly cookies.
@@ -350,6 +358,16 @@ export const adminService = {
   },
   sendNotification: async (notificationData) => {
     const res = await API.post('/admin/notifications', notificationData);
+    return res.data;
+  },
+
+  // 6. Website analytics (visitors, behaviour, cart & conversion)
+  getAnalyticsReport: async (params = { days: 30 }) => {
+    const res = await API.get('/admin/analytics/report', { params });
+    return res.data;
+  },
+  getAnalyticsLive: async () => {
+    const res = await API.get('/admin/analytics/live');
     return res.data;
   }
 };

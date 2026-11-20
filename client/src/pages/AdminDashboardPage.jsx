@@ -62,6 +62,7 @@ import AdminUsersTab from './admin/AdminUsersTab';
 import AdminCategoriesTab from './admin/AdminCategoriesTab';
 import AdminPaymentsTab from './admin/AdminPaymentsTab';
 import AdminNotificationsTab from './admin/AdminNotificationsTab';
+import AdminAnalyticsTab from './admin/AdminAnalyticsTab';
 
 const STATUS_OPTIONS = ORDER_STATUS_OPTIONS;
 
@@ -579,6 +580,7 @@ const AdminDashboardPage = () => {
     { id: 'areas', label: 'Service Areas', icon: MapPin },
     { id: 'content', label: 'Website Content', icon: FileText },
     { id: 'overview', label: 'Command Overview', icon: BarChart3 },
+    { id: 'analytics', label: 'Website Analytics', icon: Radio },
     { 
       id: 'orders', 
       label: 'Orders & Queue', 
@@ -782,6 +784,7 @@ const AdminDashboardPage = () => {
           {/* ================================================================= */}
           {activeTab === 'areas' && <AdminServiceAreasTab />}
           {activeTab === 'content' && <AdminContentTab />}
+          {activeTab === 'analytics' && <AdminAnalyticsTab />}
           {activeTab === 'overview' && (
             <AdminOverviewTab
               analytics={analytics}

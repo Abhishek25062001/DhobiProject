@@ -93,6 +93,19 @@ export const apiLimiter = rateLimit({
     success: false,
     message: 'Too many requests created from this IP. Please slow down and try again later.'
   },
+  // Analytics beacons have their own budget so tracking can never starve real API calls.
+  skip: (req) => process.env.NODE_ENV === 'test' || req.path === '/analytics/collect'
+});
+
+// Website analytics batches: ~1 request per 10s per active tab, with headroom for shared IPs.
+export const analyticsLimiter = rateLimit({
+  store: new MongoRateLimitStore('analyticsLimiter'),
+  keyGenerator: visitorKeyGenerator,
+  windowMs: 15 * 60 * 1000,
+  max: 1500,
+  standardHeaders: false,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many analytics requests.' },
   skip: (req) => process.env.NODE_ENV === 'test'
 });
 

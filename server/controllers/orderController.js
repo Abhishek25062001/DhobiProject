@@ -3,6 +3,8 @@ import { holdDeadline, recoverPaymentSession } from '../services/paymentMaintena
 import crypto from 'node:crypto';
 import { preparePayment, reconcilePayment, applyCapturedPayment, validatePayment, refundCancelledOrder, applyRefund } from '../services/payments.js';
 import { getRazorpayInstance } from '../utils/razorpay.js';
+import { analyticsContext, recordServerEvent } from '../services/analytics.js';
+import { ANALYTICS_EVENTS } from '../../shared/analyticsEvents.mjs';
 import { TRACKING_STAGES, orderStage, orderStatusLabel } from '../../shared/orderStages.mjs';
 import mongoose from 'mongoose';
 import { bookingAddressConsent, lockedAddressUser, saveAddressInBook } from '../services/addressBook.js';
@@ -184,6 +186,23 @@ export const createOrder = async (req, res) => {
 
       }, { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } });
     } finally { await session.endSession(); }
+
+    void recordServerEvent(ANALYTICS_EVENTS.ORDER_PLACED, {
+      ...analyticsContext(req),
+      userId: req.user._id,
+      path: '/book',
+      props: {
+        orderId: String(order._id),
+        value: order.pricingBreakdown?.grandTotal || 0,
+        subtotal: order.pricingBreakdown?.subtotal || 0,
+        discount: order.pricingBreakdown?.discountAmount || 0,
+        cartItems: (order.items || []).reduce((sum, item) => sum + (item.quantity || 0), 0),
+        lines: (order.items || []).length,
+        paymentMethod: paymentData.method,
+        isExpress: Boolean(order.isExpress),
+        couponCode: order.pricingBreakdown?.couponCode || '',
+      },
+    });
 
     if (isOnline) {
       try { const ready = await preparePayment(order); order = ready.order; razorpayPayload = ready.razorpay; }

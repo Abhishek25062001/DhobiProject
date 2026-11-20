@@ -3,6 +3,8 @@ import { Check, Minus, Plus } from 'lucide-react';
 import { GarmentThumbnail } from '../home/LaundryArtwork';
 import { useOrderBooking, calculateItemUnitPrice } from '../../context/OrderBookingContext';
 import './BookingGarmentCard.css';
+import useProductImpression from '../../hooks/useProductImpression';
+import { track, EVENTS } from '../../services/analytics';
 import { availableServices, availableFinishes, preferredFinish, selectionAvailable } from '../../../../shared/pricing.mjs';
 
 export default function BookingGarmentCard({ garment, cartItem, addItem, updateQuantity, updateServiceType, updateIroningType, fallbackIcon, copy }) {
@@ -20,22 +22,27 @@ export default function BookingGarmentCard({ garment, cartItem, addItem, updateQ
   const ironing = service === 'WASH_AND_IRON' || service === 'IRON_ONLY';
   const unitPrice = available ? calculateItemUnitPrice(garment, service, finish) : null;
   const finishLabel = finishes.find(([id]) => id === finish)?.[1] || 'Unavailable';
+  const impressionRef = useProductImpression(garment, 'booking_catalog');
+  // Option changes on lines already in the bag are recorded by the bag itself.
+  const trackOption = (serviceType, ironingType) => { if (!cartItem) track(EVENTS.PRODUCT_OPTION_CHANGE, { productId: String(garment._id), productName: garment.isCustom ? 'Custom item' : garment.name, category: garment.category || '', serviceType, ironingType, inCart: false }); };
 
 
   function chooseService(value) {
     setDraftService(value);
     setDraftFinish(preferredFinish(garment, platformConfig, value, finish));
+    trackOption(value, preferredFinish(garment, platformConfig, value, finish));
     if (cartItem) updateServiceType(itemId, value);
     setEditingFinish(false);
   }
   function chooseFinish(value) {
     setDraftFinish(value);
+    trackOption(service, value);
     if (cartItem) updateIroningType(itemId, value);
     setEditingFinish(false);
   }
 
   return (
-    <article className={`booking-garment-card bg-white rounded-2xl p-4 border ${quantity ? 'border-indigo-500 shadow-sm ring-1 ring-indigo-500' : 'border-slate-200/90 shadow-xs'}`} aria-label={garment.name}>
+    <article ref={impressionRef} className={`booking-garment-card bg-white rounded-2xl p-4 border ${quantity ? 'border-indigo-500 shadow-sm ring-1 ring-indigo-500' : 'border-slate-200/90 shadow-xs'}`} aria-label={garment.name}>
       <div className="booking-garment-main">
         <div className="booking-garment-photo">
           <GarmentThumbnail garment={garment} />
