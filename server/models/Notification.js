@@ -25,13 +25,21 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['ORDER_UPDATE', 'RIDER_ASSIGNED', 'PROMO', 'SYSTEM_ALERT', 'GENERAL'],
+      enum: ['ORDER_UPDATE', 'RIDER_ASSIGNED', 'PROMO', 'SYSTEM_ALERT', 'GENERAL', 'BAG_REMINDER'],
       default: 'ORDER_UPDATE'
     },
     orderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Order',
       default: null
+    },
+    // In-app destination opened when the notification is clicked (relative path only).
+    link: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 300,
+      validate: { validator: value => !value || /^\/(?!\/)/.test(value), message: 'Notification links must be site-relative.' }
     },
     orderNumber: {
       type: String,

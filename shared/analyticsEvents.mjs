@@ -32,13 +32,16 @@ export const ANALYTICS_EVENTS = Object.freeze({
   PAYMENT_OPENED: 'payment_opened',
   PAYMENT_DISMISSED: 'payment_dismissed',
   PURCHASE: 'purchase', // client-side confirmation that the order was created
+  BAG_RESTORED: 'bag_restored', // saved bag loaded back into an empty browser bag after sign-in
 
   // Server-only (authoritative; never accepted from the browser)
   ORDER_PLACED: 'order_placed',
   PAYMENT_CAPTURED: 'payment_captured',
+  BAG_REMINDER_SENT: 'bag_reminder_sent',
+  BAG_RECOVERED: 'bag_recovered', // order placed within the recovery window after a reminder
 });
 
-export const SERVER_ONLY_EVENTS = new Set([ANALYTICS_EVENTS.ORDER_PLACED, ANALYTICS_EVENTS.PAYMENT_CAPTURED]);
+export const SERVER_ONLY_EVENTS = new Set([ANALYTICS_EVENTS.ORDER_PLACED, ANALYTICS_EVENTS.PAYMENT_CAPTURED, ANALYTICS_EVENTS.BAG_REMINDER_SENT, ANALYTICS_EVENTS.BAG_RECOVERED]);
 export const CLIENT_EVENTS = new Set(Object.values(ANALYTICS_EVENTS).filter(name => !SERVER_ONLY_EVENTS.has(name)));
 
 // Request headers the website sends with every API call so server-side events

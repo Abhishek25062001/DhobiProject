@@ -372,6 +372,12 @@ export const adminService = {
   }
 };
 
+// Signed-in customer's saved laundry bag (synced across tabs and devices).
+export const bagService = {
+  get: async () => (await API.get('/bag')).data,
+  save: async (items) => (await API.put('/bag', { items })).data,
+};
+
 export const notificationService = {
   getMyNotifications: async () => {
     const res = await API.get('/notifications');

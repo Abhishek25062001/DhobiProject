@@ -10,7 +10,8 @@ import {
   Truck, 
   Shirt, 
   Info,
-  X 
+  X,
+  ShoppingBag,
 } from 'lucide-react';
 import { notificationService } from '../services/api';
 
@@ -68,7 +69,10 @@ const NotificationBell = () => {
         setUnreadCount((prev) => Math.max(0, prev - 1));
       }
 
-      if (notif.orderId || notif.orderNumber) {
+      if (notif.link && notif.link.startsWith('/') && !notif.link.startsWith('//')) {
+        setIsOpen(false);
+        navigate(notif.link);
+      } else if (notif.orderId || notif.orderNumber) {
         setIsOpen(false);
         navigate('/my-orders');
       }
@@ -113,6 +117,8 @@ const NotificationBell = () => {
         return <Shirt className="w-4 h-4 text-primary-600" />;
       case 'RIDER_ASSIGNED':
         return <Truck className="w-4 h-4 text-emerald-600" />;
+      case 'BAG_REMINDER':
+        return <ShoppingBag className="w-4 h-4 text-primary-600" />;
       case 'PROMO':
         return <Tag className="w-4 h-4 text-purple-600" />;
       case 'SYSTEM_ALERT':

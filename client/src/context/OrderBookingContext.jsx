@@ -5,7 +5,8 @@ import { couponQuote } from '../../../shared/coupon.mjs';
 import { calculateItemUnitPrice, calculateTotals, preferredFinish, money, selectionAvailable } from '../../../shared/pricing.mjs';
 import React, { createContext, useContext, useState, useMemo, useEffect, useRef } from 'react';
 import { format, addDays } from 'date-fns';
-import { configService } from '../services/api';
+import { configService, bagService } from '../services/api';
+import { bagPayload, cartFromSavedBag } from '../services/savedBag.mjs';
 import { readBookingDraft, readDraftCart, saveBookingDraft } from '../utils/bookingDraft';
 import useApiResource from '../hooks/useApiResource';
 import { track, EVENTS } from '../services/analytics';
@@ -298,6 +299,11 @@ export const OrderBookingProvider = ({ children }) => {
     previousCart.current = cartItems;
     if (previous === null || previous === cartItems) return;
     const summary = cartSummary(cartItems);
+    if (restoredBag.current) {
+      restoredBag.current = false;
+      track(EVENTS.BAG_RESTORED, summary);
+      return;
+    }
     if (clearReason.current && !cartItems.length) {
       track(EVENTS.CART_CLEARED, { reason: clearReason.current, ...cartSummary(previous) });
       clearReason.current = null;
@@ -310,6 +316,48 @@ export const OrderBookingProvider = ({ children }) => {
       else track(change.type === 'add' ? EVENTS.ADD_TO_CART : EVENTS.REMOVE_FROM_CART, { ...product, quantity: change.quantity, value: Math.round(product.unitPrice * change.quantity * 100) / 100, ...summary });
     }
   }, [cartItems]);
+
+  // Saved bag: signed-in customers keep their bag on the server, so it survives closed tabs,
+  // follows them to other devices, and can be restored from an abandoned-bag reminder.
+  // On sign-in an empty browser bag is filled from the server; otherwise the browser bag wins.
+  const restoredBag = useRef(false);
+  const bagSync = useRef({ userId: null, ready: false, lastSaved: '' });
+  const [bagReady, setBagReady] = useState(null); // user id whose saved bag has been loaded
+  const syncsBag = Boolean(user?._id) && !['admin', 'rider'].includes(user?.role);
+  useEffect(() => {
+    if (!syncsBag || !bootstrap || configError || bagSync.current.userId === user._id) return;
+    bagSync.current = { userId: user._id, ready: false, lastSaved: '' };
+    let cancelled = false;
+    bagService.get().then(({ bag }) => {
+      if (cancelled) return;
+      const serverPayload = JSON.stringify(bag?.items?.length ? bagPayload(cartFromSavedBag(bag.items, bootstrap.garments || [])) : []);
+      setCartItems(current => {
+        if (current.length || !bag?.items?.length) return current;
+        const restored = reconcileBasket(cartFromSavedBag(bag.items, bootstrap.garments || []), bootstrap.garments || [], bootstrap.config);
+        if (restored.length) restoredBag.current = true;
+        return restored;
+      });
+      bagSync.current = { userId: user._id, ready: true, lastSaved: serverPayload };
+      setBagReady(user._id);
+    }).catch(() => {
+      // The bag still works locally; saving resumes on the next change.
+      if (!cancelled) { bagSync.current = { userId: user._id, ready: true, lastSaved: '' }; setBagReady(user._id); }
+    });
+    return () => { cancelled = true; if (!bagSync.current.ready) bagSync.current.userId = null; };
+  }, [syncsBag, user?._id, bootstrap, configError]);
+
+  useEffect(() => {
+    if (!syncsBag || bagReady !== user._id) return;
+    const timer = window.setTimeout(() => {
+      if (!bagSync.current.ready || bagSync.current.userId !== user._id) return;
+      const payload = bagPayload(cartItems);
+      const serialized = JSON.stringify(payload);
+      if (serialized === bagSync.current.lastSaved) return;
+      bagService.save(payload).then(() => { bagSync.current.lastSaved = serialized; }).catch(() => {});
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [cartItems, syncsBag, user?._id, bagReady]);
+  useEffect(() => { if (!user?._id) { bagSync.current = { userId: null, ready: false, lastSaved: '' }; setBagReady(null); } }, [user?._id]);
 
   // Live Pricing Calculations dynamically derived from PlatformConfig
   const {

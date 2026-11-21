@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { preparePayment, reconcilePayment, applyCapturedPayment, validatePayment, refundCancelledOrder, applyRefund } from '../services/payments.js';
 import { getRazorpayInstance } from '../utils/razorpay.js';
 import { analyticsContext, recordServerEvent } from '../services/analytics.js';
+import { bagConvertedToOrder } from '../services/bagRecovery.js';
 import { ANALYTICS_EVENTS } from '../../shared/analyticsEvents.mjs';
 import { TRACKING_STAGES, orderStage, orderStatusLabel } from '../../shared/orderStages.mjs';
 import mongoose from 'mongoose';
@@ -187,6 +188,7 @@ export const createOrder = async (req, res) => {
       }, { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } });
     } finally { await session.endSession(); }
 
+    void bagConvertedToOrder(req.user._id, order);
     void recordServerEvent(ANALYTICS_EVENTS.ORDER_PLACED, {
       ...analyticsContext(req),
       userId: req.user._id,

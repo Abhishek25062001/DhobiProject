@@ -25,6 +25,7 @@ export const getMyNotifications = async (req, res) => {
         type: n.type,
         orderId: n.orderId,
         orderNumber: n.orderNumber,
+        link: n.link || '',
         isBroadcast: n.isBroadcast,
         isRead: isReadForUser,
         createdAt: n.createdAt

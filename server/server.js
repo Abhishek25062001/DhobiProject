@@ -23,6 +23,8 @@ import adminRoutes from './routes/adminRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import mediaRoutes from './routes/mediaRoutes.js';
 import { publicAnalyticsRoutes, adminAnalyticsRoutes } from './routes/analyticsRoutes.js';
+import bagRoutes from './routes/bagRoutes.js';
+import { startBagReminders } from './services/bagRecovery.js';
 import { sanitizeInput, apiLimiter } from './middleware/securityMiddleware.js';
 import errorHandler from './middleware/errorMiddleware.js';
 
@@ -144,6 +146,7 @@ app.use('/api/admin/service-areas', adminServiceAreaRoutes);
 app.use('/api/content', publicContentRoutes);
 app.use('/api/admin/content', adminContentRoutes);
 app.use('/api/analytics', publicAnalyticsRoutes);
+app.use('/api/bag', bagRoutes);
 app.use('/api/admin/analytics', adminAnalyticsRoutes);
 
 // Production Static Asset Serving
@@ -192,7 +195,8 @@ export const startServer = async () => {
     cleanup: disconnectDB,
   });
   const stopMaintenance = startPaymentMaintenance();
-  server.once('close', stopMaintenance);
+  const stopBagReminders = startBagReminders();
+  server.once('close', () => { stopMaintenance(); stopBagReminders(); });
   console.log(`IndoDhobi API ready at http://localhost:${port}/api`);
   return server;
 };

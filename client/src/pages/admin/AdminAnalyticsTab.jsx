@@ -275,6 +275,17 @@ export default function AdminAnalyticsTab() {
             <Stat label="Orders placed" value={num(orders.orders)} hint={`${rupees(orders.revenue)} · ${num(orders.cancelledOrders)} cancelled`} />
             <Stat label="Online payments" value={`${num(c.events.paymentOpened)} opened`} hint={`${num(c.events.paymentDismissed)} closed · ${num(orders.paidOrders)} paid · ${num(c.events.orderFailures)} order errors`} />
           </div>
+          {report.recovery && (
+            <Card title="Abandoned-bag reminders" subtitle={report.recovery.enabled ? `Sent ${Math.round(report.recovery.reminderDelayMinutes / 6) / 10}h after a signed-in customer's last bag change, once per bag, via ${report.recovery.channels.join(', ').replace('in_app', 'in-app notification') || 'no channel'}. Recovered = order placed within 7 days of the reminder.` : 'Reminders are turned off (BAG_REMINDER_ENABLED=false).'}>
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                <Stat label="Waiting for a reminder" value={num(report.recovery.savedBagsOpen)} hint="Signed-in bags not yet reminded" />
+                <Stat label="Reminders sent" value={num(report.recovery.remindersSent)} hint={`${rupees(report.recovery.remindedValue)} in bags`} />
+                <Stat label="Bags recovered" value={num(report.recovery.recoveredBags)} hint={`${report.recovery.recoveryRate}% of reminders`} />
+                <Stat label="Recovered revenue" value={rupees(report.recovery.recoveredRevenue)} />
+                <Stat label="Time to order" value={report.recovery.recoveredBags ? `${report.recovery.avgHoursToRecover}h` : '—'} hint="Average, after the reminder" />
+              </div>
+            </Card>
+          )}
           <div className="grid lg:grid-cols-5 gap-5">
             <Card title="Conversion funnel" subtitle="Share of sessions reaching each step" className="lg:col-span-2">
               <Funnel steps={c.funnel} />

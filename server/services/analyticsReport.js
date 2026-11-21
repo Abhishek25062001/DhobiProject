@@ -2,6 +2,7 @@ import AnalyticsEvent from '../models/AnalyticsEvent.js';
 import AnalyticsSession from '../models/AnalyticsSession.js';
 import AnalyticsVisitor from '../models/AnalyticsVisitor.js';
 import Order from '../models/Order.js';
+import { bagRecoveryReport } from './bagRecovery.js';
 import { ANALYTICS_EVENTS as E } from '../../shared/analyticsEvents.mjs';
 
 const TZ = process.env.ANALYTICS_TIMEZONE || 'Asia/Kolkata';
@@ -317,10 +318,10 @@ export async function buildReport(query = {}) {
   const match = { startedAt: { $gte: start, $lt: end } };
   const range = { $gte: start, $lt: end };
   const summary = await overview(match);
-  const [trend, topPages, sources, paths, behaviourData, productData, cartData, outcomes, cohorts, engaged] = await Promise.all([
-    daily(match, start, end), pages(range), acquisition(match), journeys(match), behaviour(range), products(range), cart(match, range), orderOutcomes(start, end, summary.visitors), retention(now), engagement(now),
+  const [trend, topPages, sources, paths, behaviourData, productData, cartData, outcomes, cohorts, engaged, recovery] = await Promise.all([
+    daily(match, start, end), pages(range), acquisition(match), journeys(match), behaviour(range), products(range), cart(match, range), orderOutcomes(start, end, summary.visitors), retention(now), engagement(now), bagRecoveryReport(start, end),
   ]);
-  return { range: { start, end, timezone: TZ }, overview: summary, engagement: engaged, trend, pages: topPages, acquisition: sources, journeys: paths, behaviour: behaviourData, products: productData, cart: cartData, orders: outcomes, retention: cohorts };
+  return { range: { start, end, timezone: TZ }, overview: summary, engagement: engaged, trend, pages: topPages, acquisition: sources, journeys: paths, behaviour: behaviourData, products: productData, cart: cartData, recovery, orders: outcomes, retention: cohorts };
 }
 
 export async function buildLive() {
