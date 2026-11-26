@@ -26,3 +26,27 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/*
+ * Mobile input zoom fix.
+ * iOS Safari zooms the page whenever a text field with a font size below 16px is focused,
+ * and most fields here use 12–14px text. On touch devices every text-entry control is
+ * raised to 16px so focusing it no longer zooms. Pinch-to-zoom stays available (the
+ * viewport is deliberately not locked with maximum-scale, which would hurt accessibility).
+ * !important is needed to win over utility classes and component CSS such as
+ * `.order-tracker__switch select`. Desktop styling is unchanged.
+ */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]),
+  textarea,
+  select,
+  [contenteditable="true"] {
+    font-size: 16px !important;
+  }
+}
+
+/* Stop iOS from inflating text sizes when the phone is rotated to landscape. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
